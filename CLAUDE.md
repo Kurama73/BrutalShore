@@ -26,17 +26,43 @@ number, and already takes community fixes within days — including the macOS
 loader lookup this project depends on. Upstream improvements therefore arrive by
 editing one line per package; a fork would turn every one of them into a merge.
 
-The clone at `../BRUTAL/` is **reference source only**. There is no API
-documentation site, so reading the framework's own code is how its API is
-learned. It is a clone of upstream rather than a fork or a downloaded snapshot,
-so it can be moved to the tag matching whatever is pinned here:
+### Where its documentation actually is
+
+There is no documentation site, but the packages carry nearly everything:
+
+- **XML doc comments** ship beside each assembly, so signatures and summaries
+  show up in the editor without looking anything up.
+- **SourceLink** is in the symbols, pinned to the exact commit a package was
+  built from, so a debugger steps into the framework's own source and fetches
+  it on demand.
+- **`docs/brutal-conventions.md`** ships inside `Ahwoo.BRUTAL.Core`, at
+  `~/.nuget/packages/ahwoo.brutal.core/<version>/docs/`. It is the rules for
+  *consuming* BRUTAL types and it is binding here. Read it rather than having
+  it restated — the document asks for exactly that — and re-read it when a
+  version is bumped.
+
+Its two load-bearing rules, because breaking them corrupts memory with no
+managed signal: a `Ptr<T>` does not keep its memory alive, and a `[Fixed]` span
+must not escape the scope that owns the memory. This repository has one place
+that touches either — `FrameCapture` maps device memory, reads it and unmaps it
+within a single method — and that is the place to look first if anything there
+starts crashing.
+
+### The clone
+
+The clone at `../BRUTAL/` is **reference source only**, and strictly a
+convenience: nothing builds against the path, and deleting it changes nothing.
+What it is good for is what the packages cannot do — grepping the whole
+framework at once, and diffing two versions when a package is bumped. It is a
+clone of upstream rather than a fork or a snapshot, so it can be moved to the
+tag matching whatever is pinned here:
 
 ```bash
 git -C ../BRUTAL fetch --tags && git -C ../BRUTAL checkout Vulkan/v2026.10.3
 ```
 
-Nothing is copied out of it, and nothing in this repository builds against the
-path. Fork it the day there is something to send upstream, and not before.
+Nothing is copied out of it. Fork it the day there is something to send
+upstream, and not before.
 
 ## Language
 
