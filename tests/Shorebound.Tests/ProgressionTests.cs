@@ -146,4 +146,65 @@ public sealed class ProgressionTests
             Assert.NotEmpty(milestone.Cost);
         }
     }
+
+    [Fact]
+    public void every_milestone_is_paid_for_with_what_the_one_before_it_unlocked()
+    {
+        // The shape the whole middle of the game has: each tier bought with the output of the
+        // last, so the line cannot be skipped and never asks for something unreachable. A cost
+        // naming a block that nothing before it made would be a wall rather than a step.
+        var recipes = new Recipes(_blocks);
+
+        // What a player can get with their hands before any milestone: anything in the world,
+        // and anything the free recipes make.
+        var reachable = new HashSet<BlockId>(Worldly());
+        foreach (var recipe in recipes.All.Where(recipe => _progression.IsUnlocked(recipe.Name)))
+            reachable.Add(recipe.Result);
+
+        for (var step = 0; step < _progression.All.Count; step++)
+        {
+            var milestone = _progression.All[step];
+
+            foreach (var (block, _) in milestone.Cost)
+            {
+                Assert.True(
+                    reachable.Contains(block),
+                    $"'{milestone.Name}' asks for {_blocks.Registry[block].Name}, which nothing before it makes"
+                );
+            }
+
+            _progression.Restore(step + 1);
+
+            foreach (var name in milestone.Unlocks)
+            {
+                var recipe = recipes.All.Single(candidate => candidate.Name == name);
+                reachable.Add(recipe.Result);
+            }
+
+            // And whatever those new machines produce from what is already reachable.
+            foreach (var (input, result, _) in new Smelting(_blocks).All)
+            {
+                if (reachable.Contains(input) && reachable.Contains(_blocks.Smelter))
+                    reachable.Add(result);
+            }
+        }
+    }
+
+    [Fact]
+    public void the_line_ends_with_something_that_defends_what_it_built()
+    {
+        // The shape of the whole game in one assertion: it starts with a shelter and ends with
+        // the works being able to look after themselves.
+        var last = _progression.All[^1];
+
+        Assert.Contains("turret", last.Unlocks);
+    }
+
+    /// <summary>Everything a player can pick up out of the world without making anything.</summary>
+    private IEnumerable<BlockId> Worldly() =>
+        [
+            _blocks.Stone, _blocks.Dirt, _blocks.Grass, _blocks.Sand, _blocks.Snow,
+            _blocks.Log, _blocks.Leaves,
+            _blocks.CoalOre, _blocks.CopperOre, _blocks.IronOre, _blocks.EmberOre,
+        ];
 }

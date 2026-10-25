@@ -77,9 +77,28 @@ A **miner** stands on a seam and keeps bringing it up for as long as it has
 something to burn. It never consumes the seam: the cost of a vein is the walk
 out to it and the fuel, not how much is left in it.
 
-A drill, a few belts and a fire is a line that runs while you are a hundred
-metres down a shaft. That is the whole point, and it is also the problem — see
-below.
+A **lift** is a belt that goes up, because everything worth having is below
+everything you want to build on.
+
+A drill, a few belts, a lift and a fire is a line that runs while you are a
+hundred metres down a shaft. That is the whole point, and it is also the
+problem — see below.
+
+### Current
+
+A fire under every machine is a fire you have to walk to. A **generator** burns
+fuel in one place and **cable** carries the result to everything it touches: a
+wired smelter or drill needs no fuel of its own, and one that is not wired falls
+back to burning, so a half-wired works still runs.
+
+Cable touching cable is one grid; a machine between two runs does not join them.
+That matters, because a grid that is asked for more than it has slows everything
+on it down *together* rather than stopping some of it — so a player who put
+their turrets on the smelters' generator finds out, the first time a fight
+starts mid-smelt, that they built one grid where they needed two.
+
+A generator burns only what was actually drawn from it. One left running into a
+grid with nothing switched on costs nothing.
 
 ### What the shore asks
 
@@ -103,6 +122,10 @@ running, because a bigger works is a louder one. Light what you build.
 Left click swings at whatever is in front of you; two connected swings finish
 one. A bar appears over the row when something lands. If you go down, what you
 were carrying stays where you fell.
+
+A **turret** does the same thing while you are asleep, and runs on electricity
+and nothing else. That is where the grid earns its place: the answer to a bigger
+horde becomes a bigger factory rather than a longer night awake.
 
 `Escape` opens the menu, which has the settings and saves the world; `F3` shows
 what the engine is doing.
@@ -199,7 +222,7 @@ were deleted.
 
 | Game            | What is in it                                        |
 | --------------- | ---------------------------------------------------- |
-| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, breaking and dropping, the controls, what they carry and craft, ore seams, smelters, belts and drills, milestones, its own sounds, the animals and the horde, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
+| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, breaking and dropping, the controls, what they carry and craft, ore seams, machines, belts, lifts, power and turrets, milestones, its own sounds, the animals and the horde, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
 
 A game is an `IGame` the runtime runs, and an `IChunkGenerator` the world asks
 for blocks. Those two interfaces are the whole of the engine's knowledge of it.
