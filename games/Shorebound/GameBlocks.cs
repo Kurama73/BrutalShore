@@ -33,11 +33,29 @@ public sealed class GameBlocks
                 Opacity = 170,
                 Collides = false,
                 IsLiquid = true,
+
+                // Two levels a block, so the sky reaches seven blocks down and no further. That
+                // is what turns depth into darkness and makes a shelf of shallows visible from
+                // the shore as something other than a change of colour.
+                LightOpacity = 2,
             }
         );
         Bedrock = registry.Register(new BlockType { Name = "bedrock", Color = byte3.HexColor(0x2B2B30) });
         Log = registry.Register(new BlockType { Name = "log", Color = byte3.HexColor(0x5A4228) });
         Leaves = registry.Register(new BlockType { Name = "leaves", Color = byte3.HexColor(0x3E6B2A) });
+        Lantern = registry.Register(
+            new BlockType
+            {
+                Name = "lantern",
+                Color = byte3.HexColor(0xFFE2A8),
+
+                // One below the brightest there is, so a lantern lights fourteen blocks around
+                // itself and a corridor still needs a second one. Full brightness would make a
+                // single lantern enough for any cave anyone digs, which is the same as having no
+                // dark in the game at all.
+                Emission = 14,
+            }
+        );
     }
 
     /// <summary>The registry these ids index.</summary>
@@ -62,9 +80,9 @@ public sealed class GameBlocks
     /// Water, which fills everything below the sea level that terrain did not.
     /// </summary>
     /// <remarks>
-    /// Opaque for now, and the mesher treats it as solid like everything else. Transparency is a
-    /// change to the mesher and the draw order, not to this type, so it stays out until that work
-    /// is done rather than being half-declared here.
+    /// See-through, walked into rather than onto, swum in, and drawn in the pass after everything
+    /// solid. What it is not is a fluid: a placed block of it would be a cube of sea, which is why
+    /// the hotbar leaves it out.
     /// </remarks>
     public BlockId Water { get; }
 
@@ -77,4 +95,7 @@ public sealed class GameBlocks
     /// <summary>A tree's canopy. Opaque: a forest of see-through leaves would be a forest
     /// of blended quads, and the blending order between them is not worth what it buys.</summary>
     public BlockId Leaves { get; }
+
+    /// <summary>A lantern: the one block that gives off light of its own.</summary>
+    public BlockId Lantern { get; }
 }
