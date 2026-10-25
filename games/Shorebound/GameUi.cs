@@ -36,6 +36,13 @@ public sealed class GameUi
     /// <summary>How wide the settings panel's category rail is, before the scale.</summary>
     private const float RailWidth = 180f;
 
+    /// <summary>How far a panel's corners are cut back, before the scale.</summary>
+    /// <remarks>
+    /// Larger than a control's cut, so that a panel reads as a thicker piece of the same stock
+    /// rather than as a control that grew.
+    /// </remarks>
+    private const float PanelCut = 12f;
+
     private const ImGuiWindowFlags Bare =
         ImGuiWindowFlags.NoDecoration
         | ImGuiWindowFlags.NoMove
@@ -99,6 +106,93 @@ public sealed class GameUi
         ImGui.End();
     }
 
+    /// <summary>Draws one inventory slot, wherever it is: in the row or in the pack.</summary>
+    /// <param name="minimum">Its top left corner, in screen pixels.</param>
+    /// <param name="maximum">Its bottom right corner.</param>
+    /// <param name="swatch">The colour of what is in it, or nothing when it is empty.</param>
+    /// <param name="count">How many are in it.</param>
+    /// <param name="selected">Whether it is the one in hand.</param>
+    /// <param name="over">Whether the pointer is on it.</param>
+    /// <param name="scale">The interface scale.</param>
+    /// <remarks>
+    /// One function for both so that the row along the bottom of the screen and the grid behind
+    /// it are visibly the same object in two places. A slot drawn twice is a slot that stops
+    /// agreeing with itself after the second change to either.
+    /// </remarks>
+    private static void Slot(
+        float2 minimum,
+        float2 maximum,
+        float4? swatch,
+        int count,
+        bool selected,
+        bool over,
+        float scale
+    )
+    {
+        var cut = 7f * scale;
+
+        // Cut into the panel: dark fill under a lit top hairline. The swatch then sits in the
+        // recess rather than on the panel, which is what makes a full slot read as holding
+        // something instead of being painted a colour.
+        var empty = swatch is null;
+        UiCanvas.Chamfer(
+            minimum,
+            maximum,
+            over ? UiPalette.Hovered : UiPalette.Fade(UiPalette.Recess, empty ? 0.72f : 1f),
+            cut
+        );
+
+        if (swatch is { } color)
+        {
+            var inset = 6f * scale;
+            UiCanvas.Chamfer(
+                minimum + new float2(inset, inset),
+                maximum - new float2(inset, inset),
+                color,
+                cut * 0.6f
+            );
+        }
+
+        UiCanvas.Line(
+            new float2(minimum.X + cut, minimum.Y + (0.5f * scale)),
+            new float2(maximum.X - cut, minimum.Y + (0.5f * scale)),
+            UiPalette.Fade(UiPalette.Edge, over ? 0.8f : 0.4f),
+            scale
+        );
+
+        UiCanvas.ChamferOutline(
+            minimum,
+            maximum,
+            selected ? UiPalette.Accent : UiPalette.Fade(UiPalette.Divider, over ? 1f : 0.7f),
+            cut,
+            selected ? 2f * scale : scale
+        );
+
+        if (selected)
+            UiCanvas.CornerTicks(minimum, maximum, UiPalette.Accent, 10f * scale, 2f * scale);
+
+        if (count <= 0)
+            return;
+
+        // The count on a plate of its own in the corner, because half the blocks in this game
+        // are pale and a number straight onto the swatch disappears into them.
+        var countSize = ImGui.GetFontSize() * 0.8f;
+        var carried = $"{count}";
+        var countWidth = UiCanvas.Measure(carried, countSize).X;
+        var plateMinimum = new float2(
+            maximum.X - countWidth - (8f * scale),
+            maximum.Y - countSize - (5f * scale)
+        );
+
+        UiCanvas.Chamfer(plateMinimum, maximum - new float2(scale, scale), UiPalette.Fade(UiPalette.Scrim, 0.82f), cut * 0.5f);
+        UiCanvas.Text(
+            new float2(plateMinimum.X + (4f * scale), plateMinimum.Y + (1.5f * scale)),
+            UiPalette.Text,
+            carried,
+            countSize
+        );
+    }
+
     /// <summary>Draws the row of blocks along the bottom of the screen.</summary>
     /// <param name="inventory">The row to draw.</param>
     /// <remarks>
@@ -122,13 +216,24 @@ public sealed class GameUi
         FullScreen("row"u8, takesInput: false);
 
         var size = ImGui.GetFontSize();
-        var name = inventory.SelectedName;
-        var nameWidth = UiCanvas.Measure(name, size).X;
-        UiCanvas.Text(
-            new float2(viewport.Pos.X + ((viewport.Size.X - nameWidth) * 0.5f), top - size - (10f * scale)),
-            UiPalette.Text,
+        var name = inventory.SelectedName.ToUpperInvariant();
+        var nameSize = size * 0.9f;
+        var nameWidth = UiCanvas.Measure(name, nameSize).X + ((name.Length - 1) * 1.6f * scale);
+        var nameLeft = viewport.Pos.X + ((viewport.Size.X - nameWidth) * 0.5f);
+        var nameTop = top - nameSize - (22f * scale);
+
+        UiCanvas.Chamfer(
+            new float2(nameLeft - (16f * scale), nameTop - (6f * scale)),
+            new float2(nameLeft + nameWidth + (16f * scale), nameTop + nameSize + (6f * scale)),
+            UiPalette.Fade(UiPalette.Scrim, 0.7f),
+            5f * scale
+        );
+        UiCanvas.TrackedText(
+            new float2(nameLeft, nameTop),
+            inventory.HasSelection ? UiPalette.Text : UiPalette.MutedText,
             name,
-            size
+            nameSize,
+            1.6f * scale
         );
 
         for (var index = 0; index < Inventory.RowCount; index++)
@@ -136,53 +241,27 @@ public sealed class GameUi
             var chosen = index == inventory.SelectedIndex;
             var count = inventory.At(index).Count;
             var x = left + (index * (slot + gap));
-            var lift = chosen ? 4f * scale : 0f;
+            var lift = chosen ? 5f * scale : 0f;
             var minimum = new float2(x, top - lift);
             var maximum = new float2(x + slot, bottom - lift);
 
-            UiCanvas.Rect(minimum, maximum, UiPalette.Fade(UiPalette.Scrim, chosen ? 0.82f : 0.6f), 5f * scale);
-
-            if (count > 0)
-            {
-                var inset = 7f * scale;
-                UiCanvas.Rect(
-                    minimum + new float2(inset, inset),
-                    maximum - new float2(inset, inset),
-                    UiPalette.Fade(inventory.ColorOf(index), chosen ? 1f : 0.85f),
-                    3f * scale
-                );
-            }
-
-            UiCanvas.Outline(
+            Slot(
                 minimum,
                 maximum,
-                chosen ? UiPalette.Accent : UiPalette.Fade(UiPalette.Text, 0.14f),
-                5f * scale,
-                chosen ? 2f * scale : 1f
+                count > 0 ? inventory.ColorOf(index) : null,
+                count,
+                chosen,
+                over: false,
+                scale
             );
 
-            // The count in the corner, which is the one number a player reads without looking.
-            if (count > 0)
-            {
-                var carried = $"{count}";
-                var countSize = size * 0.82f;
-                var countWidth = UiCanvas.Measure(carried, countSize).X;
-                UiCanvas.Text(
-                    new float2(maximum.X - countWidth - (4f * scale), maximum.Y - countSize - (2f * scale)),
-                    UiPalette.Text,
-                    carried,
-                    countSize
-                );
-            }
-
-            // Under the slot rather than inside it. A number in the corner of a swatch is a
-            // number on top of whatever colour that block happens to be, and half the blocks in
-            // this game are pale.
+            // Under the slot rather than inside it, where the count already is, and in the accent
+            // for the one in hand so the row can be read without the label above it.
             var number = $"{index + 1}";
-            var numberSize = size * 0.78f;
+            var numberSize = size * 0.76f;
             var numberWidth = UiCanvas.Measure(number, numberSize).X;
             UiCanvas.Text(
-                new float2(x + ((slot - numberWidth) * 0.5f), bottom + (6f * scale)),
+                new float2(x + ((slot - numberWidth) * 0.5f), bottom + (7f * scale)),
                 chosen ? UiPalette.Accent : UiPalette.Fade(UiPalette.MutedText, 0.75f),
                 number,
                 numberSize
@@ -234,29 +313,47 @@ public sealed class GameUi
             TitleTracking * scale
         );
 
-        // Measured rather than assumed: a font's line box is taller than its capitals, and a rule
+        // Measured rather than assumed: a font's line box is taller than its capitals, and a band
         // placed at the nominal size floats away from the word it belongs to.
-        var ruleY = top + markHeight + (10f * scale);
-        UiCanvas.Rect(
-            new float2(left, ruleY),
-            new float2(left + markWidth, ruleY + (3f * scale)),
-            UiPalette.Accent
-        );
+        var bandY = top + markHeight + (10f * scale);
+        var bandHeight = 9f * scale;
+        var bandMinimum = new float2(left, bandY);
+        var bandMaximum = new float2(left + markWidth, bandY + bandHeight);
+        UiCanvas.Rect(bandMinimum, bandMaximum, UiPalette.Recess);
+        UiCanvas.HazardStripes(bandMinimum, bandMaximum, UiPalette.Accent, 13f * scale);
+        UiCanvas.Outline(bandMinimum, bandMaximum, UiPalette.Fade(UiPalette.Edge, 0.5f));
 
-        var subtitleY = ruleY + (18f * scale);
+        var subtitleSize = ImGui.GetFontSize() * 0.86f;
+        var subtitleY = bandY + bandHeight + (18f * scale);
+        var subtitleWidth = UiCanvas.Measure("A VOXEL WORLD ON BRUTAL", subtitleSize).X + (44f * scale);
+
+        // The subtitle on a plate of its own, because a line of small capitals floating over a
+        // field is the one thing on this screen with nothing holding it down.
+        UiCanvas.Chamfer(
+            new float2(left, subtitleY - (7f * scale)),
+            new float2(left + subtitleWidth, subtitleY + subtitleSize + (7f * scale)),
+            UiPalette.Fade(UiPalette.Control, 0.85f),
+            5f * scale
+        );
+        UiCanvas.ChamferOutline(
+            new float2(left, subtitleY - (7f * scale)),
+            new float2(left + subtitleWidth, subtitleY + subtitleSize + (7f * scale)),
+            UiPalette.Fade(UiPalette.Edge, 0.6f),
+            5f * scale
+        );
         UiCanvas.TrackedText(
-            new float2(left, subtitleY),
+            new float2(left + (14f * scale), subtitleY),
             UiPalette.Text,
             "A VOXEL WORLD ON BRUTAL",
-            ImGui.GetFontSize() * 0.86f,
+            subtitleSize,
             2.2f * scale
         );
 
         var width = MenuWidth * scale;
         UiControls.BeginColumn(
             "titlemenu",
-            new float2(left - (16f * scale), subtitleY + (48f * scale)),
-            new float2(width, UiControls.EntryHeight * scale * 4.4f)
+            new float2(left, subtitleY + (56f * scale)),
+            new float2(width, UiControls.EntryHeight * scale * 5.2f)
         );
 
         if (hasSave)
@@ -347,16 +444,8 @@ public sealed class GameUi
 
         var cardMinimum = new float2(left - padding, top - padding);
         var cardMaximum = new float2(left + width + padding, top + height + padding);
-        UiCanvas.PanelShadow(cardMinimum, cardMaximum, 10f * scale, 26f * scale);
-        UiCanvas.Rect(cardMinimum, cardMaximum, UiPalette.Panel, 10f * scale);
-        UiCanvas.Outline(cardMinimum, cardMaximum, UiPalette.Divider, 10f * scale);
-
-        UiCanvas.TrackedText(new float2(left, top), UiPalette.Accent, "CARRYING", headingSize, 3f * scale);
-        UiCanvas.Line(
-            new float2(left, top + headingSize + (12f * scale)),
-            new float2(left + width, top + headingSize + (12f * scale)),
-            UiPalette.Divider
-        );
+        UiCanvas.Panel(cardMinimum, cardMaximum, PanelCut * scale, scale);
+        UiCanvas.PanelHeading(cardMinimum, cardMaximum.X - cardMinimum.X, "Carrying", scale);
 
         var named = string.Empty;
         var packTop = top + headingSize + (26f * scale);
@@ -416,7 +505,7 @@ public sealed class GameUi
     )
     {
         var mouse = ImGui.GetMousePos();
-        var size = ImGui.GetFontSize();
+        var scale = ImGui.GetStyle().FontScaleMain;
         var pitch = slot + gap;
 
         for (var index = first; index < end; index++)
@@ -433,40 +522,16 @@ public sealed class GameUi
 
             var (block, count) = inventory.At(index);
             if (over && count > 0)
-                named = $"{inventory.NameOf(block)} ×{count}";
+                named = $"{inventory.NameOf(block)}  ×{count}";
 
-            UiCanvas.Rect(minimum, maximum, UiPalette.Fade(over ? UiPalette.Hovered : UiPalette.Control, 0.9f), 5f);
-
-            if (count > 0)
-            {
-                var inset = 7f;
-                UiCanvas.Rect(
-                    minimum + new float2(inset, inset),
-                    maximum - new float2(inset, inset),
-                    inventory.ColorOf(index),
-                    3f
-                );
-
-                var carried = $"{count}";
-                var countSize = size * 0.82f;
-                var countWidth = UiCanvas.Measure(carried, countSize).X;
-                UiCanvas.Text(
-                    new float2(maximum.X - countWidth - 4f, maximum.Y - countSize - 2f),
-                    UiPalette.Text,
-                    carried,
-                    countSize
-                );
-            }
-
-            // The slot in hand keeps its accent here too, so that a player dropping something
-            // into the row can see where it will end up without closing the screen first.
-            var selected = index == inventory.SelectedIndex;
-            UiCanvas.Outline(
+            Slot(
                 minimum,
                 maximum,
-                selected ? UiPalette.Accent : UiPalette.Fade(UiPalette.Text, over ? 0.3f : 0.12f),
-                5f,
-                selected ? 2f : 1f
+                count > 0 ? inventory.ColorOf(index) : null,
+                count,
+                index == inventory.SelectedIndex,
+                over,
+                scale
             );
 
             if (!over)
@@ -490,8 +555,8 @@ public sealed class GameUi
         var minimum = mouse - new float2(size * 0.5f, size * 0.5f);
         var maximum = minimum + new float2(size, size);
 
-        UiCanvas.Rect(minimum, maximum, inventory.ColorOf(held.Block), 3f * scale);
-        UiCanvas.Outline(minimum, maximum, UiPalette.Fade(UiPalette.Scrim, 0.7f), 3f * scale);
+        UiCanvas.Chamfer(minimum, maximum, inventory.ColorOf(held.Block), 4f * scale);
+        UiCanvas.ChamferOutline(minimum, maximum, UiPalette.Fade(UiPalette.Scrim, 0.8f), 4f * scale, 2f * scale);
 
         var carried = $"{held.Count}";
         var countSize = ImGui.GetFontSize() * 0.82f;
@@ -518,38 +583,29 @@ public sealed class GameUi
         UiCanvas.Scrim(1f);
 
         var width = MenuWidth * scale;
-        var height = 318f * scale;
-        var padding = 28f * scale;
+        var height = 356f * scale;
+        var padding = 26f * scale;
         var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
         var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
 
-        // A card, rather than text floating over the world. A pause menu has to look like the
+        // A panel, rather than text floating over the world. A pause menu has to look like the
         // game stopped, and nothing on a transparent background ever does.
         var cardMinimum = new float2(left - padding, top - padding);
         var cardMaximum = new float2(left + width + padding, top + height + padding);
-        UiCanvas.PanelShadow(cardMinimum, cardMaximum, 10f * scale, 26f * scale);
-        UiCanvas.Rect(cardMinimum, cardMaximum, UiPalette.Panel, 10f * scale);
-        UiCanvas.Outline(cardMinimum, cardMaximum, UiPalette.Divider, 10f * scale);
+        UiCanvas.Panel(cardMinimum, cardMaximum, PanelCut * scale, scale);
 
-        var headingSize = ImGui.GetFontSize() * 1.05f;
-        UiCanvas.TrackedText(
-            new float2(left, top),
-            UiPalette.Accent,
-            "PAUSED",
-            headingSize,
-            3f * scale
-        );
-        UiCanvas.Line(
-            new float2(left, top + headingSize + (12f * scale)),
-            new float2(left + width, top + headingSize + (12f * scale)),
-            UiPalette.Divider
+        var headingBottom = UiCanvas.PanelHeading(
+            cardMinimum,
+            cardMaximum.X - cardMinimum.X,
+            "Paused",
+            scale
         );
 
-        var entriesTop = top + headingSize + (26f * scale);
+        var entriesTop = headingBottom + (24f * scale);
         UiControls.BeginColumn(
             "pausemenu",
             new float2(left, entriesTop),
-            new float2(width, UiControls.EntryHeight * scale * 4.4f)
+            new float2(width, UiControls.EntryHeight * scale * 5.4f)
         );
 
         if (_controls.Entry("Resume", width, emphasis: true))
@@ -568,7 +624,7 @@ public sealed class GameUi
 
         var noteSize = ImGui.GetFontSize() * 0.84f;
         UiCanvas.Text(
-            new float2(left, entriesTop + (UiControls.EntryHeight * scale * 4.4f) + (10f * scale)),
+            new float2(left, cardMaximum.Y - padding - noteSize),
             UiPalette.MutedText,
             savePath,
             noteSize
@@ -607,46 +663,24 @@ public sealed class GameUi
         var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
         var rail = RailWidth * scale;
 
-        UiCanvas.PanelShadow(
-            new float2(left, top),
-            new float2(left + width, top + height),
-            10f * scale,
-            26f * scale
-        );
-        UiCanvas.Rect(
-            new float2(left, top),
-            new float2(left + width, top + height),
-            UiPalette.Panel,
-            10f * scale
-        );
-        UiCanvas.Outline(
-            new float2(left, top),
-            new float2(left + width, top + height),
-            UiPalette.Divider,
-            10f * scale
-        );
+        UiCanvas.Panel(new float2(left, top), new float2(left + width, top + height), PanelCut * scale, scale);
+        var headingBottom = UiCanvas.PanelHeading(new float2(left, top), width, "Settings", scale);
 
-        // The rail gets its own slightly darker field, which is what tells a glance that the left
-        // column chooses and the right column changes.
+        // The rail gets its own darker field, which is what tells a glance that the left column
+        // chooses and the right column changes.
         UiCanvas.Rect(
-            new float2(left, top),
+            new float2(left + scale, headingBottom),
+            new float2(left + rail, top + height - scale),
+            UiPalette.Fade(UiPalette.Scrim, 0.5f)
+        );
+        UiCanvas.Line(
+            new float2(left + rail, headingBottom),
             new float2(left + rail, top + height),
-            UiPalette.Fade(UiPalette.Scrim, 0.45f),
-            10f * scale
-        );
-        UiCanvas.Line(new float2(left + rail, top), new float2(left + rail, top + height), UiPalette.Divider);
-
-        var headingSize = ImGui.GetFontSize() * 1.05f;
-        UiCanvas.TrackedText(
-            new float2(left + (20f * scale), top + (22f * scale)),
-            UiPalette.Accent,
-            "SETTINGS",
-            headingSize,
-            3f * scale
+            UiPalette.Divider
         );
 
-        DrawRail(left, top, rail, height, scale);
-        changed = DrawSection(ref settings, left + rail, top, width - rail, height, scale);
+        DrawRail(left, headingBottom, rail, top + height - headingBottom, scale);
+        changed = DrawSection(ref settings, left + rail, headingBottom, width - rail, top + height - headingBottom, scale);
 
         var footerTop = top + height - (58f * scale);
 
@@ -732,8 +766,8 @@ public sealed class GameUi
     {
         UiControls.BeginColumn(
             "rail",
-            new float2(left + (10f * scale), top + (72f * scale)),
-            new float2(rail - (20f * scale), height - (90f * scale))
+            new float2(left + (10f * scale), top + (18f * scale)),
+            new float2(rail - (20f * scale), height - (36f * scale))
         );
 
         foreach (var section in Enum.GetValues<SettingsSection>())
@@ -751,8 +785,8 @@ public sealed class GameUi
 
         UiControls.BeginColumn(
             "section",
-            new float2(left + (28f * scale), top + (60f * scale)),
-            new float2(inner, height - (130f * scale))
+            new float2(left + (28f * scale), top + (16f * scale)),
+            new float2(inner, height - (86f * scale))
         );
 
         var changed = _section switch

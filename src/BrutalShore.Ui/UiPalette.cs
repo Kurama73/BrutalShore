@@ -8,19 +8,25 @@ namespace BrutalShore.Ui;
 /// means finding all four. These are the names the rest of the code asks for.
 /// </para>
 /// <para>
-/// The hues come from the world the game draws — a cold blue-grey for everything structural, the
-/// warm sand of a shoreline for whatever is active. That is why they are here rather than in a
-/// general-purpose widget library: an interface that looks like it belongs to its game is worth
-/// a file of constants.
+/// The look is an industrial one: a cold near-black steel for everything structural and a single
+/// hot amber for everything that is live, acting, selected or dangerous. One accent and no second
+/// hue is what makes a dense screen readable at a glance — the eye goes to the amber because
+/// nothing else in the frame is warm.
+/// </para>
+/// <para>
+/// There are two greys above the panel and two below it on purpose. A recess and a raised face
+/// have to be told apart without a shadow, because a draw list has no blur to make one with; a
+/// dark fill under a light hairline reads as cut into the panel, and the reverse reads as sitting
+/// on it. Every control here is built out of that one trick.
 /// </para>
 /// </remarks>
 public static class UiPalette
 {
     /// <summary>The text of a heading, and of anything in the foreground.</summary>
-    public static float4 Text { get; } = Srgb(0xE8EDF2, 1f);
+    public static float4 Text { get; } = Srgb(0xE9EDF1, 1f);
 
     /// <summary>Text that is present but not the point: a path, a hint, an unselected slot.</summary>
-    public static float4 MutedText { get; } = Srgb(0x8A97A6, 1f);
+    public static float4 MutedText { get; } = Srgb(0x8D9BA8, 1f);
 
     /// <summary>The background of a panel.</summary>
     /// <remarks>
@@ -28,38 +34,52 @@ public static class UiPalette
     /// says the game is still there and still running; any more than a sliver and small text over
     /// a sunlit field stops being readable.
     /// </remarks>
-    public static float4 Panel { get; } = Srgb(0x11161C, 0.975f);
+    public static float4 Panel { get; } = Srgb(0x121619, 0.97f);
 
     /// <summary>The background of a panel that floats over the world rather than replacing it.</summary>
-    public static float4 Overlay { get; } = Srgb(0x11161C, 0.72f);
+    public static float4 Overlay { get; } = Srgb(0x121619, 0.72f);
 
     /// <summary>A control at rest: a button, a slider's trough, a box.</summary>
-    public static float4 Control { get; } = Srgb(0x1E2832, 1f);
+    public static float4 Control { get; } = Srgb(0x1E262C, 1f);
 
     /// <summary>A control under the pointer.</summary>
-    public static float4 Hovered { get; } = Srgb(0x2B3A49, 1f);
+    public static float4 Hovered { get; } = Srgb(0x2A353D, 1f);
 
     /// <summary>A control being pressed.</summary>
-    public static float4 Pressed { get; } = Srgb(0x3A4D60, 1f);
+    public static float4 Pressed { get; } = Srgb(0x3A4851, 1f);
 
     /// <summary>What marks the one thing that is chosen, selected or in hand.</summary>
-    public static float4 Accent { get; } = Srgb(0xE0B472, 1f);
+    public static float4 Accent { get; } = Srgb(0xFA9549, 1f);
 
     /// <summary>The accent under the pointer.</summary>
-    public static float4 AccentHovered { get; } = Srgb(0xF0C98E, 1f);
+    public static float4 AccentHovered { get; } = Srgb(0xFFB474, 1f);
 
     /// <summary>A hairline between sections.</summary>
-    public static float4 Divider { get; } = Srgb(0x2A3540, 1f);
+    public static float4 Divider { get; } = Srgb(0x333F48, 1f);
 
     /// <summary>What a destructive or final choice is tinted with.</summary>
-    public static float4 Warning { get; } = Srgb(0xD98468, 1f);
+    public static float4 Warning { get; } = Srgb(0xE0574B, 1f);
+
+    /// <summary>The strip a panel's name sits in, one step up from the panel itself.</summary>
+    public static float4 Header { get; } = Srgb(0x1A2126, 1f);
+
+    /// <summary>The recess a slot or a slider's track is cut into, darker than the panel.</summary>
+    public static float4 Recess { get; } = Srgb(0x0C1013, 1f);
+
+    /// <summary>The hairline along the lit edge of a raised face.</summary>
+    /// <remarks>
+    /// One pixel of this along the top of a control and one of <see cref="Scrim" /> along the
+    /// bottom is the whole of the relief here. It is cheap, it survives any background, and it
+    /// is what a drawn interface has instead of a shadow.
+    /// </remarks>
+    public static float4 Edge { get; } = Srgb(0x4E5E6B, 1f);
 
     /// <summary>What the world is darkened with behind a menu.</summary>
     /// <remarks>
     /// Not black. A scrim in the panel's own near-black blue keeps the picture behind it reading
     /// as the same scene in lower light, where black reads as a sheet laid over it.
     /// </remarks>
-    public static float4 Scrim { get; } = Srgb(0x070A0E, 1f);
+    public static float4 Scrim { get; } = Srgb(0x05080A, 1f);
 
     /// <summary>
     /// A colour written as sRGB bytes — the way a block's colour is written — turned into what

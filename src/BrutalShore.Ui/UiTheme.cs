@@ -47,18 +47,19 @@ public static class UiTheme
         style.ScrollbarSize = 12f * scale;
         style.GrabMinSize = 14f * scale;
 
-        // Rounded, but not so much that a button stops reading as a rectangle. The window and the
-        // controls inside it are rounded by different amounts on purpose: equal radii make a
-        // button look glued to the panel's corner.
-        style.WindowRounding = 8f * scale;
-        style.ChildRounding = 6f * scale;
-        style.FrameRounding = 5f * scale;
-        style.PopupRounding = 6f * scale;
-        style.GrabRounding = 5f * scale;
-        style.TabRounding = 5f * scale;
+        // Square, everywhere. The drawn panels are chamfered rather than rounded, and a rounded
+        // corner anywhere else — on the debug overlay, on a tooltip — would be the one moulded
+        // shape in a program of machined ones. Rounding is set to zero rather than left alone
+        // because ImGui's default is not zero.
+        style.WindowRounding = 0f;
+        style.ChildRounding = 0f;
+        style.FrameRounding = 0f;
+        style.PopupRounding = 0f;
+        style.GrabRounding = 0f;
+        style.TabRounding = 0f;
 
         style.WindowBorderSize = 1f;
-        style.FrameBorderSize = 0f;
+        style.FrameBorderSize = 1f;
         style.PopupBorderSize = 1f;
         style.SeparatorTextBorderSize = 1f * scale;
 
@@ -89,13 +90,13 @@ public static class UiTheme
         colors[(int)ImGuiCol.Border] = UiPalette.Divider;
         colors[(int)ImGuiCol.BorderShadow] = UiPalette.Fade(UiPalette.Divider, 0f);
 
-        colors[(int)ImGuiCol.FrameBg] = UiPalette.Control;
+        colors[(int)ImGuiCol.FrameBg] = UiPalette.Recess;
         colors[(int)ImGuiCol.FrameBgHovered] = UiPalette.Hovered;
         colors[(int)ImGuiCol.FrameBgActive] = UiPalette.Pressed;
 
-        colors[(int)ImGuiCol.TitleBg] = UiPalette.Control;
-        colors[(int)ImGuiCol.TitleBgActive] = UiPalette.Control;
-        colors[(int)ImGuiCol.TitleBgCollapsed] = UiPalette.Fade(UiPalette.Control, 0.6f);
+        colors[(int)ImGuiCol.TitleBg] = UiPalette.Header;
+        colors[(int)ImGuiCol.TitleBgActive] = UiPalette.Header;
+        colors[(int)ImGuiCol.TitleBgCollapsed] = UiPalette.Fade(UiPalette.Header, 0.6f);
 
         colors[(int)ImGuiCol.Button] = UiPalette.Control;
         colors[(int)ImGuiCol.ButtonHovered] = UiPalette.Hovered;

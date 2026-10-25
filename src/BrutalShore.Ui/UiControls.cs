@@ -11,6 +11,12 @@ namespace BrutalShore.Ui;
 /// input and replaces the half that decides what a button looks like.
 /// </para>
 /// <para>
+/// They are built like machine panels: a chamfered face cut out of the panel behind it, a lit
+/// hairline along its top edge, and one amber marker saying which one is live. Every control
+/// repeats those three things at a different size, which is what makes a screen of them read as
+/// one piece of equipment rather than a list of widgets.
+/// </para>
+/// <para>
 /// Everything moves. A control's hover is a value chased over about a tenth of a second rather
 /// than a flag, because the difference between an interface that feels made and one that feels
 /// assembled is almost entirely in whether anything eases.
@@ -22,7 +28,14 @@ public sealed class UiControls
     public const float EntryHeight = 44f;
 
     /// <summary>How tall a settings row is before the interface scale, in pixels.</summary>
-    public const float RowHeight = 34f;
+    public const float RowHeight = 38f;
+
+    /// <summary>How far a control's corners are cut back before the scale, in pixels.</summary>
+    /// <remarks>
+    /// One number for the whole interface. A chamfer that changes size from control to control
+    /// reads as several shapes; one that does not reads as one material cut by one machine.
+    /// </remarks>
+    public const float Cut = 6f;
 
     private readonly UiMotion _motion = new();
 
@@ -51,14 +64,14 @@ public sealed class UiControls
     public static void EndColumn() => ImGui.EndChild();
 
     /// <summary>
-    /// One line of a menu: a label that lights and slides as the pointer crosses it, with a bar
-    /// growing down its left edge.
+    /// One line of a menu: a chamfered plate with an amber marker down its left edge that grows
+    /// as the pointer crosses it.
     /// </summary>
     /// <param name="label">What it says.</param>
     /// <param name="width">How wide the entry is, in pixels.</param>
     /// <param name="emphasis">
-    /// Whether this is the obvious thing to do on the screen, which tints it with the accent even
-    /// before it is hovered.
+    /// Whether this is the obvious thing to do on the screen, which fills it with the accent
+    /// rather than marking its edge.
     /// </param>
     /// <returns>Whether it was clicked.</returns>
     public bool Entry(string label, float width, bool emphasis = false)
@@ -72,42 +85,56 @@ public sealed class UiControls
         var held = ImGui.IsItemActive();
         var pressed = ImGui.IsItemClicked();
 
-        var lit = _motion.Toward(label, hovered || held ? 1f : 0f, ImGui.GetIO().DeltaTime);
-        var eased = UiMotion.Ease(lit);
+        var lit = UiMotion.Ease(_motion.Toward(label, hovered || held ? 1f : 0f, ImGui.GetIO().DeltaTime));
 
         var minimum = origin;
         var maximum = origin + new float2(width, height);
+        var cut = Cut * scale;
+        var marker = 5f * scale;
 
-        // The wash fades in from the left rather than appearing all at once, so the bar reads as
-        // the source of the highlight instead of as a separate thing that happened at the edge.
-        var wash = UiPalette.Fade(emphasis ? UiPalette.Accent : UiPalette.Text, 0.1f * eased);
-        UiCanvas.HorizontalGradient(minimum, maximum, wash, UiPalette.Fade(wash, 0f));
+        var face = emphasis
+            ? LerpColor(UiPalette.Accent, UiPalette.AccentHovered, lit)
+            : LerpColor(UiPalette.Control, UiPalette.Hovered, lit);
 
-        var barHeight = height * (0.3f + (0.7f * eased));
-        var barMiddle = origin.Y + (height * 0.5f);
-        UiCanvas.Rect(
-            new float2(minimum.X, barMiddle - (barHeight * 0.5f)),
-            new float2(minimum.X + (3f * scale), barMiddle + (barHeight * 0.5f)),
-            emphasis ? UiPalette.Accent : UiPalette.Fade(UiPalette.Text, 0.25f + (0.75f * eased))
+        UiCanvas.Chamfer(minimum, maximum, held ? LerpColor(face, UiPalette.Pressed, 0.4f) : face, cut);
+
+        // The lit top edge, which is what makes the plate read as raised rather than painted. It
+        // stops short of the cuts so that it does not draw a line across them.
+        UiCanvas.Line(
+            new float2(minimum.X + cut, minimum.Y + (0.5f * scale)),
+            new float2(maximum.X - cut, minimum.Y + (0.5f * scale)),
+            UiPalette.Fade(emphasis ? UiPalette.Text : UiPalette.Edge, 0.35f + (0.4f * lit)),
+            scale
         );
 
-        var textColor = emphasis
-            ? UiPalette.Accent
-            : LerpColor(UiPalette.MutedText, UiPalette.Text, eased);
+        if (!emphasis)
+        {
+            // The marker runs the full height and widens, rather than growing from the middle: a
+            // bar that changes length reads as a progress bar, and this is not one.
+            UiCanvas.Chamfer(
+                minimum,
+                new float2(minimum.X + (marker * (0.55f + (0.45f * lit))), maximum.Y),
+                UiPalette.Fade(UiPalette.Accent, 0.5f + (0.5f * lit)),
+                cut * 0.5f
+            );
+        }
 
-        var size = ImGui.GetFontSize();
-        var slide = 14f * scale * eased;
-        UiCanvas.Text(
-            new float2(minimum.X + (16f * scale) + slide, barMiddle - (size * 0.5f)),
+        var textColor = emphasis ? UiPalette.Scrim : LerpColor(UiPalette.MutedText, UiPalette.Text, lit);
+        var size = ImGui.GetFontSize() * 0.92f;
+        var slide = 5f * scale * lit;
+
+        UiCanvas.TrackedText(
+            new float2(minimum.X + (20f * scale) + slide, origin.Y + (height * 0.5f) - (size * 0.5f)),
             textColor,
-            label,
-            size
+            label.ToUpperInvariant(),
+            size,
+            1.6f * scale
         );
 
         return pressed;
     }
 
-    /// <summary>A labelled slider: the name on the left, the value on the right, a track between.</summary>
+    /// <summary>A labelled slider: the name on the left, the value boxed on the right.</summary>
     /// <param name="label">What the value is.</param>
     /// <param name="value">The value, written back as it is dragged.</param>
     /// <param name="minimum">The lowest it goes.</param>
@@ -125,11 +152,12 @@ public sealed class UiControls
         var hovered = ImGui.IsItemHovered();
         var held = ImGui.IsItemActive();
 
-        var size = ImGui.GetFontSize();
-        var readingWidth = UiCanvas.Measure(reading, size).X;
-        var labelWidth = width * 0.42f;
+        var size = ImGui.GetFontSize() * 0.9f;
+        var cut = (Cut - 2f) * scale;
+        var boxWidth = 76f * scale;
+        var labelWidth = width * 0.38f;
         var trackLeft = origin.X + labelWidth;
-        var trackRight = origin.X + width - readingWidth - (14f * scale);
+        var trackRight = origin.X + width - boxWidth - (12f * scale);
         var middleY = origin.Y + (height * 0.5f);
 
         if (held && trackRight > trackLeft)
@@ -138,7 +166,7 @@ public sealed class UiControls
             value = float.Lerp(minimum, maximum, float.Clamp(along, 0f, 1f));
         }
 
-        var lit = _motion.Toward(label, hovered || held ? 1f : 0f, ImGui.GetIO().DeltaTime);
+        var lit = UiMotion.Ease(_motion.Toward(label, hovered || held ? 1f : 0f, ImGui.GetIO().DeltaTime));
         var filled = maximum > minimum ? float.Clamp((value - minimum) / (maximum - minimum), 0f, 1f) : 0f;
         var grabX = float.Lerp(trackLeft, trackRight, filled);
 
@@ -149,27 +177,55 @@ public sealed class UiControls
             size
         );
 
-        var trackHeight = 4f * scale;
-        UiCanvas.Rect(
-            new float2(trackLeft, middleY - (trackHeight * 0.5f)),
-            new float2(trackRight, middleY + (trackHeight * 0.5f)),
-            UiPalette.Control,
-            trackHeight * 0.5f
-        );
-        UiCanvas.Rect(
-            new float2(trackLeft, middleY - (trackHeight * 0.5f)),
-            new float2(grabX, middleY + (trackHeight * 0.5f)),
-            UiPalette.Accent,
-            trackHeight * 0.5f
+        var trackHeight = 10f * scale;
+        var trackTop = middleY - (trackHeight * 0.5f);
+        var trackBottom = middleY + (trackHeight * 0.5f);
+
+        // A recess, not a line: dark fill, dark outline, and the fill drawn inside it, so the
+        // amber reads as something sitting in a channel rather than a stripe on the panel.
+        UiCanvas.Chamfer(new float2(trackLeft, trackTop), new float2(trackRight, trackBottom), UiPalette.Recess, cut * 0.6f);
+
+        if (grabX > trackLeft + 1f)
+        {
+            UiCanvas.Chamfer(
+                new float2(trackLeft, trackTop),
+                new float2(grabX, trackBottom),
+                LerpColor(UiPalette.Accent, UiPalette.AccentHovered, lit),
+                cut * 0.6f
+            );
+        }
+
+        UiCanvas.ChamferOutline(
+            new float2(trackLeft, trackTop),
+            new float2(trackRight, trackBottom),
+            UiPalette.Fade(UiPalette.Edge, 0.5f + (0.5f * lit)),
+            cut * 0.6f,
+            scale
         );
 
-        // The grab grows under the pointer rather than changing colour, which keeps a row of them
-        // reading as one row with one thing happening in it.
-        UiCanvas.Circle(new float2(grabX, middleY), (5f + (2.5f * lit)) * scale, UiPalette.AccentHovered);
+        // A square grip rather than a knob, because a round handle on a cut track is the one
+        // moulded shape on a screen of machined ones.
+        var gripWidth = 7f * scale;
+        var gripHeight = (trackHeight + (8f * scale)) * (0.9f + (0.1f * lit));
+        UiCanvas.Chamfer(
+            new float2(grabX - (gripWidth * 0.5f), middleY - (gripHeight * 0.5f)),
+            new float2(grabX + (gripWidth * 0.5f), middleY + (gripHeight * 0.5f)),
+            LerpColor(UiPalette.Text, UiPalette.AccentHovered, lit),
+            3f * scale
+        );
 
+        var boxLeft = origin.X + width - boxWidth;
+        UiCanvas.Chamfer(
+            new float2(boxLeft, trackTop - (3f * scale)),
+            new float2(origin.X + width, trackBottom + (3f * scale)),
+            UiPalette.Recess,
+            cut * 0.6f
+        );
+
+        var readingWidth = UiCanvas.Measure(reading, size).X;
         UiCanvas.Text(
-            new float2(origin.X + width - readingWidth, middleY - (size * 0.5f)),
-            UiPalette.Text,
+            new float2(boxLeft + ((boxWidth - readingWidth) * 0.5f), middleY - (size * 0.5f)),
+            held ? UiPalette.AccentHovered : UiPalette.Text,
             reading,
             size
         );
@@ -177,11 +233,16 @@ public sealed class UiControls
         return held;
     }
 
-    /// <summary>A labelled switch: a pill with a knob that slides across as it turns on.</summary>
+    /// <summary>A labelled switch: a chamfered plate that says what it is doing.</summary>
     /// <param name="label">What it turns on.</param>
     /// <param name="value">The state, written back when it is clicked.</param>
     /// <param name="width">How wide the whole row is, in pixels.</param>
     /// <returns>Whether it changed.</returns>
+    /// <remarks>
+    /// The word is drawn rather than only the position, because a sliding knob says which side it
+    /// is on and not which side means on. A switch reading ON is unambiguous at a glance and in a
+    /// screenshot, which is where half of these are ever looked at.
+    /// </remarks>
     public bool Toggle(string label, ref bool value, float width)
     {
         var scale = ImGui.GetStyle().FontScaleMain;
@@ -195,33 +256,61 @@ public sealed class UiControls
         if (changed)
             value = !value;
 
-        var lit = _motion.Toward(label, hovered ? 1f : 0f, ImGui.GetIO().DeltaTime);
-        var on = _motion.Toward($"{label}##on", value ? 1f : 0f, ImGui.GetIO().DeltaTime);
+        var lit = UiMotion.Ease(_motion.Toward(label, hovered ? 1f : 0f, ImGui.GetIO().DeltaTime));
+        var on = UiMotion.Ease(_motion.Toward($"{label}##on", value ? 1f : 0f, ImGui.GetIO().DeltaTime));
 
-        var size = ImGui.GetFontSize();
+        var size = ImGui.GetFontSize() * 0.9f;
         var middleY = origin.Y + (height * 0.5f);
-        var pillHeight = 18f * scale;
-        var pillWidth = 36f * scale;
-        var pillRight = origin.X + width;
-        var pillLeft = pillRight - pillWidth;
+        var cut = (Cut - 2f) * scale;
+        var plateWidth = 76f * scale;
+        var plateHeight = 22f * scale;
+        var plateRight = origin.X + width;
+        var plateLeft = plateRight - plateWidth;
+        var plateTop = middleY - (plateHeight * 0.5f);
+        var plateBottom = middleY + (plateHeight * 0.5f);
 
         UiCanvas.Text(
             new float2(origin.X, middleY - (size * 0.5f)),
-            LerpColor(UiPalette.MutedText, UiPalette.Text, lit),
+            LerpColor(UiPalette.MutedText, UiPalette.Text, float.Max(lit, on)),
             label,
             size
         );
 
-        UiCanvas.Rect(
-            new float2(pillLeft, middleY - (pillHeight * 0.5f)),
-            new float2(pillRight, middleY + (pillHeight * 0.5f)),
-            LerpColor(UiPalette.Control, UiPalette.Accent, UiMotion.Ease(on)),
-            pillHeight * 0.5f
+        UiCanvas.Chamfer(new float2(plateLeft, plateTop), new float2(plateRight, plateBottom), UiPalette.Recess, cut * 0.6f);
+
+        // The lit half slides across the recess, so the change reads as a throw rather than a
+        // repaint, and the word on it stays put.
+        var halfWidth = plateWidth * 0.5f;
+        var litLeft = float.Lerp(plateLeft, plateLeft + halfWidth, on);
+        UiCanvas.Chamfer(
+            new float2(litLeft, plateTop),
+            new float2(litLeft + halfWidth, plateBottom),
+            LerpColor(UiPalette.Hovered, LerpColor(UiPalette.Accent, UiPalette.AccentHovered, lit), on),
+            cut * 0.6f
         );
 
-        var knobRadius = (pillHeight * 0.5f) - (3f * scale);
-        var knobX = float.Lerp(pillLeft + knobRadius + (3f * scale), pillRight - knobRadius - (3f * scale), UiMotion.Ease(on));
-        UiCanvas.Circle(new float2(knobX, middleY), knobRadius, value ? UiPalette.Panel : UiPalette.Text);
+        UiCanvas.ChamferOutline(
+            new float2(plateLeft, plateTop),
+            new float2(plateRight, plateBottom),
+            UiPalette.Fade(UiPalette.Edge, 0.4f + (0.4f * lit)),
+            cut * 0.6f,
+            scale
+        );
+
+        var word = value ? "ON" : "OFF";
+        var wordSize = size * 0.86f;
+        var wordWidth = UiCanvas.Measure(word, wordSize).X + (1.4f * scale);
+        var wordX = value
+            ? plateLeft + halfWidth + ((halfWidth - wordWidth) * 0.5f)
+            : plateLeft + ((halfWidth - wordWidth) * 0.5f);
+
+        UiCanvas.TrackedText(
+            new float2(wordX, middleY - (wordSize * 0.5f)),
+            value ? UiPalette.Scrim : UiPalette.MutedText,
+            word,
+            wordSize,
+            1.4f * scale
+        );
 
         return changed;
     }
@@ -234,33 +323,41 @@ public sealed class UiControls
     public bool Tab(string label, bool selected, float width)
     {
         var scale = ImGui.GetStyle().FontScaleMain;
-        var height = (EntryHeight * 0.78f) * scale;
+        var height = (EntryHeight * 0.82f) * scale;
         var origin = ImGui.GetCursorScreenPos();
 
         ImGui.InvisibleButton($"tab:{label}", new float2(width, height));
         var hovered = ImGui.IsItemHovered();
         var pressed = ImGui.IsItemClicked();
 
-        var chosen = _motion.Toward($"tab:{label}", selected ? 1f : 0f, ImGui.GetIO().DeltaTime);
-        var lit = _motion.Toward($"tablit:{label}", hovered ? 1f : 0f, ImGui.GetIO().DeltaTime);
-        var eased = UiMotion.Ease(chosen);
+        var chosen = UiMotion.Ease(_motion.Toward($"tab:{label}", selected ? 1f : 0f, ImGui.GetIO().DeltaTime));
+        var lit = UiMotion.Ease(_motion.Toward($"tablit:{label}", hovered ? 1f : 0f, ImGui.GetIO().DeltaTime));
 
         var minimum = origin;
-        var maximum = origin + new float2(width, height);
-        var size = ImGui.GetFontSize();
+        var maximum = origin + new float2(width, height - (4f * scale));
+        var cut = Cut * scale;
+        var size = ImGui.GetFontSize() * 0.88f;
 
-        UiCanvas.Rect(minimum, maximum, UiPalette.Fade(UiPalette.Text, 0.07f * float.Max(eased, lit * 0.6f)), 4f * scale);
-        UiCanvas.Rect(
+        UiCanvas.Chamfer(
             minimum,
-            new float2(minimum.X + (2f * scale), maximum.Y),
-            UiPalette.Fade(UiPalette.Accent, eased)
+            maximum,
+            LerpColor(UiPalette.Fade(UiPalette.Control, 0.5f), UiPalette.Control, float.Max(chosen, lit * 0.7f)),
+            cut
         );
 
-        UiCanvas.Text(
-            new float2(minimum.X + (14f * scale), origin.Y + (height * 0.5f) - (size * 0.5f)),
-            LerpColor(UiPalette.MutedText, UiPalette.Text, float.Max(eased, lit)),
-            label,
-            size
+        UiCanvas.Chamfer(
+            minimum,
+            new float2(minimum.X + (4f * scale), maximum.Y),
+            UiPalette.Fade(UiPalette.Accent, 0.25f + (0.75f * chosen)),
+            cut * 0.5f
+        );
+
+        UiCanvas.TrackedText(
+            new float2(minimum.X + (18f * scale), origin.Y + ((height - (4f * scale)) * 0.5f) - (size * 0.5f)),
+            LerpColor(UiPalette.MutedText, UiPalette.Text, float.Max(chosen, lit)),
+            label.ToUpperInvariant(),
+            size,
+            1.4f * scale
         );
 
         return pressed;
@@ -275,38 +372,43 @@ public sealed class UiControls
     public static void Note(string text)
     {
         var scale = ImGui.GetStyle().FontScaleMain;
-        var size = ImGui.GetFontSize() * 0.88f;
+        var size = ImGui.GetFontSize() * 0.86f;
         var origin = ImGui.GetCursorScreenPos();
 
-        ImGui.Dummy(new float2(0f, size + (6f * scale)));
-        UiCanvas.Text(new float2(origin.X, origin.Y + (2f * scale)), UiPalette.MutedText, text, size);
+        ImGui.Dummy(new float2(0f, size + (8f * scale)));
+        UiCanvas.Text(new float2(origin.X + (2f * scale), origin.Y + (2f * scale)), UiPalette.MutedText, text, size);
     }
 
-    /// <summary>A section's name over a hairline that runs to the right edge.</summary>
+    /// <summary>A section's name over a band of hazard stripes that runs to the right edge.</summary>
     /// <param name="text">What the section is.</param>
-    /// <param name="width">How far the rule runs, in pixels.</param>
+    /// <param name="width">How far the band runs, in pixels.</param>
     public static void Heading(string text, float width)
     {
         var scale = ImGui.GetStyle().FontScaleMain;
-        var size = ImGui.GetFontSize() * 0.9f;
+        var size = ImGui.GetFontSize() * 0.88f;
         var origin = ImGui.GetCursorScreenPos();
 
-        ImGui.Dummy(new float2(width, size + (16f * scale)));
+        ImGui.Dummy(new float2(width, size + (20f * scale)));
 
         var textWidth = UiCanvas.TrackedText(
-            new float2(origin.X, origin.Y + (8f * scale)),
+            new float2(origin.X, origin.Y + (10f * scale)),
             UiPalette.Accent,
             text.ToUpperInvariant(),
             size,
-            1.5f * scale
+            2f * scale
         );
 
-        var ruleY = origin.Y + (8f * scale) + (size * 0.5f);
-        UiCanvas.Line(
-            new float2(origin.X + textWidth + (12f * scale), ruleY),
-            new float2(origin.X + width, ruleY),
-            UiPalette.Divider
-        );
+        var bandLeft = origin.X + textWidth + (14f * scale);
+        var bandRight = origin.X + width;
+        if (bandRight <= bandLeft)
+            return;
+
+        var bandTop = origin.Y + (10f * scale) + (size * 0.5f) - (4f * scale);
+        var bandMinimum = new float2(bandLeft, bandTop);
+        var bandMaximum = new float2(bandRight, bandTop + (8f * scale));
+
+        UiCanvas.Rect(bandMinimum, bandMaximum, UiPalette.Fade(UiPalette.Recess, 0.8f));
+        UiCanvas.HazardStripes(bandMinimum, bandMaximum, UiPalette.Fade(UiPalette.Accent, 0.5f), 18f * scale);
     }
 
     private static float4 LerpColor(float4 from, float4 to, float amount) =>

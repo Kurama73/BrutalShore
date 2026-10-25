@@ -16,6 +16,13 @@ namespace BrutalShore.Ui;
 /// on ImGui that does not look like ImGui, and it costs nothing — the primitives are the same
 /// ones every widget is already made of.
 /// </para>
+/// <para>
+/// The shape vocabulary is four things and they are deliberately few: a chamfered box, a
+/// hairline, a corner bracket and a band of hazard stripes. Everything on every screen is built
+/// out of those, which is what makes two screens drawn months apart look like the same machine.
+/// A rounded rectangle is not among them — a cut corner is a machined one and a rounded corner
+/// is a moulded one, and this is meant to look machined.
+/// </para>
 /// </remarks>
 public static class UiCanvas
 {
@@ -45,6 +52,126 @@ public static class UiCanvas
         float rounding = 0f,
         float thickness = 1f
     ) => ImGui.GetWindowDrawList().AddRect(minimum, maximum, Packed(color), rounding, ImDrawFlags.None, thickness);
+
+    /// <summary>A box with its corners cut off at forty-five degrees.</summary>
+    /// <param name="minimum">Its top left corner, in screen pixels.</param>
+    /// <param name="maximum">Its bottom right corner.</param>
+    /// <param name="color">What to fill it with.</param>
+    /// <param name="cut">How far back each corner is cut, in pixels.</param>
+    /// <remarks>
+    /// The shape everything here is made of. The cut is clamped to half the shorter side, so a
+    /// box asked for a cut larger than it is comes out a diamond rather than inside out.
+    /// </remarks>
+    public static void Chamfer(float2 minimum, float2 maximum, float4 color, float cut)
+    {
+        Span<float2> corners = stackalloc float2[8];
+        Corners(minimum, maximum, cut, corners);
+        ImGui.GetWindowDrawList().AddConvexPolyFilled(corners, Packed(color));
+    }
+
+    /// <summary>The outline of a box with its corners cut off.</summary>
+    /// <param name="minimum">Its top left corner, in screen pixels.</param>
+    /// <param name="maximum">Its bottom right corner.</param>
+    /// <param name="color">What to draw it in.</param>
+    /// <param name="cut">How far back each corner is cut, in pixels.</param>
+    /// <param name="thickness">How thick the line is, in pixels.</param>
+    public static void ChamferOutline(
+        float2 minimum,
+        float2 maximum,
+        float4 color,
+        float cut,
+        float thickness = 1f
+    )
+    {
+        Span<float2> corners = stackalloc float2[8];
+        Corners(minimum, maximum, cut, corners);
+        ImGui.GetWindowDrawList().AddPolyline(corners, Packed(color), ImDrawFlags.Closed, thickness);
+    }
+
+    /// <summary>Short brackets at the four corners of a box, rather than a line all the way round.</summary>
+    /// <param name="minimum">Its top left corner, in screen pixels.</param>
+    /// <param name="maximum">Its bottom right corner.</param>
+    /// <param name="color">What to draw them in.</param>
+    /// <param name="reach">How far along each edge a bracket runs, in pixels.</param>
+    /// <param name="thickness">How thick the lines are, in pixels.</param>
+    /// <remarks>
+    /// What marks something out without boxing it in. A full outline around a selected thing
+    /// competes with the outline around the thing next to it; four corners say the same and leave
+    /// the edges quiet.
+    /// </remarks>
+    public static void CornerTicks(
+        float2 minimum,
+        float2 maximum,
+        float4 color,
+        float reach,
+        float thickness = 2f
+    )
+    {
+        Line(minimum, new float2(minimum.X + reach, minimum.Y), color, thickness);
+        Line(minimum, new float2(minimum.X, minimum.Y + reach), color, thickness);
+
+        Line(new float2(maximum.X - reach, minimum.Y), new float2(maximum.X, minimum.Y), color, thickness);
+        Line(new float2(maximum.X, minimum.Y), new float2(maximum.X, minimum.Y + reach), color, thickness);
+
+        Line(new float2(minimum.X, maximum.Y - reach), new float2(minimum.X, maximum.Y), color, thickness);
+        Line(new float2(minimum.X, maximum.Y), new float2(minimum.X + reach, maximum.Y), color, thickness);
+
+        Line(new float2(maximum.X - reach, maximum.Y), maximum, color, thickness);
+        Line(new float2(maximum.X, maximum.Y - reach), maximum, color, thickness);
+    }
+
+    /// <summary>A band of diagonal stripes, the way a machine marks the edge of something.</summary>
+    /// <param name="minimum">The band's top left corner, in screen pixels.</param>
+    /// <param name="maximum">Its bottom right corner.</param>
+    /// <param name="color">What to draw the stripes in; the gaps are left alone.</param>
+    /// <param name="pitch">How far apart two stripes start, in pixels.</param>
+    /// <remarks>
+    /// Clipped to the band rather than fitted to it, because stripes that stop short of a corner
+    /// to stay inside it are stripes that are visibly avoiding the corner. The draw list clips
+    /// for free, so the honest version is also the cheap one.
+    /// </remarks>
+    public static void HazardStripes(float2 minimum, float2 maximum, float4 color, float pitch)
+    {
+        var drawList = ImGui.GetWindowDrawList();
+        var height = maximum.Y - minimum.Y;
+        if (height <= 0f || pitch <= 0f)
+            return;
+
+        drawList.PushClipRect(minimum, maximum, true);
+
+        var packed = Packed(color);
+        var thickness = pitch * 0.5f;
+
+        // Started a band's height to the left of the corner so that the first stripe to cross the
+        // top left corner is a whole one.
+        for (var x = minimum.X - height; x < maximum.X; x += pitch)
+        {
+            drawList.AddLine(
+                new float2(x, maximum.Y),
+                new float2(x + height, minimum.Y),
+                packed,
+                thickness
+            );
+        }
+
+        drawList.PopClipRect();
+    }
+
+    /// <summary>The eight corners of a chamfered box, clockwise from the top left cut.</summary>
+    private static void Corners(float2 minimum, float2 maximum, float cut, Span<float2> into)
+    {
+        var limit = float.Min(maximum.X - minimum.X, maximum.Y - minimum.Y) * 0.5f;
+        var back = float.Clamp(cut, 0f, float.Max(limit, 0f));
+
+        into[0] = new float2(minimum.X + back, minimum.Y);
+        into[1] = new float2(maximum.X - back, minimum.Y);
+        into[2] = new float2(maximum.X, minimum.Y + back);
+        into[3] = new float2(maximum.X, maximum.Y - back);
+        into[4] = new float2(maximum.X - back, maximum.Y);
+        into[5] = new float2(minimum.X + back, maximum.Y);
+        into[6] = new float2(minimum.X, maximum.Y - back);
+        into[7] = new float2(minimum.X, minimum.Y + back);
+    }
 
     /// <summary>A rectangle fading from one colour at the top to another at the bottom.</summary>
     /// <param name="minimum">Its top left corner, in screen pixels.</param>
@@ -137,27 +264,91 @@ public static class UiCanvas
     /// <summary>A soft darkening around a panel, so it reads as lifted off what is behind it.</summary>
     /// <param name="minimum">The panel's top left corner, in screen pixels.</param>
     /// <param name="maximum">Its bottom right corner.</param>
-    /// <param name="rounding">How round its corners are, in pixels.</param>
+    /// <param name="cut">How far its corners are cut back, in pixels.</param>
     /// <param name="reach">How far the shadow spreads, in pixels.</param>
     /// <remarks>
-    /// A handful of progressively larger rounded rectangles behind it, each barely visible. There
-    /// is no blur to reach for in a draw list, and stacking a few almost-transparent outlines is
-    /// what the effect is anyway — a gradient that nobody can point at.
+    /// A handful of progressively larger chamfered boxes behind it, each barely visible. There is
+    /// no blur to reach for in a draw list, and stacking a few almost-transparent copies is what
+    /// the effect is anyway — a gradient that nobody can point at.
     /// </remarks>
-    public static void PanelShadow(float2 minimum, float2 maximum, float rounding, float reach)
+    public static void PanelShadow(float2 minimum, float2 maximum, float cut, float reach)
     {
         const int Layers = 6;
 
         for (var layer = Layers; layer >= 1; layer--)
         {
             var spread = reach * layer / Layers;
-            Rect(
+            Chamfer(
                 minimum - new float2(spread, spread),
                 maximum + new float2(spread, spread),
                 UiPalette.Fade(UiPalette.Scrim, 0.07f),
-                rounding + spread
+                cut + spread
             );
         }
+    }
+
+    /// <summary>The frame every panel in the game is drawn in: shadow, face, edge and brackets.</summary>
+    /// <param name="minimum">Its top left corner, in screen pixels.</param>
+    /// <param name="maximum">Its bottom right corner.</param>
+    /// <param name="cut">How far its corners are cut back, in pixels.</param>
+    /// <param name="scale">The interface scale, which the hairlines and brackets are drawn at.</param>
+    /// <remarks>
+    /// Here rather than repeated in each screen because the thing that makes a set of screens
+    /// look like one program is that their edges are identical. A screen that wants to differ
+    /// does so inside the frame.
+    /// </remarks>
+    public static void Panel(float2 minimum, float2 maximum, float cut, float scale)
+    {
+        PanelShadow(minimum, maximum, cut, 26f * scale);
+        Chamfer(minimum, maximum, UiPalette.Panel, cut);
+        ChamferOutline(minimum, maximum, UiPalette.Divider, cut, scale);
+
+        // Brackets over the outline rather than instead of it: the outline closes the shape and
+        // the brackets say which shape is the one being looked at.
+        CornerTicks(minimum, maximum, UiPalette.Fade(UiPalette.Accent, 0.85f), 16f * scale, 2f * scale);
+    }
+
+    /// <summary>A panel's name on a strip of its own, with a hazard band under it.</summary>
+    /// <param name="minimum">The panel's top left corner, in screen pixels.</param>
+    /// <param name="width">How wide the panel is, in pixels.</param>
+    /// <param name="text">What the panel is; drawn in upper case.</param>
+    /// <param name="scale">The interface scale.</param>
+    /// <returns>How far down the panel the strip ends, in screen pixels.</returns>
+    public static float PanelHeading(float2 minimum, float width, string text, float scale)
+    {
+        var size = ImGui.GetFontSize() * 1.02f;
+        var height = size + (22f * scale);
+        var maximum = new float2(minimum.X + width, minimum.Y + height);
+
+        Rect(minimum + new float2(0f, 1f * scale), maximum, UiPalette.Header);
+
+        // A short amber block at the left end, which is where the eye lands first and so is where
+        // the one coloured thing on the strip belongs.
+        Rect(
+            new float2(minimum.X, minimum.Y + (1f * scale)),
+            new float2(minimum.X + (5f * scale), maximum.Y),
+            UiPalette.Accent
+        );
+
+        TrackedText(
+            new float2(minimum.X + (18f * scale), minimum.Y + ((height - size) * 0.5f)),
+            UiPalette.Text,
+            text.ToUpperInvariant(),
+            size,
+            3f * scale
+        );
+
+        var bandTop = maximum.Y;
+        var band = 8f * scale;
+        Rect(new float2(minimum.X, bandTop), new float2(maximum.X, bandTop + band), UiPalette.Recess);
+        HazardStripes(
+            new float2(minimum.X, bandTop),
+            new float2(maximum.X, bandTop + band),
+            UiPalette.Fade(UiPalette.Accent, 0.62f),
+            18f * scale
+        );
+
+        return bandTop + band;
     }
 
     /// <summary>
