@@ -49,6 +49,14 @@ public sealed record Settings
     /// </remarks>
     public bool Fog { get; init; } = true;
 
+    /// <summary>Whether water reflects what is around it.</summary>
+    /// <remarks>
+    /// The one setting here that is worth real frame time rather than a little: every pixel of
+    /// water sends a ray through the world, and a lake filling the screen is a lot of pixels of
+    /// water. Off, the water keeps its colour and its transparency and loses only the mirror.
+    /// </remarks>
+    public bool Reflections { get; init; } = true;
+
     /// <summary>How bright everything is drawn, 1 being as the sky lights it.</summary>
     public float Brightness { get; init; } = 1f;
 

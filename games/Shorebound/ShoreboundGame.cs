@@ -1,4 +1,5 @@
 using Brutal.ImGuiApi;
+using BrutalShore.Core;
 using BrutalShore.Gpu;
 using BrutalShore.Render;
 using BrutalShore.Runtime;
@@ -141,6 +142,7 @@ public sealed class ShoreboundGame : IGame
     // opened a window.
     private PlayerController _controller = null!;
     private DepthTarget _shadowMap = null!;
+    private VoxelField _field = null!;
     private SceneBindings _scene = null!;
     private VoxelPipeline _opaquePipeline = null!;
     private VoxelPipeline _translucentPipeline = null!;
@@ -198,7 +200,8 @@ public sealed class ShoreboundGame : IGame
     public void Load(GameContext context)
     {
         _shadowMap = new DepthTarget(context.Gpu, ShadowResolution);
-        _scene = new SceneBindings(context.Gpu, _shadowMap);
+        _field = new VoxelField(context.Gpu, _world);
+        _scene = new SceneBindings(context.Gpu, _shadowMap, _field);
         _opaquePipeline = new VoxelPipeline(
             context.Gpu,
             context.Shaders,
@@ -349,8 +352,13 @@ public sealed class ShoreboundGame : IGame
                 ShadowStrength = _settings.Shadows ? _settings.ShadowStrength : 0f,
                 Brightness = _settings.Brightness,
                 Held = CarriedLight(),
+                Field = FieldPlacement(),
             }
         );
+
+        // Before the shadow pass, because a transfer cannot be recorded inside a render pass and
+        // this is the gap between the command buffer opening and the first one beginning.
+        _field.Update(context.Renderer.Commands, WorldCoordinates.ToBlock(_camera.Position));
 
         _shadowMap.Begin(context.Renderer.Commands);
         _chunks.DrawShadow(_shadowPipeline, _camera, _lightViewProjection);
@@ -531,6 +539,7 @@ public sealed class ShoreboundGame : IGame
         _translucentPipeline.Dispose();
         _opaquePipeline.Dispose();
         _scene.Dispose();
+        _field.Dispose();
         _shadowMap.Dispose();
         _world.Dispose();
     }
@@ -583,6 +592,29 @@ public sealed class ShoreboundGame : IGame
 
         if (window.WasMouseButtonPressed(GlfwMouseButton.Right))
             Place();
+    }
+
+    /// <summary>Where the ray marching cube sits relative to the camera, in render space.</summary>
+    /// <remarks>
+    /// Worked out in f64 and narrowed afterwards, like every other distance this renderer hands
+    /// to a shader: the cube's corner is a world block coordinate that can be thousands of
+    /// metres from the origin, and subtracting the camera first is what keeps the result exact.
+    /// </remarks>
+    private float4 FieldPlacement()
+    {
+        // Nothing to march through is how reflections are turned off: the shader's first line is
+        // a test of the cube's size, so the whole of it costs one comparison when it is not
+        // wanted, and no pipeline has to be rebuilt to say so.
+        if (!_field.IsReady || !_settings.Reflections)
+            return float4.Zero;
+
+        var corner = RenderSpace.ToRenderSpace(
+            new double3(_field.LowestBlock.X, _field.LowestBlock.Y, _field.LowestBlock.Z),
+            _camera.Position,
+            1.0
+        );
+
+        return new float4(corner, VoxelField.SizeBlocks);
     }
 
     /// <summary>The light the player is carrying, which is whatever is in their hand that glows.</summary>

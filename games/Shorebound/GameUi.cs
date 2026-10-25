@@ -601,6 +601,15 @@ public sealed class GameUi
 
         UiControls.Note("With fog off the edge of the loaded world is visible");
 
+        var reflections = settings.Reflections;
+        if (_controls.Toggle("Water reflections", ref reflections, width))
+        {
+            settings = settings with { Reflections = reflections };
+            changed = true;
+        }
+
+        UiControls.Note("Every pixel of water sends a ray through the world; this is the dear one");
+
         return changed;
     }
 
