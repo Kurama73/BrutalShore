@@ -10,8 +10,8 @@ An unbounded world of 32³ chunks, generated from a seed rather than stored,
 streamed around the player on worker threads, greedy-meshed with ambient
 occlusion, and drawn through a Vulkan renderer written here: a sky with a sun
 and a moon crossing it, shadows cast from whichever is up, water you can see
-through and swim in, and forests that span chunk boundaries without anything
-being saved.
+through and swim in, and biomes from desert to tundra whose forests span chunk
+boundaries without anything being saved.
 
 ![The same coast with the debug overlay open, showing the frame time graph](docs/overlay.png)
 
@@ -34,9 +34,10 @@ dotnet run --project games/Shorebound -c Release
 
 Click `Play`, then `WASD` to move, `space` to jump, `shift` to sprint, `F` to
 switch between walking and flying — `space` and `ctrl` go up and down while
-flying, and `space` swims up in water. Left click breaks a block, right click
-places one, the number keys or `Q` and `E` pick which. `Escape` opens the menu,
-where the world can be saved; `F3` hides the overlay.
+flying, and `space` swims up in water. Whichever block is in reach of the
+crosshair is outlined: left click breaks it, right click places against the face
+being looked at, and the number keys or `Q` and `E` pick which block that is.
+`Escape` opens the menu, where the world can be saved; `F3` hides the overlay.
 
 A world is its seed plus the blocks you have changed, so a save holds nothing
 else: an untouched world is about a hundred bytes however far you have walked.
@@ -110,7 +111,7 @@ were deleted.
 
 | Game            | What is in it                                        |
 | --------------- | ---------------------------------------------------- |
-| `Shorebound`    | Its blocks, its terrain and caves, the player and how they move, the controls, the hotbar, the menus, the save file, how long a day lasts, how much work a frame may spend loading and meshing |
+| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, the controls, the hotbar, the menus, the save file, how long a day lasts, how much work a frame may spend loading and meshing |
 
 A game is an `IGame` the runtime runs, and an `IChunkGenerator` the world asks
 for blocks. Those two interfaces are the whole of the engine's knowledge of it.
@@ -118,7 +119,8 @@ for blocks. Those two interfaces are the whole of the engine's knowledge of it.
 Dependencies point downwards only. Everything that does not need a device is
 tested without one: `dotnet test` runs the mesher, the noise, the streaming, the
 block edits, the ray cast and the collision, the camera, the frustum, the sun's
-arc, the shadow box, and Shorebound's own terrain, player and save file.
+arc, the shadow box, and Shorebound's own terrain, biomes, trees, player and
+save file.
 
 ## How the world is drawn
 
@@ -164,6 +166,13 @@ another what it contains. So every chunk works out from the seed alone which
 trees could reach it, builds each of them in full, and keeps the part that falls
 inside itself. Both sides of a boundary agree because both did the same
 arithmetic.
+
+Biomes work the same way, out of two noise fields a kilometre or so across — how
+warm a place is and how wet — which pick what the ground is made of and how much
+of the forest grows there. The density is weighted rather than switched, against
+the same hash that decides whether a cell holds a tree at all, so a forest thins
+out into a plain over a few hundred metres instead of stopping at a line no
+terrain feature explains.
 
 ## BRUTAL
 
