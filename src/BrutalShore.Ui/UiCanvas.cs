@@ -140,7 +140,10 @@ public static class UiCanvas
         drawList.PushClipRect(minimum, maximum, true);
 
         var packed = Packed(color);
-        var thickness = pitch * 0.5f;
+        // A stripe at forty-five degrees covers its own thickness times the root of two along the
+        // band, so half the pitch of visible stripe needs a line about 0.35 of the pitch thick.
+        // Anything near half reads as a row of blobs rather than as stripes.
+        var thickness = pitch * 0.35f;
 
         // Started a band's height to the left of the corner so that the first stripe to cross the
         // top left corner is a whole one.

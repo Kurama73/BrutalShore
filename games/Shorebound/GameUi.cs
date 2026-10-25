@@ -498,7 +498,7 @@ public sealed class GameUi
         // next to the one being aimed at.
         var footSize = ImGui.GetFontSize() * 0.84f;
         UiCanvas.Text(
-            new float2(left, rowTop - (18f * scale) - footSize),
+            new float2(left, top + height - footSize),
             named.Length > 0 ? UiPalette.Text : UiPalette.MutedText,
             named.Length > 0 ? named : "I, tab or escape to close",
             footSize
