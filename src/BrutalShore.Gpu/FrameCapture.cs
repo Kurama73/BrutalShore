@@ -29,6 +29,9 @@ public static unsafe class FrameCapture
     /// <exception cref="InvalidOperationException">If the file could not be written.</exception>
     public static void Save(GpuContext context, SwapchainTarget target, int imageIndex, string path)
     {
+        if (!target.CanBeCopiedFrom)
+            throw new NotSupportedException("This surface does not allow its images to be copied out of.");
+
         var width = target.Extent.Width;
         var height = target.Extent.Height;
         var pixelCount = width * height;
