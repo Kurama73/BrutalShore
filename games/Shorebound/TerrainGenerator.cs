@@ -57,13 +57,16 @@ public sealed class TerrainGenerator : IChunkGenerator
     private const float CaveThreshold = 0.055f;
 
     /// <summary>Altitude above which a surface is snow rather than grass.</summary>
-    private const int SnowLine = 108;
+    /// <summary>The height above which the ground is snow rather than grass.</summary>
+    public const int SnowLine = 108;
 
     private readonly GradientNoise _terrain;
     private readonly GradientNoise _roughness;
     private readonly GradientNoise _caveFieldA;
     private readonly GradientNoise _caveFieldB;
     private readonly GameBlocks _blocks;
+    private readonly Trees _trees;
+    private readonly Func<int, int, int> _surfaceHeight;
 
     /// <summary>Creates a generator for one world.</summary>
     /// <param name="blocks">The block types to build terrain out of.</param>
@@ -79,6 +82,11 @@ public sealed class TerrainGenerator : IChunkGenerator
         _roughness = new GradientNoise(seed ^ 0x5F3759DF);
         _caveFieldA = new GradientNoise(seed ^ 0x1B873593);
         _caveFieldB = new GradientNoise(seed ^ 0x27D4EB2D);
+        _trees = new Trees(blocks, seed);
+
+        // Captured once rather than per chunk: generation runs on worker threads and this is
+        // called a few dozen times for every one of them.
+        _surfaceHeight = SurfaceHeight;
     }
 
     /// <summary>The seed this world was generated from.</summary>
@@ -135,6 +143,7 @@ public sealed class TerrainGenerator : IChunkGenerator
             }
         }
 
+        _trees.Grow(chunkCoordinate, blocks, _surfaceHeight);
         into.EndBulkWrite();
     }
 

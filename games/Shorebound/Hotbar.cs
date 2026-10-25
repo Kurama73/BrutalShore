@@ -25,6 +25,8 @@ public sealed class Hotbar
             ("Grass", blocks.Grass),
             ("Sand", blocks.Sand),
             ("Snow", blocks.Snow),
+            ("Log", blocks.Log),
+            ("Leaves", blocks.Leaves),
             ("Bedrock", blocks.Bedrock),
         ];
     }

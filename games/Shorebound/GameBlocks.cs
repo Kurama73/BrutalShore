@@ -36,6 +36,8 @@ public sealed class GameBlocks
             }
         );
         Bedrock = registry.Register(new BlockType { Name = "bedrock", Color = byte3.HexColor(0x2B2B30) });
+        Log = registry.Register(new BlockType { Name = "log", Color = byte3.HexColor(0x5A4228) });
+        Leaves = registry.Register(new BlockType { Name = "leaves", Color = byte3.HexColor(0x3E6B2A) });
     }
 
     /// <summary>The registry these ids index.</summary>
@@ -68,4 +70,11 @@ public sealed class GameBlocks
 
     /// <summary>Bedrock, the floor of the world.</summary>
     public BlockId Bedrock { get; }
+
+    /// <summary>A tree's trunk.</summary>
+    public BlockId Log { get; }
+
+    /// <summary>A tree's canopy. Opaque: a forest of see-through leaves would be a forest
+    /// of blended quads, and the blending order between them is not worth what it buys.</summary>
+    public BlockId Leaves { get; }
 }
