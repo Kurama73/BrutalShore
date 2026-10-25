@@ -138,7 +138,7 @@ public sealed class GameUi
             UiCanvas.Rect(
                 minimum + new float2(inset, inset),
                 maximum - new float2(inset, inset),
-                UiPalette.Fade(colorOf(index), chosen ? 1f : 0.65f),
+                UiPalette.Fade(colorOf(index), chosen ? 1f : 0.85f),
                 3f * scale
             );
 
@@ -281,9 +281,18 @@ public sealed class GameUi
         UiCanvas.Scrim(1f);
 
         var width = MenuWidth * scale;
-        var height = 290f * scale;
+        var height = 318f * scale;
+        var padding = 28f * scale;
         var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
         var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
+
+        // A card, rather than text floating over the world. A pause menu has to look like the
+        // game stopped, and nothing on a transparent background ever does.
+        var cardMinimum = new float2(left - padding, top - padding);
+        var cardMaximum = new float2(left + width + padding, top + height + padding);
+        UiCanvas.PanelShadow(cardMinimum, cardMaximum, 10f * scale, 26f * scale);
+        UiCanvas.Rect(cardMinimum, cardMaximum, UiPalette.Panel, 10f * scale);
+        UiCanvas.Outline(cardMinimum, cardMaximum, UiPalette.Divider, 10f * scale);
 
         var headingSize = ImGui.GetFontSize() * 1.05f;
         UiCanvas.TrackedText(
