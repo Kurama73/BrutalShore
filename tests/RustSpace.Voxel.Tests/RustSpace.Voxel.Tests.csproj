@@ -1,11 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <IsPackable>false</IsPackable>
-  </PropertyGroup>
-
   <ItemGroup>
-    <ProjectReference Include="../../src/RustSpace.Orbital/RustSpace.Orbital.csproj" />
+    <ProjectReference Include="../../src/RustSpace.Voxel/RustSpace.Voxel.csproj" />
   </ItemGroup>
 
   <ItemGroup>
