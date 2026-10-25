@@ -134,6 +134,9 @@ public sealed class ShoreboundGame : IGame
     private readonly Camera _camera = new();
     private readonly Player _player = new();
     private readonly Inventory _inventory;
+
+    /// <summary>What the cursor is carrying between two slots while the inventory is open.</summary>
+    private Stack _held;
     private readonly GameUi _ui = new();
     private readonly DayClock _clock;
     private readonly TitleCamera _titleCamera;
@@ -464,6 +467,10 @@ public sealed class ShoreboundGame : IGame
             case Screen.Settings:
                 DrawSettings(context);
                 break;
+
+            case Screen.Inventory:
+                _ui.DrawInventory(_inventory, ref _held);
+                break;
         }
     }
 
@@ -608,7 +615,13 @@ public sealed class ShoreboundGame : IGame
     /// <summary>Reads the keys that change which screen is showing.</summary>
     private void ReadScreenKeys(GameContext context)
     {
-        if (!context.Window.WasKeyPressed(GlfwKey.Escape))
+        // The inventory closes on the keys that opened it as well as on escape, because a player
+        // who pressed a key to look at something expects the same key to stop looking at it.
+        var closesInventory =
+            _screen == Screen.Inventory
+            && (context.Window.WasKeyPressed(GlfwKey.I) || context.Window.WasKeyPressed(GlfwKey.Tab));
+
+        if (!context.Window.WasKeyPressed(GlfwKey.Escape) && !closesInventory)
             return;
 
         switch (_screen)
@@ -625,7 +638,30 @@ public sealed class ShoreboundGame : IGame
             case Screen.Settings:
                 LeaveSettings();
                 break;
+
+            case Screen.Inventory:
+                CloseInventory(context);
+                break;
         }
+    }
+
+    /// <summary>Puts the inventory away, and whatever was on the cursor back into it.</summary>
+    /// <remarks>
+    /// A stack on the cursor belongs to no slot, so a screen closed while holding one would
+    /// quietly destroy it. Putting it back where there is room is the only outcome that cannot
+    /// lose anything; the alternative, throwing it on the ground, would need the player to be
+    /// somewhere a block can land, and they are standing in the dark in a cave often enough that
+    /// it is not worth the risk.
+    /// </remarks>
+    private void CloseInventory(GameContext context)
+    {
+        if (!_held.IsNothing)
+        {
+            _inventory.Add(_held.Block, _held.Count);
+            _held = Stack.Nothing;
+        }
+
+        Enter(context);
     }
 
     /// <summary>Reads the keys and clicks that only mean something inside the world.</summary>
@@ -636,7 +672,7 @@ public sealed class ShoreboundGame : IGame
         if (window.WasKeyPressed(GlfwKey.F))
             _player.IsFlying = !_player.IsFlying;
 
-        for (var slot = 0; slot < _inventory.Count; slot++)
+        for (var slot = 0; slot < Inventory.RowCount; slot++)
         {
             if (window.WasKeyPressed(GlfwKey.Number1 + slot))
                 _inventory.Select(slot);
@@ -647,6 +683,12 @@ public sealed class ShoreboundGame : IGame
 
         if (window.WasKeyPressed(GlfwKey.E))
             _inventory.Cycle(1);
+
+        if (window.WasKeyPressed(GlfwKey.I) || window.WasKeyPressed(GlfwKey.Tab))
+        {
+            _screen = Screen.Inventory;
+            window.SetMouseCaptured(false);
+        }
 
         // The wheel, the way every game of this kind does it: away from the hand moves left along
         // the row, which is the direction the numbers count down in.
@@ -849,6 +891,7 @@ public sealed class ShoreboundGame : IGame
     {
         _world.Edits.Clear();
         _inventory.Clear();
+        _held = Stack.Nothing;
         _drops.Clear();
         _grazers.Clear();
 
@@ -876,6 +919,7 @@ public sealed class ShoreboundGame : IGame
             _controller.AimAt(save.Yaw, save.Pitch);
             _inventory.Select(save.RowIndex);
             _inventory.Restore(save.Carried, _blocks.Registry);
+            _held = Stack.Nothing;
             _drops.Clear();
             _grazers.Clear();
             _clock.SetDayFraction(save.DayFraction);

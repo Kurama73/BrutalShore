@@ -24,4 +24,12 @@ public enum Screen
     /// other states already decide.
     /// </remarks>
     Settings,
+
+    /// <summary>In the world, mouse free, looking at what is being carried.</summary>
+    /// <remarks>
+    /// Stopped rather than paused behind a menu. Moving a stack from one slot to another takes
+    /// several clicks and a player doing it should not be falling down a hole meanwhile, and the
+    /// world keeping its light and its sky behind the panel is what says the game is still there.
+    /// </remarks>
+    Inventory,
 }

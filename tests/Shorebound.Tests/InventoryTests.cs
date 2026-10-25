@@ -1,13 +1,15 @@
 namespace Shorebound.Tests;
 
 /// <summary>
-/// The row of blocks the player carries: what goes in, what comes out, and what happens at the
-/// edges of both.
+/// The slots the player carries blocks in: what goes in, what comes out, what moves between
+/// them, and what happens at the edges of all three.
 /// </summary>
 /// <remarks>
-/// The stacking rules are the ones worth pinning down. A row that filled an empty slot before
-/// topping up a part-full one would run out of slots in a minute of digging, and a row that let
-/// a placement take a block it did not have would quietly put blocks into the world from nowhere.
+/// The stacking rules are the ones worth pinning down. An inventory that filled an empty slot
+/// before topping up a part-full one would run out of slots in a minute of digging, and one that
+/// let a placement take a block it did not have would quietly put blocks into the world from
+/// nowhere. The same goes for moving a stack by hand: every path through it has to conserve
+/// blocks, because the one that does not is the one that is found by a player and not by a test.
 /// </remarks>
 public sealed class InventoryTests
 {
@@ -58,7 +60,7 @@ public sealed class InventoryTests
 
         inventory.Select(0);
         inventory.Cycle(-1);
-        Assert.Equal(inventory.Count - 1, inventory.SelectedIndex);
+        Assert.Equal(Inventory.RowCount - 1, inventory.SelectedIndex);
 
         inventory.Cycle(1);
         Assert.Equal(0, inventory.SelectedIndex);
@@ -165,5 +167,171 @@ public sealed class InventoryTests
 
         Assert.Equal(0, inventory.At(0).Count);
         Assert.Equal((_blocks.Stone, 3), inventory.At(1));
+    }
+
+    [Fact]
+    public void what_is_picked_up_goes_into_the_row_before_the_pack()
+    {
+        var inventory = new Inventory(_blocks);
+
+        inventory.Add(_blocks.Stone, Inventory.StackSize * Inventory.RowCount);
+
+        for (var slot = 0; slot < Inventory.RowCount; slot++)
+            Assert.Equal(Inventory.StackSize, inventory.At(slot).Count);
+
+        Assert.Equal(0, inventory.At(Inventory.RowCount).Count);
+    }
+
+    [Fact]
+    public void the_pack_takes_what_the_row_has_no_room_for()
+    {
+        var inventory = new Inventory(_blocks);
+
+        var taken = inventory.Add(_blocks.Stone, Inventory.StackSize * Inventory.SlotCount);
+
+        Assert.Equal(Inventory.StackSize * Inventory.SlotCount, taken);
+        Assert.Equal(Inventory.StackSize, inventory.At(Inventory.SlotCount - 1).Count);
+    }
+
+    [Fact]
+    public void only_a_slot_of_the_row_can_be_put_in_hand()
+    {
+        var inventory = new Inventory(_blocks);
+
+        inventory.Select(Inventory.RowCount);
+
+        Assert.Equal(0, inventory.SelectedIndex);
+    }
+
+    [Fact]
+    public void taking_a_slot_empties_it_and_hands_over_everything_in_it()
+    {
+        var inventory = new Inventory(_blocks);
+        inventory.Add(_blocks.Dirt, 7);
+
+        var taken = inventory.Take(0);
+
+        Assert.Equal(_blocks.Dirt, taken.Block);
+        Assert.Equal(7, taken.Count);
+        Assert.Equal(0, inventory.At(0).Count);
+    }
+
+    [Fact]
+    public void taking_half_rounds_up_so_that_half_of_one_is_one()
+    {
+        var inventory = new Inventory(_blocks);
+        inventory.Add(_blocks.Dirt, 1);
+
+        var taken = inventory.TakeHalf(0);
+
+        Assert.Equal(1, taken.Count);
+        Assert.Equal(0, inventory.At(0).Count);
+    }
+
+    [Fact]
+    public void taking_half_of_an_odd_stack_leaves_the_smaller_half_behind()
+    {
+        var inventory = new Inventory(_blocks);
+        inventory.Add(_blocks.Dirt, 7);
+
+        var taken = inventory.TakeHalf(0);
+
+        Assert.Equal(4, taken.Count);
+        Assert.Equal(3, inventory.At(0).Count);
+    }
+
+    [Fact]
+    public void putting_a_stack_onto_the_same_block_merges_the_two()
+    {
+        var inventory = new Inventory(_blocks);
+        inventory.Add(_blocks.Dirt, 10);
+
+        var left = inventory.Put(0, new Stack(_blocks.Dirt, 5));
+
+        Assert.True(left.IsNothing);
+        Assert.Equal(15, inventory.At(0).Count);
+    }
+
+    [Fact]
+    public void a_merge_that_does_not_fit_leaves_the_remainder_in_hand()
+    {
+        var inventory = new Inventory(_blocks);
+        inventory.Add(_blocks.Dirt, Inventory.StackSize - 2);
+
+        var left = inventory.Put(0, new Stack(_blocks.Dirt, 9));
+
+        Assert.Equal(_blocks.Dirt, left.Block);
+        Assert.Equal(7, left.Count);
+        Assert.Equal(Inventory.StackSize, inventory.At(0).Count);
+    }
+
+    [Fact]
+    public void putting_a_stack_onto_a_different_block_swaps_the_two()
+    {
+        var inventory = new Inventory(_blocks);
+        inventory.Add(_blocks.Dirt, 4);
+
+        var left = inventory.Put(0, new Stack(_blocks.Stone, 9));
+
+        Assert.Equal(_blocks.Dirt, left.Block);
+        Assert.Equal(4, left.Count);
+        Assert.Equal(_blocks.Stone, inventory.At(0).Block);
+        Assert.Equal(9, inventory.At(0).Count);
+    }
+
+    [Fact]
+    public void putting_one_down_moves_exactly_one()
+    {
+        var inventory = new Inventory(_blocks);
+
+        var left = inventory.PutOne(5, new Stack(_blocks.Sand, 3));
+
+        Assert.Equal(2, left.Count);
+        Assert.Equal(1, inventory.At(5).Count);
+        Assert.Equal(_blocks.Sand, inventory.At(5).Block);
+    }
+
+    [Fact]
+    public void putting_one_onto_a_different_block_does_nothing_rather_than_swapping()
+    {
+        // The gesture means "one of these here", and a swap is not a smaller version of that: a
+        // player tapping right click along a row would otherwise scatter what they were holding.
+        var inventory = new Inventory(_blocks);
+        inventory.Add(_blocks.Dirt, 4);
+
+        var left = inventory.PutOne(0, new Stack(_blocks.Stone, 3));
+
+        Assert.Equal(3, left.Count);
+        Assert.Equal(_blocks.Dirt, inventory.At(0).Block);
+        Assert.Equal(4, inventory.At(0).Count);
+    }
+
+    [Fact]
+    public void moving_a_stack_between_two_slots_conserves_every_block()
+    {
+        var inventory = new Inventory(_blocks);
+        inventory.Add(_blocks.Dirt, 30);
+        inventory.Add(_blocks.Stone, 40);
+
+        var held = inventory.Take(0);
+        held = inventory.Put(Inventory.SlotCount - 1, held);
+        held = inventory.Put(0, held);
+
+        Assert.True(held.IsNothing);
+        Assert.Equal(30, Total(inventory, _blocks.Dirt));
+        Assert.Equal(40, Total(inventory, _blocks.Stone));
+    }
+
+    private static int Total(Inventory inventory, BlockId block)
+    {
+        var total = 0;
+        for (var slot = 0; slot < Inventory.SlotCount; slot++)
+        {
+            var (held, count) = inventory.At(slot);
+            if (count > 0 && held == block)
+                total += count;
+        }
+
+        return total;
     }
 }

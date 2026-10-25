@@ -114,7 +114,7 @@ public sealed class GameUi
 
         var slot = 46f * scale;
         var gap = 6f * scale;
-        var totalWidth = (slot * inventory.Count) + (gap * (inventory.Count - 1));
+        var totalWidth = (slot * Inventory.RowCount) + (gap * (Inventory.RowCount - 1));
         var left = viewport.Pos.X + ((viewport.Size.X - totalWidth) * 0.5f);
         var bottom = viewport.Pos.Y + viewport.Size.Y - (34f * scale);
         var top = bottom - slot;
@@ -131,7 +131,7 @@ public sealed class GameUi
             size
         );
 
-        for (var index = 0; index < inventory.Count; index++)
+        for (var index = 0; index < Inventory.RowCount; index++)
         {
             var chosen = index == inventory.SelectedIndex;
             var count = inventory.At(index).Count;
@@ -290,6 +290,218 @@ public sealed class GameUi
 
         ImGui.End();
         return choice;
+    }
+
+    /// <summary>How wide one inventory slot is, before the interface scale.</summary>
+    private const float SlotSize = 46f;
+
+    /// <summary>How much space goes between two inventory slots, before the scale.</summary>
+    private const float SlotGap = 6f;
+
+    /// <summary>Draws the inventory, moving stacks about as the player clicks them.</summary>
+    /// <param name="inventory">What the player is carrying, which this moves around in place.</param>
+    /// <param name="held">
+    /// What the cursor is carrying between two slots, which this reads and writes. It lives
+    /// outside the inventory because a stack on the cursor is in no slot at all, and lives
+    /// outside this method because it has to survive the frames between picking it up and
+    /// putting it down.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Hit-tested by hand against <see cref="ImGui.GetMousePos" /> rather than built out of
+    /// buttons. A grid of thirty-six squares laid out by a widget library is a grid whose
+    /// geometry is the library's; here the geometry is wanted in two places at once — the
+    /// rectangle a slot is drawn in is the rectangle it is clicked in — and computing it once is
+    /// shorter than persuading something else to agree with it.
+    /// </para>
+    /// <para>
+    /// Left click takes or puts a whole stack and right click takes half or puts one, which is
+    /// the pair of gestures everyone who has played a game of this kind already knows. The
+    /// decisions about what that means to a slot are <see cref="Inventory" />'s, not this
+    /// method's: it reports which slot was clicked and with which button, and nothing else.
+    /// </para>
+    /// </remarks>
+    public void DrawInventory(Inventory inventory, ref Stack held)
+    {
+        var viewport = ImGui.GetMainViewport();
+        var scale = ImGui.GetStyle().FontScaleMain;
+
+        FullScreen("inventory"u8);
+        UiCanvas.Scrim(1f);
+
+        var slot = SlotSize * scale;
+        var gap = SlotGap * scale;
+        var padding = 28f * scale;
+        var pitch = slot + gap;
+
+        var width = (slot * Inventory.RowCount) + (gap * (Inventory.RowCount - 1));
+        var headingSize = ImGui.GetFontSize() * 1.05f;
+        var packRows = (Inventory.SlotCount - Inventory.RowCount) / Inventory.RowCount;
+
+        // The pack, a gap wide enough to read as a division, then the row that is in hand.
+        var packHeight = (packRows * pitch) - gap;
+        var height = headingSize + (26f * scale) + packHeight + (22f * scale) + slot + (24f * scale);
+
+        var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
+        var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
+
+        var cardMinimum = new float2(left - padding, top - padding);
+        var cardMaximum = new float2(left + width + padding, top + height + padding);
+        UiCanvas.PanelShadow(cardMinimum, cardMaximum, 10f * scale, 26f * scale);
+        UiCanvas.Rect(cardMinimum, cardMaximum, UiPalette.Panel, 10f * scale);
+        UiCanvas.Outline(cardMinimum, cardMaximum, UiPalette.Divider, 10f * scale);
+
+        UiCanvas.TrackedText(new float2(left, top), UiPalette.Accent, "CARRYING", headingSize, 3f * scale);
+        UiCanvas.Line(
+            new float2(left, top + headingSize + (12f * scale)),
+            new float2(left + width, top + headingSize + (12f * scale)),
+            UiPalette.Divider
+        );
+
+        var named = string.Empty;
+        var packTop = top + headingSize + (26f * scale);
+        DrawSlots(inventory, ref held, Inventory.RowCount, Inventory.SlotCount, new float2(left, packTop), slot, gap, ref named);
+
+        var rowTop = packTop + packHeight + (22f * scale);
+        DrawSlots(inventory, ref held, 0, Inventory.RowCount, new float2(left, rowTop), slot, gap, ref named);
+
+        // The name of whatever is under the cursor, in the space the division already left. A
+        // tooltip would cover the slot it is describing, which in a grid this tight is the slot
+        // next to the one being aimed at.
+        if (named.Length > 0)
+        {
+            var noteSize = ImGui.GetFontSize() * 0.86f;
+            UiCanvas.Text(
+                new float2(left, rowTop - (16f * scale) - noteSize),
+                UiPalette.MutedText,
+                named,
+                noteSize
+            );
+        }
+
+        DrawHeld(inventory, held, slot, scale);
+
+        var footSize = ImGui.GetFontSize() * 0.84f;
+        UiCanvas.Text(
+            new float2(left, top + height - footSize),
+            UiPalette.MutedText,
+            "I, tab or escape to close",
+            footSize
+        );
+
+        ImGui.End();
+    }
+
+    /// <summary>Draws one block of slots and acts on a click in it.</summary>
+    /// <param name="inventory">What the player is carrying, which this moves around in place.</param>
+    /// <param name="held">What the cursor is carrying, which this reads and writes.</param>
+    /// <param name="first">The first slot to draw.</param>
+    /// <param name="end">One past the last slot to draw.</param>
+    /// <param name="origin">The top-left corner of the block, in screen pixels.</param>
+    /// <param name="slot">How wide and tall one slot is, in screen pixels.</param>
+    /// <param name="gap">How much space goes between two slots, in screen pixels.</param>
+    /// <param name="named">
+    /// Set to the name of whatever the cursor is over, so that the caller can write it somewhere
+    /// that is not on top of the grid.
+    /// </param>
+    private void DrawSlots(
+        Inventory inventory,
+        ref Stack held,
+        int first,
+        int end,
+        float2 origin,
+        float slot,
+        float gap,
+        ref string named
+    )
+    {
+        var mouse = ImGui.GetMousePos();
+        var size = ImGui.GetFontSize();
+        var pitch = slot + gap;
+
+        for (var index = first; index < end; index++)
+        {
+            var place = index - first;
+            var minimum = origin + new float2(
+                (place % Inventory.RowCount) * pitch,
+                (place / Inventory.RowCount) * pitch
+            );
+            var maximum = minimum + new float2(slot, slot);
+
+            var over =
+                mouse.X >= minimum.X && mouse.X < maximum.X && mouse.Y >= minimum.Y && mouse.Y < maximum.Y;
+
+            var (block, count) = inventory.At(index);
+            if (over && count > 0)
+                named = $"{inventory.NameOf(block)} ×{count}";
+
+            UiCanvas.Rect(minimum, maximum, UiPalette.Fade(over ? UiPalette.Hovered : UiPalette.Control, 0.9f), 5f);
+
+            if (count > 0)
+            {
+                var inset = 7f;
+                UiCanvas.Rect(
+                    minimum + new float2(inset, inset),
+                    maximum - new float2(inset, inset),
+                    inventory.ColorOf(index),
+                    3f
+                );
+
+                var carried = $"{count}";
+                var countSize = size * 0.82f;
+                var countWidth = UiCanvas.Measure(carried, countSize).X;
+                UiCanvas.Text(
+                    new float2(maximum.X - countWidth - 4f, maximum.Y - countSize - 2f),
+                    UiPalette.Text,
+                    carried,
+                    countSize
+                );
+            }
+
+            // The slot in hand keeps its accent here too, so that a player dropping something
+            // into the row can see where it will end up without closing the screen first.
+            var selected = index == inventory.SelectedIndex;
+            UiCanvas.Outline(
+                minimum,
+                maximum,
+                selected ? UiPalette.Accent : UiPalette.Fade(UiPalette.Text, over ? 0.3f : 0.12f),
+                5f,
+                selected ? 2f : 1f
+            );
+
+            if (!over)
+                continue;
+
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                held = held.IsNothing ? inventory.Take(index) : inventory.Put(index, held);
+            else if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+                held = held.IsNothing ? inventory.TakeHalf(index) : inventory.PutOne(index, held);
+        }
+    }
+
+    /// <summary>Draws whatever the cursor is carrying, under the cursor.</summary>
+    private static void DrawHeld(Inventory inventory, Stack held, float slot, float scale)
+    {
+        if (held.IsNothing)
+            return;
+
+        var mouse = ImGui.GetMousePos();
+        var size = slot * 0.68f;
+        var minimum = mouse - new float2(size * 0.5f, size * 0.5f);
+        var maximum = minimum + new float2(size, size);
+
+        UiCanvas.Rect(minimum, maximum, inventory.ColorOf(held.Block), 3f * scale);
+        UiCanvas.Outline(minimum, maximum, UiPalette.Fade(UiPalette.Scrim, 0.7f), 3f * scale);
+
+        var carried = $"{held.Count}";
+        var countSize = ImGui.GetFontSize() * 0.82f;
+        var countWidth = UiCanvas.Measure(carried, countSize).X;
+        UiCanvas.Text(
+            new float2(maximum.X - countWidth, maximum.Y - countSize),
+            UiPalette.Text,
+            carried,
+            countSize
+        );
     }
 
     /// <summary>Draws the pause menu and reports what was clicked.</summary>

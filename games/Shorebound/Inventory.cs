@@ -3,24 +3,38 @@ using BrutalShore.Voxel;
 
 namespace Shorebound;
 
-/// <summary>The nine slots the player carries blocks in, and which one is in hand.</summary>
+/// <summary>Every slot the player carries blocks in, and which of them is in hand.</summary>
 /// <remarks>
 /// <para>
-/// A row of stacks rather than a palette. It used to be a palette — nine blocks that never ran
-/// out — and that made placing a block free, which made breaking one pointless: a world where
-/// anything can be put anywhere at any time is a world with nothing to do in it.
+/// Stacks rather than a palette. It used to be a palette — nine blocks that never ran out — and
+/// that made placing a block free, which made breaking one pointless: a world where anything can
+/// be put anywhere at any time is a world with nothing to do in it.
 /// </para>
 /// <para>
 /// So a block comes from somewhere. Breaking one drops it, walking over it picks it up, placing
-/// one spends it, and the row starts empty. That is the whole economy and it is deliberately the
-/// whole of it: no chests, no crafting, no tools. Those arrive when they have a reason, and the
-/// reason is never "a game like this one has them".
+/// one spends it, and it all starts empty.
+/// </para>
+/// <para>
+/// The slots are one array, not two. The first <see cref="RowCount" /> of them are the row along
+/// the bottom of the screen, and the rest are the pack behind it; what makes them different is
+/// where they are drawn and that only the row can be in hand. Keeping them in one array is what
+/// lets a stack move between the two by writing two slots, and lets <see cref="Add" /> walk the
+/// whole of what is carried without knowing there is a division in it.
 /// </para>
 /// </remarks>
 public sealed class Inventory
 {
-    /// <summary>How many slots there are.</summary>
-    public const int SlotCount = 9;
+    /// <summary>How many slots are in the row along the bottom of the screen.</summary>
+    public const int RowCount = 9;
+
+    /// <summary>How many slots there are altogether, the row included.</summary>
+    /// <remarks>
+    /// Four rows of nine. One row is not enough to come back from a morning's digging with
+    /// anything but stone, and a player who has to throw away what they dug up stops digging; far
+    /// more than four and the screen stops being readable at a glance, which is the only thing a
+    /// grid of coloured squares has going for it.
+    /// </remarks>
+    public const int SlotCount = RowCount * 4;
 
     /// <summary>The most of one block a slot holds.</summary>
     /// <remarks>
@@ -37,7 +51,7 @@ public sealed class Inventory
     /// <param name="blocks">The game's registered block types, for names and colours.</param>
     public Inventory(GameBlocks blocks) => _blocks = blocks;
 
-    /// <summary>How many slots there are.</summary>
+    /// <summary>How many slots there are altogether.</summary>
     public int Count => SlotCount;
 
     /// <summary>Which slot is in hand, counting from zero.</summary>
@@ -71,6 +85,20 @@ public sealed class Inventory
     /// <returns>The block and the count, which is zero for an empty slot.</returns>
     public (BlockId Block, int Count) At(int index) => (_slots[index].Block, _slots[index].Count);
 
+    /// <summary>The name of a block, for labelling a slot the player is pointing at.</summary>
+    /// <param name="block">The block to name.</param>
+    /// <returns>Its registered name.</returns>
+    public string NameOf(BlockId block) => _blocks.Registry[block].Name;
+
+    /// <summary>The colour of a block, for the swatch the interface draws.</summary>
+    /// <param name="block">The block to colour.</param>
+    /// <returns>Its colour, in the linear light the interface draws in.</returns>
+    public float4 ColorOf(BlockId block)
+    {
+        var color = _blocks.Registry[block].Color;
+        return UiPalette.FromSrgb(color.X, color.Y, color.Z);
+    }
+
     /// <summary>The colour of a slot's block, for the swatch the interface draws.</summary>
     /// <param name="index">Which slot, counting from zero.</param>
     /// <returns>Its block's colour, in the linear light the interface draws in.</returns>
@@ -88,9 +116,16 @@ public sealed class Inventory
     /// <param name="count">How many.</param>
     /// <returns>How many were taken; the rest did not fit.</returns>
     /// <remarks>
-    /// Stacking before filling an empty slot is what keeps nine slots usable: without it a
-    /// player who breaks a block, walks away and comes back has two slots of the same thing and
-    /// seven for everything else.
+    /// <para>
+    /// Stacking before filling an empty slot is what keeps the slots usable: without it a player
+    /// who breaks a block, walks away and comes back has two slots of the same thing and the rest
+    /// for everything else.
+    /// </para>
+    /// <para>
+    /// Both passes run from slot zero, so the row fills before the pack does. That is what makes
+    /// a block picked up off the ground immediately placeable, which is the whole of what the row
+    /// is for.
+    /// </para>
     /// </remarks>
     public int Add(BlockId block, int count)
     {
@@ -171,18 +206,96 @@ public sealed class Inventory
         }
     }
 
-    /// <summary>Puts a particular slot in hand.</summary>
-    /// <param name="index">Which slot; out-of-range values are ignored.</param>
+    /// <summary>Puts a particular slot of the row in hand.</summary>
+    /// <param name="index">Which slot; anything outside the row is ignored.</param>
     public void Select(int index)
     {
-        if ((uint)index < SlotCount)
+        if ((uint)index < RowCount)
             SelectedIndex = index;
     }
 
     /// <summary>Moves along the row, wrapping at either end.</summary>
     /// <param name="by">How many slots to move; negative goes left.</param>
     public void Cycle(int by) =>
-        SelectedIndex = (int)(((SelectedIndex + by) % SlotCount + SlotCount) % SlotCount);
+        SelectedIndex = (int)(((SelectedIndex + by) % RowCount + RowCount) % RowCount);
+
+    /// <summary>Picks a whole stack up out of a slot, leaving it empty.</summary>
+    /// <param name="index">Which slot; out-of-range values take nothing.</param>
+    /// <returns>What was there, which is <see cref="Stack.Nothing" /> for an empty slot.</returns>
+    public Stack Take(int index)
+    {
+        if ((uint)index >= SlotCount)
+            return Stack.Nothing;
+
+        var slot = _slots[index];
+        _slots[index] = default;
+        return new Stack(slot.Block, slot.Count);
+    }
+
+    /// <summary>Picks up half a slot, rounded up, the way a right click does.</summary>
+    /// <param name="index">Which slot; out-of-range values take nothing.</param>
+    /// <returns>The half that was picked up.</returns>
+    /// <remarks>
+    /// Rounded up so that half of one is one rather than nothing: a click that does nothing reads
+    /// as a click that was missed.
+    /// </remarks>
+    public Stack TakeHalf(int index)
+    {
+        if ((uint)index >= SlotCount || _slots[index].Count <= 0)
+            return Stack.Nothing;
+
+        var slot = _slots[index];
+        var half = (slot.Count + 1) / 2;
+        _slots[index] = half == slot.Count ? default : new Slot(slot.Block, slot.Count - half);
+        return new Stack(slot.Block, half);
+    }
+
+    /// <summary>
+    /// Puts a held stack into a slot, merging it, filling it, or swapping with what is there.
+    /// </summary>
+    /// <param name="index">Which slot; out-of-range values take nothing.</param>
+    /// <param name="held">What is being carried on the cursor.</param>
+    /// <returns>What is left on the cursor afterwards.</returns>
+    /// <remarks>
+    /// The three outcomes are the three a player expects and they are decided by the slot, not by
+    /// which button was pressed: the same thing onto the same thing merges as far as the stack
+    /// will go, anything onto an empty slot fills it, and anything onto something else swaps. A
+    /// merge that does not fit leaves the remainder on the cursor rather than spilling it.
+    /// </remarks>
+    public Stack Put(int index, Stack held)
+    {
+        if ((uint)index >= SlotCount || held.IsNothing)
+            return held;
+
+        var slot = _slots[index];
+
+        if (slot.Count > 0 && slot.Block == held.Block)
+        {
+            var moved = int.Min(StackSize - slot.Count, held.Count);
+            _slots[index] = new Slot(slot.Block, slot.Count + moved);
+            return held.Count == moved ? Stack.Nothing : new Stack(held.Block, held.Count - moved);
+        }
+
+        _slots[index] = new Slot(held.Block, int.Min(held.Count, StackSize));
+        return slot.Count > 0 ? new Stack(slot.Block, slot.Count) : Stack.Nothing;
+    }
+
+    /// <summary>Puts one block of a held stack into a slot, the way a right click does.</summary>
+    /// <param name="index">Which slot; out-of-range values take nothing.</param>
+    /// <param name="held">What is being carried on the cursor.</param>
+    /// <returns>What is left on the cursor afterwards.</returns>
+    public Stack PutOne(int index, Stack held)
+    {
+        if ((uint)index >= SlotCount || held.IsNothing)
+            return held;
+
+        var slot = _slots[index];
+        if (slot.Count >= StackSize || (slot.Count > 0 && slot.Block != held.Block))
+            return held;
+
+        _slots[index] = new Slot(held.Block, slot.Count + 1);
+        return held.Count == 1 ? Stack.Nothing : new Stack(held.Block, held.Count - 1);
+    }
 
     /// <summary>One slot: a block and how many of it, or nothing.</summary>
     private readonly record struct Slot(BlockId Block, int Count);
