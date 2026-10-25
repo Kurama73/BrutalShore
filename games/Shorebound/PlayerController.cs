@@ -3,79 +3,65 @@ using BrutalShore.Render;
 
 namespace Shorebound;
 
-/// <summary>Turns keyboard and mouse state into camera movement.</summary>
+/// <summary>Turns the keyboard and mouse into where the player is looking and what they want.</summary>
 /// <remarks>
-/// Separate from <see cref="Camera" /> so the camera stays a piece of maths with no idea what a
-/// key is: the mapping from a physical control to a movement is the part that changes often, and
-/// the part that will need to grow a configuration file.
+/// It reads input and nothing else: what the player can do with the result — how fast they move,
+/// whether they can fly through a wall — is <see cref="Player" />'s, and what a click does to the
+/// world is the game's. Keeping the three apart is what makes the movement testable at all, since
+/// a window cannot be opened in a test.
 /// </remarks>
 public sealed class PlayerController
 {
     private readonly GameWindow _window;
     private readonly Camera _camera;
 
-    private bool _escapeWasDown;
-
-    /// <summary>Wires a window's input to a camera.</summary>
+    /// <summary>Wires the controller to a window and the camera it aims.</summary>
+    /// <param name="window">The window input is read from.</param>
+    /// <param name="camera">The camera the mouse turns.</param>
     public PlayerController(GameWindow window, Camera camera)
     {
         _window = window;
         _camera = camera;
     }
 
-    /// <summary>Metres per second while walking.</summary>
-    public double Speed { get; set; } = 14.0;
-
-    /// <summary>How much faster the sprint key is.</summary>
-    public double SprintFactor { get; set; } = 5.0;
-
-    /// <summary>Radians of rotation per pixel of mouse movement.</summary>
+    /// <summary>How far the camera turns per pixel of mouse movement, in radians.</summary>
     public float Sensitivity { get; set; } = 0.0022f;
 
-    /// <summary>Applies one step's worth of input to the camera.</summary>
-    /// <param name="seconds">The step's length.</param>
-    public void Step(double seconds)
+    /// <summary>Reads what the player is asking for this step.</summary>
+    /// <returns>The intent, or <see cref="PlayerIntent.Still" /> while the mouse is free.</returns>
+    /// <remarks>
+    /// Nothing is read while the mouse is not captured. Otherwise typing in a menu would walk the
+    /// player off a cliff behind it.
+    /// </remarks>
+    public PlayerIntent ReadIntent()
     {
-        UpdateMouseCapture();
+        if (!_window.IsMouseCaptured)
+            return PlayerIntent.Still;
 
-        // Only turn while the cursor is captured. Looking around as the mouse travels to a menu
-        // would be maddening, and the delta while uncaptured belongs to whatever is on screen.
-        if (_window.IsMouseCaptured)
-            _camera.Look(_window.CursorDelta.X, _window.CursorDelta.Y, Sensitivity);
-
-        var distance = seconds * (_window.IsKeyDown(GlfwKey.LeftShift) ? Speed * SprintFactor : Speed);
-
-        var forward = Axis(GlfwKey.W, GlfwKey.S);
-        var right = Axis(GlfwKey.D, GlfwKey.A);
-        var up = Axis(GlfwKey.Space, GlfwKey.LeftControl);
-
-        if (forward == 0 && right == 0 && up == 0)
-            return;
-
-        // Normalising the horizontal pair keeps a diagonal from being faster than a straight line,
-        // which is the oldest bug in first-person movement.
-        var horizontal = forward != 0 && right != 0 ? 0.70710678118654752 : 1.0;
-
-        _camera.Move(forward * distance * horizontal, right * distance * horizontal, up * distance);
+        return new PlayerIntent
+        {
+            Forward = Axis(GlfwKey.W, GlfwKey.S),
+            Right = Axis(GlfwKey.D, GlfwKey.A),
+            Jump = _window.IsKeyDown(GlfwKey.Space),
+            Sink = _window.IsKeyDown(GlfwKey.LeftControl),
+            Sprint = _window.IsKeyDown(GlfwKey.LeftShift),
+        };
     }
 
-    /// <summary>
-    /// Captures the cursor on a click in the window, and releases it on escape.
-    /// </summary>
-    /// <remarks>
-    /// Escape is read as an edge rather than a level, so holding it does not fight with anything
-    /// that would like to capture the cursor again on the same frame.
-    /// </remarks>
-    private void UpdateMouseCapture()
+    /// <summary>Turns the camera by however far the mouse moved.</summary>
+    public void Look()
     {
-        var escapeIsDown = _window.IsKeyDown(GlfwKey.Escape);
-        if (escapeIsDown && !_escapeWasDown && _window.IsMouseCaptured)
-            _window.SetMouseCaptured(false);
+        if (_window.IsMouseCaptured)
+            _camera.Look(_window.CursorDelta.X, _window.CursorDelta.Y, Sensitivity);
+    }
 
-        _escapeWasDown = escapeIsDown;
-
-        if (!_window.IsMouseCaptured && _window.IsMouseButtonDown(GlfwMouseButton.Left))
-            _window.SetMouseCaptured(true);
+    /// <summary>Aims the camera somewhere, for a loaded save or a fixed viewpoint.</summary>
+    /// <param name="yaw">Which way to face, in radians.</param>
+    /// <param name="pitch">How far up or down to look, in radians.</param>
+    public void AimAt(float yaw, float pitch)
+    {
+        // The camera only turns by deltas, so aiming it absolutely means undoing where it is.
+        _camera.Look((yaw - _camera.Yaw) / Sensitivity, -(pitch - _camera.Pitch) / Sensitivity, Sensitivity);
     }
 
     private int Axis(GlfwKey positive, GlfwKey negative) =>
