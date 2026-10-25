@@ -26,18 +26,40 @@ public enum Screen
     Settings,
 
     /// <summary>In the world, mouse free, looking at what is being carried.</summary>
-    /// <remarks>
-    /// Stopped rather than paused behind a menu. Moving a stack from one slot to another takes
-    /// several clicks and a player doing it should not be falling down a hole meanwhile, and the
-    /// world keeping its light and its sky behind the panel is what says the game is still there.
-    /// </remarks>
     Inventory,
 
     /// <summary>In the world, mouse free, standing at a machine and looking inside it.</summary>
     /// <remarks>
-    /// A state of its own rather than a mode of the inventory, because the world has to keep
-    /// running behind it: a smelter a player is watching has to be smelting, and the whole point
-    /// of the screen is to see that happen.
+    /// A state of its own rather than a mode of the inventory, because the panels differ and the
+    /// escape key has somewhere different to go from each.
     /// </remarks>
     Machine,
+}
+
+/// <summary>Which screens are a menu and which are a panel over a running game.</summary>
+/// <remarks>
+/// <para>
+/// The distinction is worth a name because it was got wrong once. A smelter is built so that it
+/// works while the player is doing something else; a player standing at one, watching it, is
+/// doing something else. Stopping the world to show them the inside of a machine meant the
+/// machine stopped too, and the screen reported IDLE for as long as it was looked at.
+/// </para>
+/// <para>
+/// So: a menu stops the game and a panel does not. Opening a panel takes the player's input away
+/// and nothing else, which also means a player who opens one in mid-air keeps falling. That is
+/// the right answer — the alternative is a pause button disguised as an inventory key.
+/// </para>
+/// </remarks>
+public static class Screens
+{
+    /// <summary>Whether time passes and the world steps while this screen is up.</summary>
+    /// <param name="screen">The screen showing.</param>
+    /// <returns><see langword="true" /> for the ones drawn over a running game.</returns>
+    public static bool RunsTheWorld(this Screen screen) =>
+        screen is Screen.Playing or Screen.Inventory or Screen.Machine;
+
+    /// <summary>Whether the player's own keys and mouse reach the world.</summary>
+    /// <param name="screen">The screen showing.</param>
+    /// <returns><see langword="true" /> only while actually playing.</returns>
+    public static bool TakesInput(this Screen screen) => screen is Screen.Playing;
 }

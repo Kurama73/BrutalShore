@@ -297,7 +297,7 @@ public sealed class ShoreboundGame : IGame
     /// <inheritdoc />
     public void Step(double seconds)
     {
-        if (_screen != Screen.Playing)
+        if (!_screen.RunsTheWorld())
         {
             // The title screen's world is live rather than a picture, so its camera keeps moving
             // while everything else is stopped.
@@ -307,13 +307,15 @@ public sealed class ShoreboundGame : IGame
             return;
         }
 
+        var playing = _screen.TakesInput();
+
         _playedSeconds += seconds;
         _clock.Step(seconds);
 
         // Breaking is held rather than clicked, so it belongs in the fixed step: a block that
         // took longer to break on a slower machine would be a block whose hardness was the frame
         // rate rather than the stone.
-        if (_mining.Step(_world, _aimedAt, _isBreaking, seconds) is { } broken)
+        if (_mining.Step(_world, _aimedAt, _isBreaking && playing, seconds) is { } broken)
         {
             // Read before the block is taken out, because afterwards there is nothing there to
             // say what fell out of it.
@@ -333,7 +335,10 @@ public sealed class ShoreboundGame : IGame
 
         _drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _inventory);
         _grazers.Step(_world, _world.Registry, seconds, _player.FeetMeters);
-        _player.Step(_world, _world.Registry, seconds, _controller.ReadIntent(), _camera.Yaw);
+        // A player with a panel open keeps falling and stops steering. Reading the keyboard while
+        // they are clicking around a grid would walk them off whatever they are standing on.
+        var intent = playing ? _controller.ReadIntent() : PlayerIntent.Still;
+        _player.Step(_world, _world.Registry, seconds, intent, _camera.Yaw);
         _camera.Position = _player.EyeMeters;
 
         if (_noticeLeftSeconds > 0.0)

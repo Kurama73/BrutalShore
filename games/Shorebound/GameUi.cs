@@ -905,15 +905,77 @@ public sealed class GameUi
         );
 
         var outLeft = workLeft + workWidth + (20f * scale);
+        var outSize = slot * 1.3f;
         DrawLabelled(
             smelter.Output,
             inventory,
             ref held,
             new float2(outLeft, origin.Y + (slot * 0.5f)),
-            slot * 1.3f,
+            outSize,
             "OUT",
             ref named
         );
+
+        DrawMelts(
+            smelting,
+            inventory,
+            new float2(outLeft + outSize + (26f * scale), origin.Y - (size * 0.5f)),
+            (slot * 2.6f) + gap
+        );
+    }
+
+    /// <summary>What a smelter will take, listed beside it.</summary>
+    /// <remarks>
+    /// The same answer the recipe list gives on the crafting screen, for the same reason: a
+    /// machine that silently does nothing with the wrong block in it is a machine a player has to
+    /// guess at. Three lines of "this becomes that" removes the guessing entirely.
+    /// </remarks>
+    private static void DrawMelts(Smelting smelting, Inventory inventory, float2 origin, float height)
+    {
+        var scale = ImGui.GetStyle().FontScaleMain;
+        var size = ImGui.GetFontSize() * 0.78f;
+        var melts = smelting.All.ToList();
+        var rowHeight = height / (melts.Count + 1);
+        var swatch = float.Min(rowHeight - (6f * scale), 16f * scale);
+
+        UiCanvas.TrackedText(origin, UiPalette.MutedText, "MELTS", size, 1.6f * scale);
+
+        for (var index = 0; index < melts.Count; index++)
+        {
+            var (input, result, seconds) = melts[index];
+            var top = origin.Y + ((index + 1) * rowHeight);
+            var middle = top + (rowHeight * 0.5f);
+
+            UiCanvas.Chamfer(
+                new float2(origin.X, middle - (swatch * 0.5f)),
+                new float2(origin.X + swatch, middle + (swatch * 0.5f)),
+                inventory.ColorOf(input),
+                3f * scale
+            );
+
+            var arrowLeft = origin.X + swatch + (8f * scale);
+            var arrowRight = arrowLeft + (16f * scale);
+            UiCanvas.Line(
+                new float2(arrowLeft, middle),
+                new float2(arrowRight, middle),
+                UiPalette.Fade(UiPalette.MutedText, 0.8f),
+                scale
+            );
+
+            UiCanvas.Chamfer(
+                new float2(arrowRight + (8f * scale), middle - (swatch * 0.5f)),
+                new float2(arrowRight + (8f * scale) + swatch, middle + (swatch * 0.5f)),
+                inventory.ColorOf(result),
+                3f * scale
+            );
+
+            UiCanvas.Text(
+                new float2(arrowRight + swatch + (18f * scale), middle - (size * 0.5f)),
+                UiPalette.Fade(UiPalette.Text, 0.85f),
+                $"{inventory.NameOf(result)}  {seconds:0}s",
+                size
+            );
+        }
     }
 
     /// <summary>One machine slot with a word over it.</summary>
