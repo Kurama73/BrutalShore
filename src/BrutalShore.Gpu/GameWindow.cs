@@ -147,6 +147,18 @@ public sealed class GameWindow : IDisposable
 
         IsMouseCaptured = captured;
 
+        // Put the pointer in the middle of the window on the way out. Two reasons, and both of
+        // them are things a player notices: a menu opened with the pointer already in the middle
+        // of it is a menu whose first button is where the hand already is, and moving the cursor
+        // is what tells everything downstream — the interface's own input layer included — where
+        // it now is. Released without being moved, it can be left at whatever it was before the
+        // capture, which is wherever the player last clicked a title screen.
+        if (!captured)
+        {
+            var size = Handle.FramebufferSize;
+            Handle.CursorPos = new double2(size.X / 2.0, size.Y / 2.0);
+        }
+
         // Releasing and re-capturing moves the cursor, so the next delta is measured from where it
         // ends up rather than from where it was before.
         _hasCursorPosition = false;
