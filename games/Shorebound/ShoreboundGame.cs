@@ -31,6 +31,14 @@ public sealed class ShoreboundGame : IGame
     /// </remarks>
     private const int LoadBudgetPerFrame = 48;
 
+    /// <summary>How many chunks may be waiting to be meshed at once.</summary>
+    /// <remarks>
+    /// Smaller than the generation queue: a chunk can only be meshed once its whole neighbourhood
+    /// is resident, so there are fewer of them ready at any moment, and each one holds twenty-six
+    /// chunk references alive while it waits.
+    /// </remarks>
+    private const int MeshQueueCapacity = 64;
+
     /// <summary>How many chunks may be waiting to be generated at once.</summary>
     /// <remarks>
     /// Two rings' worth at the default radius. A player sprinting in a straight line can ask for
@@ -39,8 +47,22 @@ public sealed class ShoreboundGame : IGame
     /// </remarks>
     private const int StreamingQueueCapacity = 256;
 
-    /// <summary>How many chunks may be meshed and uploaded in one frame.</summary>
-    private const int MeshBudgetPerFrame = 6;
+    /// <summary>How many threads each of the two streamers gets.</summary>
+    /// <remarks>
+    /// One per core but one, so the thread drawing the frame still has somewhere to run, and
+    /// capped because past a handful the workers are waiting on memory rather than arithmetic.
+    /// Both pools get the same number: generating and meshing alternate for any given chunk, so
+    /// whichever is given fewer threads becomes the queue the other waits behind.
+    /// </remarks>
+    private static readonly int WorkerCount = int.Clamp(Environment.ProcessorCount - 1, 1, 6);
+
+    /// <summary>How many finished meshes may be uploaded to the GPU in one frame.</summary>
+    /// <remarks>
+    /// Meshing happens on worker threads, so what this bounds is the upload: one buffer pair per
+    /// chunk, written straight into host-visible memory. That is bandwidth rather than work, and
+    /// a frame can afford several times what building the meshes on it would have allowed.
+    /// </remarks>
+    private const int MeshBudgetPerFrame = 24;
 
     /// <summary>Where fog begins, as a fraction of the loaded radius.</summary>
     /// <remarks>
@@ -103,16 +125,10 @@ public sealed class ShoreboundGame : IGame
         _options = options;
         _blocks = new GameBlocks(new BlockRegistry());
         _generator = new TerrainGenerator(_blocks, options.Seed);
-        // One worker per core but one, so the thread drawing the frame still has somewhere to
-        // run; capped because beyond a handful the workers are waiting on memory, not arithmetic.
         _world = new VoxelWorld(
             _blocks.Registry,
             _generator,
-            new ChunkStreamer(
-                _generator,
-                int.Clamp(Environment.ProcessorCount - 1, 1, 6),
-                StreamingQueueCapacity
-            )
+            new ChunkStreamer(_generator, WorkerCount, StreamingQueueCapacity)
         );
         _hotbar = new Hotbar(_blocks);
         _clock = new DayClock(options.StartHour, options.DayLengthSeconds);
@@ -133,7 +149,14 @@ public sealed class ShoreboundGame : IGame
         _pipeline = new VoxelPipeline(context.Gpu, context.Shaders, _scene, context.Target.RenderPass);
         _shadowPipeline = new ShadowPipeline(context.Gpu, context.Shaders, _scene, _shadowMap.RenderPass);
         _sky = new SkyRenderer(context.Gpu, context.Renderer, context.Shaders, _scene, context.Target.RenderPass);
-        _chunks = new ChunkRenderer(context.Gpu, context.Renderer, _world, _pipeline, _scene);
+        _chunks = new ChunkRenderer(
+            context.Gpu,
+            context.Renderer,
+            _world,
+            _pipeline,
+            _scene,
+            new MeshStreamer(_blocks.Registry, WorkerCount, MeshQueueCapacity)
+        );
         _controller = new PlayerController(context.Window, _camera);
 
         StartFreshWorld();
@@ -283,8 +306,8 @@ public sealed class ShoreboundGame : IGame
         ImGui.SeparatorText("World"u8);
         ImGui.Text($"seed {_generator.Seed}, radius {_options.ViewRadiusChunks} chunks");
         ImGui.Text($"{_world.LoadedChunkCount} loaded, {_chunks.MeshCount} meshed");
-        ImGui.Text($"{_world.StreamingCount} chunks being generated");
-        ImGui.Text($"{_chunks.PendingCount} waiting to mesh, {_world.Edits.Count} blocks changed");
+        ImGui.Text($"{_world.StreamingCount} being generated, {_chunks.PendingCount} waiting to mesh");
+        ImGui.Text($"{_world.Edits.Count} blocks changed");
 
         ImGui.SeparatorText("Drawn"u8);
         ImGui.Text($"{_chunks.DrawnChunkCount} chunks, {_chunks.DrawnTriangleCount} triangles");

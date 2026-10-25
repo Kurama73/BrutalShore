@@ -181,6 +181,20 @@ public sealed class VoxelWorld : IVoxelSource, IDisposable
         return true;
     }
 
+    /// <summary>Takes the references a worker needs to mesh one chunk.</summary>
+    /// <param name="chunkCoordinate">The chunk whose surface is wanted.</param>
+    /// <returns>
+    /// The chunk and the twenty-six around it, or <see langword="null" /> if that chunk is not
+    /// loaded.
+    /// </returns>
+    /// <remarks>
+    /// Must be called from the thread that owns the world: it walks the map, which nothing else
+    /// may do. What comes back is safe to hand to another thread; see
+    /// <see cref="ChunkNeighbourhood" /> for why.
+    /// </remarks>
+    public ChunkNeighbourhood? CaptureNeighbourhood(int3 chunkCoordinate) =>
+        _chunks.ContainsKey(chunkCoordinate) ? new ChunkNeighbourhood(chunkCoordinate, Find) : null;
+
     /// <summary>
     /// Whether every neighbour a mesher needs is resident, so the chunk can be meshed without
     /// building faces against space that is merely unloaded.

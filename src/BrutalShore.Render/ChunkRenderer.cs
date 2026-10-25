@@ -31,14 +31,19 @@ public sealed class ChunkRenderer : IDisposable
     private readonly VoxelPipeline _pipeline;
     private readonly SceneBindings _scene;
 
-    private readonly ChunkMesher _mesher = new();
-    private readonly VoxelMesh _mesh = new();
+    private readonly MeshStreamer _mesher;
     private readonly Dictionary<int3, ChunkMesh> _meshes = [];
 
     // Reused every frame: the dirty set cannot be enumerated while it is being cleared, and the
-    // candidates have to be sorted before any of them is meshed.
+    // candidates have to be sorted before any of them is asked for.
     private readonly List<int3> _candidates = [];
     private readonly List<int3> _stale = [];
+
+    // Built once rather than per frame. A comparison written inline captures the centre, so the
+    // sort below would allocate a closure and a delegate on every frame of every session.
+    private readonly Comparison<int3> _nearestFirst;
+
+    private int3 _sortCentre;
 
     /// <summary>Wires the renderer to a world and a pipeline.</summary>
     /// <param name="context">The device meshes are uploaded to.</param>
@@ -46,12 +51,17 @@ public sealed class ChunkRenderer : IDisposable
     /// <param name="world">The world whose chunks are meshed and drawn.</param>
     /// <param name="pipeline">The pipeline that draws them.</param>
     /// <param name="scene">The per-frame uniform block the shaders read.</param>
+    /// <param name="mesher">
+    /// The workers that build the meshes. The renderer takes ownership and disposes it, because
+    /// a mesh one of them is part way through is one only this will ever upload.
+    /// </param>
     public ChunkRenderer(
         GpuContext context,
         GpuRenderer renderer,
         VoxelWorld world,
         VoxelPipeline pipeline,
-        SceneBindings scene
+        SceneBindings scene,
+        MeshStreamer mesher
     )
     {
         _context = context;
@@ -59,6 +69,9 @@ public sealed class ChunkRenderer : IDisposable
         _world = world;
         _pipeline = pipeline;
         _scene = scene;
+        _mesher = mesher;
+        _nearestFirst = (first, second) =>
+            SquaredDistance(first, _sortCentre).CompareTo(SquaredDistance(second, _sortCentre));
     }
 
     /// <summary>How many chunks have a mesh on the GPU.</summary>
@@ -97,29 +110,33 @@ public sealed class ChunkRenderer : IDisposable
                 _candidates.Add(coordinate);
         }
 
-        PendingCount = _candidates.Count;
+        _sortCentre = centreChunk;
+        _candidates.Sort(_nearestFirst);
 
-        _candidates.Sort(
-            (first, second) => SquaredDistance(first, centreChunk).CompareTo(SquaredDistance(second, centreChunk))
-        );
-
-        var meshed = 0;
+        // Ask for as many as the workers will take, nearest first. A chunk the queue refuses
+        // stays dirty and is asked for again once there is room — which is also what rebuilds a
+        // chunk edited while its mesh was in flight, rather than losing the edit.
+        var handedOver = 0;
         foreach (var coordinate in _candidates)
         {
-            if (meshed == budget)
-                break;
-
-            var chunk = _world.Find(coordinate);
-            if (chunk is null)
+            if (_world.CaptureNeighbourhood(coordinate) is not { } neighbourhood)
                 continue;
 
-            Rebuild(coordinate, chunk);
+            if (!_mesher.Request(neighbourhood))
+                break;
+
             _world.ClearDirty(coordinate);
-            meshed++;
+            handedOver++;
         }
 
-        PendingCount -= meshed;
-        return meshed;
+        // What is still owed a mesh: the ones the queue had no room for, plus the ones being
+        // built. Chunks that are dirty but cannot be meshed yet are not counted — the outermost
+        // ring of the loaded world is always one of those, and it is not a backlog.
+        PendingCount = (_candidates.Count - handedOver) + _mesher.OutstandingCount;
+
+        // Uploading is the only part that has to happen here, because it is the only part that
+        // touches the device.
+        return _mesher.Collect(budget, Upload);
     }
 
     /// <summary>Draws every visible chunk mesh into the frame being recorded.</summary>
@@ -226,20 +243,24 @@ public sealed class ChunkRenderer : IDisposable
         return (x * x) + (y * y) + (z * z);
     }
 
-    private void Rebuild(int3 coordinate, Chunk chunk)
+    /// <summary>Copies a finished mesh into GPU buffers and swaps it for the old one.</summary>
+    /// <remarks>
+    /// The mesh belongs to the streamer and is reused the moment this returns, so everything
+    /// wanted from it is copied here and nothing is kept.
+    /// </remarks>
+    private void Upload(int3 coordinate, VoxelMesh mesh)
     {
-        _mesher.Mesh(chunk, coordinate, _world, _world.Registry, _mesh);
-
         Release(coordinate);
 
         // A chunk of solid stone underground, or of sky, meshes to nothing at all. Keeping no
         // entry for it is what makes an empty chunk cost nothing to draw rather than an empty draw
-        // call, and Vulkan would reject a zero-sized buffer anyway.
-        if (_mesh.IsEmpty)
+        // call, and Vulkan would reject a zero-sized buffer anyway. A chunk unloaded while its
+        // mesh was being built is the same case: geometry for ground the world has forgotten.
+        if (mesh.IsEmpty || _world.Find(coordinate) is null)
             return;
 
-        var vertices = GpuBuffer.Create(_context, _mesh.Vertices, VkBufferUsageFlags.VertexBufferBit);
-        var indices = GpuBuffer.Create(_context, _mesh.Indices, VkBufferUsageFlags.IndexBufferBit);
+        var vertices = GpuBuffer.Create(_context, mesh.Vertices, VkBufferUsageFlags.VertexBufferBit);
+        var indices = GpuBuffer.Create(_context, mesh.Indices, VkBufferUsageFlags.IndexBufferBit);
 
         _meshes[coordinate] = new ChunkMesh(vertices, indices);
         ResidentBytes += (int)vertices.Size + (int)indices.Size;
