@@ -42,6 +42,13 @@ public sealed class VoxelWorld : IVoxelSource
     /// <summary>The block types this world is made of.</summary>
     public BlockRegistry Registry { get; }
 
+    /// <summary>Every block that has been changed from what the generator would have made.</summary>
+    /// <remarks>
+    /// Writable from outside so a save can be loaded into a world before anything is streamed;
+    /// every edit recorded here is applied to a chunk as it is generated.
+    /// </remarks>
+    public BlockEdits Edits { get; } = new();
+
     /// <summary>How many chunks are resident.</summary>
     public int LoadedChunkCount => _chunks.Count;
 
@@ -75,6 +82,11 @@ public sealed class VoxelWorld : IVoxelSource
 
         var chunk = new Chunk();
         _generator.Generate(chunkCoordinate, chunk);
+
+        // The generator makes the world as it was; the edits make it as it is. Without this
+        // step a block broken next to the player comes back the moment they walk far enough
+        // for the chunk to unload, because unloading is how a chunk is forgotten.
+        Edits.ApplyTo(chunkCoordinate, chunk);
         _chunks[chunkCoordinate] = chunk;
 
         // A new chunk needs meshing, and so do its neighbours: the faces along the boundary they
@@ -120,6 +132,7 @@ public sealed class VoxelWorld : IVoxelSource
         if (!chunk.Set(local.X, local.Y, local.Z, block))
             return false;
 
+        Edits.Record(blockCoordinate, block);
         _dirty.Add(chunkCoordinate);
 
         // Only the neighbours the block actually touches. A block in the middle of a chunk affects
