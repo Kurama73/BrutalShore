@@ -138,6 +138,7 @@ public sealed class ShoreboundGame : IGame
     private readonly DayClock _clock;
     private readonly TitleCamera _titleCamera;
     private readonly Mining _mining = new();
+    private readonly Drops _drops;
 
     // Assigned in Load, because each of these needs a device, and there is none until the host has
     // opened a window.
@@ -151,6 +152,7 @@ public sealed class ShoreboundGame : IGame
     private SkyRenderer _sky = null!;
     private OutlineRenderer _outline = null!;
     private ChunkRenderer _chunks = null!;
+    private CubeRenderer _cubes = null!;
 
     private Settings _settings;
     private Screen _screen = Screen.Title;
@@ -184,6 +186,7 @@ public sealed class ShoreboundGame : IGame
             new ChunkStreamer(_generator, WorkerCount, StreamingQueueCapacity)
         );
         _hotbar = new Hotbar(_blocks);
+        _drops = new Drops(options.Seed);
         _clock = new DayClock(options.StartHour, _settings.DayLengthSeconds);
 
         // Above where the player will spawn, which is the one place the world is certain to have
@@ -236,6 +239,13 @@ public sealed class ShoreboundGame : IGame
             _scene,
             new MeshStreamer(_blocks.Registry, WorkerCount, MeshQueueCapacity)
         );
+        _cubes = new CubeRenderer(
+            context.Gpu,
+            context.Renderer,
+            context.Shaders,
+            _scene,
+            context.Target.RenderPass
+        );
         _controller = new PlayerController(context.Window, _camera);
 
         // Everything that has to be told about a setting rather than read it, told once now that
@@ -287,7 +297,15 @@ public sealed class ShoreboundGame : IGame
         // took longer to break on a slower machine would be a block whose hardness was the frame
         // rate rather than the stone.
         if (_mining.Step(_world, _aimedAt, _isBreaking, seconds) is { } broken)
-            _world.SetBlock(broken, BlockId.Air);
+        {
+            // Read before the block is taken out, because afterwards there is nothing there to
+            // say what fell out of it.
+            var fallen = _world.BlockAt(broken.X, broken.Y, broken.Z);
+            if (_world.SetBlock(broken, BlockId.Air))
+                _drops.Spawn(fallen, broken);
+        }
+
+        _drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _hotbar);
         _player.Step(_world, _world.Registry, seconds, _controller.ReadIntent(), _camera.Yaw);
         _camera.Position = _player.EyeMeters;
 
@@ -385,6 +403,22 @@ public sealed class ShoreboundGame : IGame
         _sky.Draw();
         _chunks.Draw(_camera, _viewProjection);
 
+        if (_drops.Count > 0)
+        {
+            _cubes.Begin();
+            foreach (var drop in _drops.All)
+            {
+                var color = _world.Registry[drop.Block].Color;
+                _cubes.Draw(
+                    drop.MiddleMeters,
+                    Drops.SizeMeters,
+                    new float3(color.X / 255f, color.Y / 255f, color.Z / 255f),
+                    drop.TurnRadians,
+                    _camera.Position
+                );
+            }
+        }
+
         // Last, so it sits over the world rather than under the water in front of it.
         if (_screen == Screen.Playing && _aimedAt is { } aimed)
             _outline.Draw(aimed.Block, _camera.Position);
@@ -407,11 +441,11 @@ public sealed class ShoreboundGame : IGame
 
             case Screen.Playing:
                 _ui.DrawCrosshair(_aimedAt is not null);
-                _ui.DrawHotbar(_hotbar, _hotbar.ColorOf);
+                _ui.DrawHotbar(_hotbar);
                 break;
 
             case Screen.Paused:
-                _ui.DrawHotbar(_hotbar, _hotbar.ColorOf);
+                _ui.DrawHotbar(_hotbar);
                 Choose(context, _ui.DrawPause(_options.SavePath));
                 break;
 
@@ -510,7 +544,7 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_generator.BiomeAt(under.X, under.Z).Name}");
         ImGui.Text($"{_world.LoadedChunkCount} loaded, {_chunks.MeshCount} meshed");
         ImGui.Text($"{_world.StreamingCount} being generated, {_chunks.PendingCount} waiting to mesh");
-        ImGui.Text($"{_world.Edits.Count} blocks changed");
+        ImGui.Text($"{_world.Edits.Count} blocks changed, {_drops.Count} lying about");
 
         ImGui.SeparatorText("Drawn"u8);
         ImGui.Text($"{_chunks.DrawnChunkCount} chunks, {_chunks.DrawnTriangleCount} triangles");
@@ -545,6 +579,7 @@ public sealed class ShoreboundGame : IGame
     /// <inheritdoc />
     public void Dispose()
     {
+        _cubes.Dispose();
         _chunks.Dispose();
         _outline.Dispose();
         _sky.Dispose();
@@ -739,7 +774,14 @@ public sealed class ShoreboundGame : IGame
         if (_player.WouldBeInsideMe(hit.Before))
             return;
 
-        _world.SetBlock(hit.Before, _hotbar.Selected);
+        if (!_hotbar.HasSelection)
+            return;
+
+        // Spent only if it went down. A placement refused by the world — because something is
+        // already there — must not cost the block, or a player tapping at a wall empties their
+        // hand into nothing.
+        if (_world.SetBlock(hit.Before, _hotbar.Selected))
+            _hotbar.TakeOne();
     }
 
     /// <summary>Acts on what a menu reported.</summary>
@@ -793,6 +835,8 @@ public sealed class ShoreboundGame : IGame
     private void StartFreshWorld()
     {
         _world.Edits.Clear();
+        _hotbar.Clear();
+        _drops.Clear();
 
         // One block above the surface, so the first step is a short fall rather than a long one
         // through terrain that has not streamed in yet.
@@ -817,6 +861,8 @@ public sealed class ShoreboundGame : IGame
             _player.IsFlying = save.IsFlying;
             _controller.AimAt(save.Yaw, save.Pitch);
             _hotbar.Select(save.HotbarIndex);
+            _hotbar.Restore(save.Carried, _blocks.Registry);
+            _drops.Clear();
             _clock.SetDayFraction(save.DayFraction);
 
             Say(
@@ -845,6 +891,7 @@ public sealed class ShoreboundGame : IGame
             IsFlying = _player.IsFlying,
             DayFraction = _clock.DayFraction,
             HotbarIndex = _hotbar.SelectedIndex,
+            Carried = _hotbar.Carried(_blocks.Registry),
         };
 
         try

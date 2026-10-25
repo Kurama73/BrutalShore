@@ -101,13 +101,13 @@ public sealed class GameUi
 
     /// <summary>Draws the row of blocks along the bottom of the screen.</summary>
     /// <param name="hotbar">The row to draw.</param>
-    /// <param name="colorOf">What colour a slot's block is, for its swatch.</param>
     /// <remarks>
     /// A row of swatches rather than a row of words. The thing a player is choosing between is
-    /// blocks, and a block is a colour in this game — so the colour is the label, and the name
-    /// appears once, over whichever one is in hand.
+    /// blocks, and a block is a colour in this game — so the colour is the label, the count is
+    /// in the corner where every game of this kind puts it, and the name appears once, over
+    /// whichever one is in hand.
     /// </remarks>
-    public void DrawHotbar(Hotbar hotbar, Func<int, float4> colorOf)
+    public void DrawHotbar(Hotbar hotbar)
     {
         var viewport = ImGui.GetMainViewport();
         var scale = ImGui.GetStyle().FontScaleMain;
@@ -134,6 +134,7 @@ public sealed class GameUi
         for (var index = 0; index < hotbar.Count; index++)
         {
             var chosen = index == hotbar.SelectedIndex;
+            var count = hotbar.At(index).Count;
             var x = left + (index * (slot + gap));
             var lift = chosen ? 4f * scale : 0f;
             var minimum = new float2(x, top - lift);
@@ -141,13 +142,16 @@ public sealed class GameUi
 
             UiCanvas.Rect(minimum, maximum, UiPalette.Fade(UiPalette.Scrim, chosen ? 0.82f : 0.6f), 5f * scale);
 
-            var inset = 7f * scale;
-            UiCanvas.Rect(
-                minimum + new float2(inset, inset),
-                maximum - new float2(inset, inset),
-                UiPalette.Fade(colorOf(index), chosen ? 1f : 0.85f),
-                3f * scale
-            );
+            if (count > 0)
+            {
+                var inset = 7f * scale;
+                UiCanvas.Rect(
+                    minimum + new float2(inset, inset),
+                    maximum - new float2(inset, inset),
+                    UiPalette.Fade(hotbar.ColorOf(index), chosen ? 1f : 0.85f),
+                    3f * scale
+                );
+            }
 
             UiCanvas.Outline(
                 minimum,
@@ -156,6 +160,20 @@ public sealed class GameUi
                 5f * scale,
                 chosen ? 2f * scale : 1f
             );
+
+            // The count in the corner, which is the one number a player reads without looking.
+            if (count > 0)
+            {
+                var carried = $"{count}";
+                var countSize = size * 0.82f;
+                var countWidth = UiCanvas.Measure(carried, countSize).X;
+                UiCanvas.Text(
+                    new float2(maximum.X - countWidth - (4f * scale), maximum.Y - countSize - (2f * scale)),
+                    UiPalette.Text,
+                    carried,
+                    countSize
+                );
+            }
 
             // Under the slot rather than inside it. A number in the corner of a swatch is a
             // number on top of whatever colour that block happens to be, and half the blocks in
