@@ -55,6 +55,29 @@ dotnet run --project games/Shorebound -c Release -- \
     --frames 400 --camera -140 190 -140 45 -22 --screenshot coastline.png
 ```
 
+### Checking it without a GPU
+
+The same run works on a machine with no graphics card at all, which is what
+makes it usable from CI or a remote shell. Mesa's `lavapipe` is a Vulkan
+implementation on the CPU, and GLFW only needs some X server to open a window
+on:
+
+```bash
+sudo apt install mesa-vulkan-drivers vulkan-validationlayers xvfb
+Xvfb :99 -screen 0 1600x900x24 &
+export DISPLAY=:99 VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+
+dotnet run --project games/Shorebound -c Release -- \
+    --frames 400 --camera -140 190 -140 45 -22 --day-length 0 \
+    --validation --screenshot coastline.png
+```
+
+It renders at a few frames a second, which a fixed frame count makes irrelevant.
+Add `--validation` whenever GPU code changes: the validation layers catch the
+class of mistake that works anyway on one driver and corrupts memory on the
+next, and they found a real one here — a swapchain image being copied from
+without having asked for the usage that allows it.
+
 ## Layout
 
 `src/` is the engine and `games/` is what is built with it. **Nothing in `src/`
