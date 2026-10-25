@@ -25,6 +25,9 @@ internal readonly struct SceneUniforms
     /// <summary>The inverse of <see cref="ViewProjection" />, which turns a pixel into a ray.</summary>
     public readonly float4x4 InverseViewProjection;
 
+    /// <summary>Render space to the shadow map's clip space; see <see cref="SunShadow" />.</summary>
+    public readonly float4x4 LightViewProjection;
+
     /// <summary>xyz: the unit direction towards the sun. w: the daylight factor.</summary>
     public readonly float4 SunDirection;
 
@@ -49,14 +52,31 @@ internal readonly struct SceneUniforms
     /// <summary>x: where fog starts, in metres. y: where it is total. zw: spare.</summary>
     public readonly float4 Fog;
 
+    /// <summary>
+    /// x: how much direct light a shadow takes away. y: how far along its normal a surface is
+    /// nudged before being looked up, in metres. z: one shadow map texel in map coordinates.
+    /// w: spare.
+    /// </summary>
+    public readonly float4 Shadow;
+
     /// <summary>Packs one frame's view and sky into the block the shaders read.</summary>
     /// <param name="viewProjection">The camera's view-projection, in render space.</param>
+    /// <param name="lightViewProjection">Render space to the shadow map's clip space.</param>
     /// <param name="sky">The sun, the moon and the sky's colours at this moment.</param>
     /// <param name="fogStartMeters">How far away fog begins.</param>
     /// <param name="fogEndMeters">How far away fog is total.</param>
-    public SceneUniforms(in float4x4 viewProjection, in SkyLight sky, float fogStartMeters, float fogEndMeters)
+    /// <param name="shadow">The shadow terms, laid out as <see cref="Shadow" /> describes.</param>
+    public SceneUniforms(
+        in float4x4 viewProjection,
+        in float4x4 lightViewProjection,
+        in SkyLight sky,
+        float fogStartMeters,
+        float fogEndMeters,
+        float4 shadow
+    )
     {
         ViewProjection = viewProjection;
+        LightViewProjection = lightViewProjection;
 
         // A camera matrix is always invertible, so a failure here would mean the caller built
         // something that is not one; leaving the identity behind makes that obvious on screen.
@@ -70,5 +90,6 @@ internal readonly struct SceneUniforms
         ZenithColor = new float4(sky.ZenithColor, 0f);
         HorizonColor = new float4(sky.HorizonColor, 0f);
         Fog = new float4(fogStartMeters, fogEndMeters, 0f, 0f);
+        Shadow = shadow;
     }
 }

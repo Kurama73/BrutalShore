@@ -24,41 +24,81 @@ public sealed unsafe class SceneBindings : IDisposable
     private readonly GpuBuffer[] _buffers = new GpuBuffer[GpuRenderer.MaxFramesInFlight];
     private readonly VkDescriptorSet[] _sets = new VkDescriptorSet[GpuRenderer.MaxFramesInFlight];
     private readonly VkDescriptorPool _pool;
+    private readonly DepthTarget _shadowMap;
+
+    /// <summary>How much of its direct light a fully shadowed surface loses.</summary>
+    /// <remarks>
+    /// Not quite all of it. The ambient term already keeps a shadow from going black, but a
+    /// sliver of direct light left in means a surface still shows which way it faces inside
+    /// one, which is what keeps a shadowed cliff from reading as a flat silhouette.
+    /// </remarks>
+    private const float ShadowStrength = 0.9f;
+
+    /// <summary>How far along its own normal a surface is nudged before it is looked up.</summary>
+    /// <remarks>
+    /// Six centimetres, against blocks a metre across. Every surface in this world is an axis
+    /// aligned plane, so moving the lookup off the surface is worth more than any depth bias:
+    /// it scales with nothing and cannot detach a shadow from the thing casting it.
+    /// </remarks>
+    private const float ShadowNormalOffsetMeters = 0.06f;
 
     /// <summary>Creates the layout, the pool and one buffer and set per frame in flight.</summary>
     /// <param name="context">The device everything is allocated from.</param>
-    public SceneBindings(GpuContext context)
+    /// <param name="shadowMap">The depth target the fragment shaders sample for shadows.</param>
+    public SceneBindings(GpuContext context, DepthTarget shadowMap)
     {
         _context = context;
+        _shadowMap = shadowMap;
 
         // Both stages read the block: the vertex shader needs the view-projection, the fragment
         // shader needs the lighting. Splitting it in two would cost a second binding to save
         // nothing measurable.
-        var binding = new VkDescriptorSetLayoutBinding
-        {
-            Binding = 0,
-            DescriptorType = VkDescriptorType.UniformBuffer,
-            DescriptorCount = 1,
-            StageFlags = VkShaderStageFlags.VertexBit | VkShaderStageFlags.FragmentBit,
-        };
+        Span<VkDescriptorSetLayoutBinding> bindings =
+        [
+            new()
+            {
+                Binding = 0,
+                DescriptorType = VkDescriptorType.UniformBuffer,
+                DescriptorCount = 1,
+                StageFlags = VkShaderStageFlags.VertexBit | VkShaderStageFlags.FragmentBit,
+            },
+
+            // Only the fragment shader looks up a shadow; the depth-only pass that fills the map
+            // declares the same layout but never touches this binding.
+            new()
+            {
+                Binding = 1,
+                DescriptorType = VkDescriptorType.CombinedImageSampler,
+                DescriptorCount = 1,
+                StageFlags = VkShaderStageFlags.FragmentBit,
+            },
+        ];
 
         Layout = context.Device.CreateDescriptorSetLayout(
-            new VkDescriptorSetLayoutCreateInfo { BindingCount = 1, Bindings = &binding },
+            new VkDescriptorSetLayoutCreateInfo
+            {
+                BindingCount = bindings.Length,
+                Bindings = bindings.AsPointer(),
+            },
             null
         );
 
-        var poolSize = new VkDescriptorPoolSize
-        {
-            Type = VkDescriptorType.UniformBuffer,
-            DescriptorCount = GpuRenderer.MaxFramesInFlight,
-        };
+        Span<VkDescriptorPoolSize> poolSizes =
+        [
+            new() { Type = VkDescriptorType.UniformBuffer, DescriptorCount = GpuRenderer.MaxFramesInFlight },
+            new()
+            {
+                Type = VkDescriptorType.CombinedImageSampler,
+                DescriptorCount = GpuRenderer.MaxFramesInFlight,
+            },
+        ];
 
         _pool = context.Device.CreateDescriptorPool(
             new VkDescriptorPoolCreateInfo
             {
                 MaxSets = GpuRenderer.MaxFramesInFlight,
-                PoolSizeCount = 1,
-                PoolSizes = &poolSize,
+                PoolSizeCount = poolSizes.Length,
+                PoolSizes = poolSizes.AsPointer(),
             },
             null
         );
@@ -82,18 +122,34 @@ public sealed unsafe class SceneBindings : IDisposable
     /// <summary>Fills in this frame's copy of the block.</summary>
     /// <param name="frameIndex">The frame being recorded; see <see cref="GpuRenderer.FrameIndex" />.</param>
     /// <param name="viewProjection">The camera's view-projection, in render space.</param>
+    /// <param name="lightViewProjection">Render space to the shadow map's clip space.</param>
     /// <param name="sky">The sun, the moon and the sky's colours at this moment.</param>
     /// <param name="fogStartMeters">How far away fog begins.</param>
     /// <param name="fogEndMeters">How far away fog is total.</param>
     public void Update(
         int frameIndex,
         in float4x4 viewProjection,
+        in float4x4 lightViewProjection,
         in SkyLight sky,
         float fogStartMeters,
         float fogEndMeters
     )
     {
-        var uniforms = new SceneUniforms(viewProjection, sky, fogStartMeters, fogEndMeters);
+        var shadow = new float4(
+            ShadowStrength,
+            ShadowNormalOffsetMeters,
+            1f / _shadowMap.Resolution,
+            0f
+        );
+
+        var uniforms = new SceneUniforms(
+            viewProjection,
+            lightViewProjection,
+            sky,
+            fogStartMeters,
+            fogEndMeters,
+            shadow
+        );
         _buffers[frameIndex].Rewrite(new ReadOnlySpan<SceneUniforms>(in uniforms));
     }
 
@@ -152,6 +208,15 @@ public sealed unsafe class SceneBindings : IDisposable
             Range = ByteSize.Of<SceneUniforms>(),
         };
 
+        // The shadow map is one image for the whole renderer, so every frame's set points at the
+        // same view; what differs between frames is only the block beside it.
+        var imageInfo = new VkDescriptorImageInfo
+        {
+            Sampler = _shadowMap.Sampler,
+            ImageView = _shadowMap.View,
+            ImageLayout = VkImageLayout.ShaderReadOnlyOptimal,
+        };
+
         _context.Device.UpdateDescriptorSets(
             [
                 new VkWriteDescriptorSet
@@ -161,6 +226,14 @@ public sealed unsafe class SceneBindings : IDisposable
                     DescriptorCount = 1,
                     DescriptorType = VkDescriptorType.UniformBuffer,
                     BufferInfo = &bufferInfo,
+                },
+                new VkWriteDescriptorSet
+                {
+                    DstSet = set,
+                    DstBinding = 1,
+                    DescriptorCount = 1,
+                    DescriptorType = VkDescriptorType.CombinedImageSampler,
+                    ImageInfo = &imageInfo,
                 },
             ],
             []

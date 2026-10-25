@@ -52,11 +52,14 @@ public static class SunCycle
     private static readonly float3 NightHorizon = new(0.045f, 0.055f, 0.105f);
     private static readonly float3 DuskHorizon = new(0.95f, 0.44f, 0.20f);
 
-    private static readonly float3 HighSun = new(0.80f, 0.776f, 0.736f);
-    private static readonly float3 LowSun = new(0.82f, 0.46f, 0.25f);
+    private static readonly float3 HighSun = new(0.94f, 0.912f, 0.865f);
+    private static readonly float3 LowSun = new(0.95f, 0.52f, 0.27f);
     private static readonly float3 FullMoon = new(0.10f, 0.13f, 0.22f);
 
-    private static readonly float3 DayAmbient = new(0.30f, 0.34f, 0.40f);
+    // Direct light outweighs the sky's bounce by roughly four to one at midday. That ratio is
+    // what decides how much a shadow is worth: raise the ambient and shadows stop reading,
+    // lower it and anything the sun misses turns to a silhouette.
+    private static readonly float3 DayAmbient = new(0.22f, 0.26f, 0.33f);
     private static readonly float3 NightAmbient = new(0.040f, 0.050f, 0.082f);
 
     /// <summary>Samples the cycle with the default tilt.</summary>

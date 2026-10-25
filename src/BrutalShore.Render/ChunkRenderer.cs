@@ -70,6 +70,9 @@ public sealed class ChunkRenderer : IDisposable
     /// <summary>How many triangles were drawn by the last <see cref="Draw" />.</summary>
     public int DrawnTriangleCount { get; private set; }
 
+    /// <summary>How many chunks the last <see cref="DrawShadow" /> wrote into the map.</summary>
+    public int ShadowedChunkCount { get; private set; }
+
     /// <summary>How many dirty chunks were still waiting after the last <see cref="Update" />.</summary>
     public int PendingCount { get; private set; }
 
@@ -127,36 +130,30 @@ public sealed class ChunkRenderer : IDisposable
     /// </param>
     public void Draw(Camera camera, in float4x4 viewProjection)
     {
-        var frustum = ViewFrustum.FromViewProjection(viewProjection);
         var commands = _renderer.Commands;
 
         commands.BindPipeline(VkPipelineBindPoint.Graphics, _pipeline.Handle);
         _scene.Bind(commands, _pipeline.Layout, _renderer.FrameIndex);
 
-        DrawnChunkCount = 0;
-        DrawnTriangleCount = 0;
+        (DrawnChunkCount, DrawnTriangleCount) = Record(_pipeline.Layout, camera, viewProjection);
+    }
 
-        foreach (var (coordinate, mesh) in _meshes)
-        {
-            // The chunk's corner relative to the camera, narrowed to f32 only after the
-            // subtraction: this is the floating origin, and the one place it has to happen.
-            var origin = RenderSpace.ToRenderSpace(WorldOrigin(coordinate), camera.Position, 1.0);
-            if (!frustum.Intersects(origin, origin + new float3(Chunk.Size)))
-                continue;
+    /// <summary>Draws every chunk the light can see into the shadow map.</summary>
+    /// <param name="pipeline">The depth-only pipeline that writes the map.</param>
+    /// <param name="camera">The camera; its position is still the render-space origin.</param>
+    /// <param name="lightViewProjection">Render space to the shadow map's clip space.</param>
+    /// <remarks>
+    /// The same meshes as <see cref="Draw" />, culled against the light's box instead of the
+    /// camera's frustum — a chunk behind the camera can still cast into what the camera sees.
+    /// </remarks>
+    public void DrawShadow(ShadowPipeline pipeline, Camera camera, in float4x4 lightViewProjection)
+    {
+        var commands = _renderer.Commands;
 
-            commands.BindVertexBuffer(0, mesh.Vertices.Handle);
-            commands.BindIndexBuffer(mesh.Indices.Handle, ByteSize.Zero, VkIndexType.UInt32);
-            commands.PushConstants(
-                _pipeline.Layout,
-                VkShaderStageFlags.VertexBit,
-                ByteSize.Zero,
-                new VoxelPushConstants(origin)
-            );
-            commands.DrawIndexed(mesh.Indices.Count, 1, 0, 0, 0);
+        commands.BindPipeline(VkPipelineBindPoint.Graphics, pipeline.Handle);
+        _scene.Bind(commands, pipeline.Layout, _renderer.FrameIndex);
 
-            DrawnChunkCount++;
-            DrawnTriangleCount += mesh.Indices.Count / 3;
-        }
+        (ShadowedChunkCount, _) = Record(pipeline.Layout, camera, lightViewProjection);
     }
 
     /// <inheritdoc />
@@ -169,6 +166,50 @@ public sealed class ChunkRenderer : IDisposable
 
         _meshes.Clear();
         ResidentBytes = 0;
+    }
+
+    /// <summary>
+    /// Records a draw call for every mesh inside a frustum, and reports what it drew.
+    /// </summary>
+    /// <remarks>
+    /// Shared by the camera pass and the shadow pass because the two differ only in which matrix
+    /// decides what is visible. The pipeline and the descriptor set are already bound; all this
+    /// adds per chunk is the one thing that changes, which is where the chunk is.
+    /// </remarks>
+    private (int Chunks, int Triangles) Record(
+        VkPipelineLayout layout,
+        Camera camera,
+        in float4x4 viewProjection
+    )
+    {
+        var frustum = ViewFrustum.FromViewProjection(viewProjection);
+        var commands = _renderer.Commands;
+        var chunks = 0;
+        var triangles = 0;
+
+        foreach (var (coordinate, mesh) in _meshes)
+        {
+            // The chunk's corner relative to the camera, narrowed to f32 only after the
+            // subtraction: this is the floating origin, and the one place it has to happen.
+            var origin = RenderSpace.ToRenderSpace(WorldOrigin(coordinate), camera.Position, 1.0);
+            if (!frustum.Intersects(origin, origin + new float3(Chunk.Size)))
+                continue;
+
+            commands.BindVertexBuffer(0, mesh.Vertices.Handle);
+            commands.BindIndexBuffer(mesh.Indices.Handle, ByteSize.Zero, VkIndexType.UInt32);
+            commands.PushConstants(
+                layout,
+                VkShaderStageFlags.VertexBit,
+                ByteSize.Zero,
+                new VoxelPushConstants(origin)
+            );
+            commands.DrawIndexed(mesh.Indices.Count, 1, 0, 0, 0);
+
+            chunks++;
+            triangles += mesh.Indices.Count / 3;
+        }
+
+        return (chunks, triangles);
     }
 
     private static double3 WorldOrigin(int3 chunkCoordinate)

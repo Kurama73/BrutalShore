@@ -1,4 +1,5 @@
 using Brutal.ImGuiApi;
+using BrutalShore.Gpu;
 using BrutalShore.Render;
 using BrutalShore.Runtime;
 using BrutalShore.Voxel;
@@ -37,6 +38,17 @@ public sealed class ShoreboundGame : IGame
     /// <summary>Where fog is total, as a fraction of the loaded radius.</summary>
     private const float FogEndFraction = 1.15f;
 
+    /// <summary>How far from the player the sun's shadows reach, in metres.</summary>
+    /// <remarks>
+    /// With a 2048 map that is a shade over ten centimetres per texel, against blocks a metre
+    /// across — fine enough that a shadow's edge reads as an edge rather than a staircase.
+    /// Doubling the radius would halve that, and the far half of it is behind the fog anyway.
+    /// </remarks>
+    private const float ShadowRadiusMeters = 112f;
+
+    /// <summary>The shadow map's size in texels.</summary>
+    private const int ShadowResolution = 2048;
+
     private readonly Options _options;
     private readonly GameBlocks _blocks;
     private readonly TerrainGenerator _generator;
@@ -47,12 +59,16 @@ public sealed class ShoreboundGame : IGame
     // Assigned in Load, because each of these needs a device, and there is none until the host has
     // opened a window.
     private PlayerController _controller = null!;
+    private DepthTarget _shadowMap = null!;
     private SceneBindings _scene = null!;
     private VoxelPipeline _pipeline = null!;
+    private ShadowPipeline _shadowPipeline = null!;
     private SkyRenderer _sky = null!;
     private ChunkRenderer _chunks = null!;
 
     private int3 _centre;
+    private float4x4 _viewProjection;
+    private float4x4 _lightViewProjection;
 
     /// <summary>Builds the world, which needs nothing from the GPU.</summary>
     public ShoreboundGame(Options options)
@@ -74,8 +90,10 @@ public sealed class ShoreboundGame : IGame
     /// <inheritdoc />
     public void Load(GameContext context)
     {
-        _scene = new SceneBindings(context.Gpu);
+        _shadowMap = new DepthTarget(context.Gpu, ShadowResolution);
+        _scene = new SceneBindings(context.Gpu, _shadowMap);
         _pipeline = new VoxelPipeline(context.Gpu, context.Shaders, _scene, context.Target.RenderPass);
+        _shadowPipeline = new ShadowPipeline(context.Gpu, context.Shaders, _scene, _shadowMap.RenderPass);
         _sky = new SkyRenderer(context.Gpu, context.Renderer, context.Shaders, _scene, context.Target.RenderPass);
         _chunks = new ChunkRenderer(context.Gpu, context.Renderer, _world, _pipeline, _scene);
         _controller = new PlayerController(context.Window, _camera);
@@ -116,22 +134,44 @@ public sealed class ShoreboundGame : IGame
     }
 
     /// <inheritdoc />
-    public void Draw(GameContext context)
+    public void DrawOffscreen(GameContext context)
     {
-        var viewProjection = _camera.ViewProjection(context.AspectRatio);
-        var viewMeters = _options.ViewRadiusChunks * Chunk.Size;
+        // The whole frame's view of the world is decided here, before anything is recorded, so
+        // that the shadow pass and the camera pass cannot disagree about where the sun is.
+        var sky = SunCycle.At(_clock.DayFraction);
+        _viewProjection = _camera.ViewProjection(context.AspectRatio);
+        _lightViewProjection = SunShadow.LightViewProjection(
+            _camera.Position,
+            sky.KeyDirection,
+            ShadowRadiusMeters,
 
+            // Deep enough to catch anything above or below the player that could cast into the
+            // box, which in a world this tall means the whole of it either way.
+            VoxelWorld.HeightBlocks + ShadowRadiusMeters,
+            ShadowResolution
+        );
+
+        var viewMeters = _options.ViewRadiusChunks * Chunk.Size;
         _scene.Update(
             context.Renderer.FrameIndex,
-            viewProjection,
-            SunCycle.At(_clock.DayFraction),
+            _viewProjection,
+            _lightViewProjection,
+            sky,
             viewMeters * FogStartFraction,
             viewMeters * FogEndFraction
         );
 
+        _shadowMap.Begin(context.Renderer.Commands);
+        _chunks.DrawShadow(_shadowPipeline, _camera, _lightViewProjection);
+        _shadowMap.End(context.Renderer.Commands);
+    }
+
+    /// <inheritdoc />
+    public void Draw(GameContext context)
+    {
         // The sky first: it writes no depth, so everything below lands on top of it.
         _sky.Draw();
-        _chunks.Draw(_camera, viewProjection);
+        _chunks.Draw(_camera, _viewProjection);
     }
 
     /// <inheritdoc />
@@ -150,6 +190,7 @@ public sealed class ShoreboundGame : IGame
 
         ImGui.SeparatorText("Drawn"u8);
         ImGui.Text($"{_chunks.DrawnChunkCount} chunks, {_chunks.DrawnTriangleCount} triangles");
+        ImGui.Text($"{_chunks.ShadowedChunkCount} chunks into the shadow map");
         ImGui.Text($"{_chunks.ResidentBytes / (1024.0 * 1024.0):F1} MiB of geometry");
 
         ImGui.SeparatorText("Controls"u8);
@@ -162,7 +203,9 @@ public sealed class ShoreboundGame : IGame
     {
         _chunks.Dispose();
         _sky.Dispose();
+        _shadowPipeline.Dispose();
         _pipeline.Dispose();
         _scene.Dispose();
+        _shadowMap.Dispose();
     }
 }

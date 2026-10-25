@@ -4,6 +4,7 @@
 layout(set = 0, binding = 0, std140) uniform Scene {
     mat4 viewProjection;
     mat4 inverseViewProjection;
+    mat4 lightViewProjection;
     vec4 sunDirection;
     vec4 sunColor;
     vec4 moonDirection;
@@ -12,6 +13,7 @@ layout(set = 0, binding = 0, std140) uniform Scene {
     vec4 zenithColor;
     vec4 horizonColor;
     vec4 fog;
+    vec4 shadow;
 } scene;
 
 layout(location = 0) in vec3 inDirection;
