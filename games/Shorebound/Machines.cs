@@ -30,6 +30,9 @@ public sealed class Machines
     private readonly Smelting _smelting;
     private readonly List<int3> _order = [];
 
+    /// <summary>Whether the grid has to be worked out again before the next step.</summary>
+    private bool _wiringChanged = true;
+
     /// <summary>Builds an empty set of machines.</summary>
     /// <param name="smelting">The tables each smelter is run against.</param>
     public Machines(Smelting smelting) => _smelting = smelting;
@@ -65,6 +68,7 @@ public sealed class Machines
             _order.Add(position);
 
         _machines[position] = machine;
+        _wiringChanged = true;
         return machine;
     }
 
@@ -77,6 +81,7 @@ public sealed class Machines
             return null;
 
         _order.Remove(position);
+        _wiringChanged = true;
         return machine;
     }
 
@@ -85,7 +90,11 @@ public sealed class Machines
     {
         _machines.Clear();
         _order.Clear();
+        _wiringChanged = true;
     }
+
+    /// <summary>The grids the cables make, worked out again only when something is built.</summary>
+    public PowerGrid Power { get; } = new();
 
     /// <summary>Runs every machine for a slice of time.</summary>
     /// <param name="seconds">How long has passed.</param>
@@ -98,6 +107,18 @@ public sealed class Machines
     /// </remarks>
     public void Step(double seconds, VoxelWorld world)
     {
+        // The wiring first, so that a machine stepped this frame already knows what it got. The
+        // rebuild is skipped on nearly every frame: the answer only changes when something is
+        // placed or broken, and walking every cable sixty times a second would be the most
+        // expensive thing in this program.
+        if (_wiringChanged)
+        {
+            Power.Rebuild(this);
+            _wiringChanged = false;
+        }
+
+        Power.Step(seconds);
+
         // Copied because a machine's step can remove another one — a belt carrying the last item
         // out of a smelter does not, but the next machine written might.
         foreach (var position in _order.ToArray())

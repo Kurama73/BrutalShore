@@ -22,7 +22,7 @@ namespace Shorebound;
 /// alternative is a drill that remembers a seam that is no longer there.
 /// </para>
 /// </remarks>
-public sealed class Miner : IMachine
+public sealed class Miner : IMachine, IPowered
 {
     /// <summary>How long one block of ore takes to bring up, in seconds.</summary>
     /// <remarks>
@@ -33,6 +33,8 @@ public sealed class Miner : IMachine
     private const float CycleSeconds = 4f;
 
     private Smelting? _smelting;
+    private double _powerShare;
+    private bool _hasWork;
     private float _workedSeconds;
     private float _burnLeftSeconds;
     private float _burnTotalSeconds;
@@ -43,8 +45,17 @@ public sealed class Miner : IMachine
     /// <summary>What it has brought up and not had taken away.</summary>
     public Slots Output { get; } = new(1);
 
-    /// <summary>Whether it is alight.</summary>
-    public bool IsLit => _burnLeftSeconds > 0f;
+    /// <summary>Whether it is working.</summary>
+    public bool IsLit => _burnLeftSeconds > 0f || _powerShare > 0.0;
+
+    /// <summary>How much it draws, in watts, when it has a seam to work.</summary>
+    public const double DrawWatts = 90.0;
+
+    /// <inheritdoc />
+    public double DemandWatts => _hasWork ? DrawWatts : 0.0;
+
+    /// <inheritdoc />
+    public void Supply(double share) => _powerShare = double.Clamp(share, 0.0, 1.0);
 
     /// <summary>How far through the current block it is, from 0 to 1.</summary>
     public float Progress => float.Clamp(_workedSeconds / CycleSeconds, 0f, 1f);
@@ -54,23 +65,44 @@ public sealed class Miner : IMachine
     {
         _smelting = step.Smelting;
 
+        // Taken and cleared in one go. A share is good for the step it was given for and no
+        // longer: a machine whose cable is broken is never told anything again, so a share that
+        // persisted would leave it running for ever on electricity that stopped arriving.
+        var share = _powerShare;
+        _powerShare = 0.0;
+
         // What is directly underneath. A drill is placed on top of a seam, which is how a player
         // can see what it is working without opening anything.
         var under = new int3(step.Position.X, step.Position.Y - 1, step.Position.Z);
         var ore = step.World.BlockAt(under.X, under.Y, under.Z);
 
-        if (!Yields(ore, step.World.Registry) || !HasRoomFor(ore))
+        _hasWork = Yields(ore, step.World.Registry) && HasRoomFor(ore);
+
+        if (!_hasWork)
         {
             _workedSeconds = 0f;
             _burnLeftSeconds = float.Max(0f, _burnLeftSeconds - (float)step.Seconds);
             return;
         }
 
-        if (_burnLeftSeconds <= 0f && !Light())
+        // Electricity first, fuel for the rest, exactly as a smelter does.
+        var fromPower = step.Seconds * share;
+        var wanted = step.Seconds - fromPower;
+        var spent = (float)fromPower;
+
+        if (wanted > 0.0)
+        {
+            if (_burnLeftSeconds <= 0f && !Light() && spent <= 0f)
+                return;
+
+            var burnt = float.Min(_burnLeftSeconds, (float)wanted);
+            _burnLeftSeconds -= burnt;
+            spent += burnt;
+        }
+
+        if (spent <= 0f)
             return;
 
-        var spent = float.Min(_burnLeftSeconds, (float)step.Seconds);
-        _burnLeftSeconds -= spent;
         _workedSeconds += spent;
 
         if (_workedSeconds < CycleSeconds)

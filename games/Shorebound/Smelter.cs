@@ -16,9 +16,10 @@ namespace Shorebound;
 /// can be tested by stepping it rather than by building a world around it.
 /// </para>
 /// </remarks>
-public sealed class Smelter : IMachine
+public sealed class Smelter : IMachine, IPowered
 {
     private Smelting? _smelting;
+    private double _powerShare;
 
     /// <summary>What is waiting to be melted.</summary>
     public Slots Input { get; } = new(1);
@@ -39,7 +40,7 @@ public sealed class Smelter : IMachine
     public float WorkedSeconds { get; private set; }
 
     /// <summary>Whether something is alight.</summary>
-    public bool IsLit => BurnLeftSeconds > 0f;
+    public bool IsLit => BurnLeftSeconds > 0f || _powerShare > 0.0;
 
     /// <summary>How far through the current block it is, from 0 to 1.</summary>
     /// <param name="smelting">The tables, which say how long the block in the input takes.</param>
@@ -73,6 +74,12 @@ public sealed class Smelter : IMachine
         // every machine shares for the sake of the one that needs them.
         _smelting = smelting;
 
+        // Taken and cleared in one go. A share is good for the step it was given for and no
+        // longer: a machine whose cable is broken is never told anything again, so a share that
+        // persisted would leave it running for ever on electricity that stopped arriving.
+        var share = _powerShare;
+        _powerShare = 0.0;
+
         var job = Job(smelting);
 
         if (job is null)
@@ -85,11 +92,26 @@ public sealed class Smelter : IMachine
             return;
         }
 
-        if (BurnLeftSeconds <= 0f && !Light(smelting))
+        // Electricity first, and fuel only for what the wire did not cover. A smelter on a grid
+        // that is browning out keeps its own fire going for the rest, which is what stops a
+        // factory stopping dead the moment a generator runs dry.
+        var fromPower = seconds * share;
+        var wanted = seconds - fromPower;
+        var spent = (float)fromPower;
+
+        if (wanted > 0.0)
+        {
+            if (BurnLeftSeconds <= 0f && !Light(smelting) && spent <= 0f)
+                return;
+
+            var burnt = float.Min(BurnLeftSeconds, (float)wanted);
+            BurnLeftSeconds -= burnt;
+            spent += burnt;
+        }
+
+        if (spent <= 0f)
             return;
 
-        var spent = float.Min(BurnLeftSeconds, (float)seconds);
-        BurnLeftSeconds -= spent;
         WorkedSeconds += spent;
 
         if (WorkedSeconds < job.Value.Seconds)
@@ -99,6 +121,23 @@ public sealed class Smelter : IMachine
         Output.Add(job.Value.Result, 1);
         WorkedSeconds = 0f;
     }
+
+    /// <summary>How much it draws, in watts, when there is something in it to melt.</summary>
+    /// <remarks>
+    /// Ninety, so that four of them fill one generator. The number is chosen against the
+    /// generator rather than from anything physical: what a player has to learn is "about four
+    /// machines to a generator", and that is a thing they learn by counting.
+    /// </remarks>
+    public const double DrawWatts = 90.0;
+
+    /// <inheritdoc />
+    public double DemandWatts => _smelting is not null && Job(_smelting) is not null ? DrawWatts : 0.0;
+
+    /// <inheritdoc />
+    public void Supply(double share) => _powerShare = double.Clamp(share, 0.0, 1.0);
+
+    /// <summary>Whether it is running on the wire rather than on its own fire.</summary>
+    public bool IsOnPower => _powerShare > 0.0;
 
     /// <inheritdoc />
     public void Step(in MachineStep step) => Step(step.Smelting, step.Seconds);

@@ -67,11 +67,32 @@ public sealed class Progression
                 ["iron block"]
             ),
             new Milestone(
+                "The long way up",
+                "Everything worth having is below everything you want to build on. Carry it up "
+                    + "once by hand and you will understand why nobody does it twice.",
+                [(blocks.IronIngot, 16), (blocks.Planks, 32)],
+                ["lift"]
+            ),
+            new Milestone(
                 "Hands off",
                 "A drill does not get tired and does not need to see. Put one on a seam, run a "
                     + "belt to a fire, and the shore will work itself while you sleep.",
                 [(blocks.IronIngot, 40), (blocks.StoneBrick, 32)],
                 ["miner"]
+            ),
+            new Milestone(
+                "Current",
+                "A fire under every machine is a fire you have to walk to. Put one fire "
+                    + "somewhere sensible and run the heat to the rest on a wire.",
+                [(blocks.CopperIngot, 48), (blocks.IronBlock, 4)],
+                ["cable", "generator"]
+            ),
+            new Milestone(
+                "Stand watch",
+                "The louder the works, the more comes out of the dark for it. You cannot build "
+                    + "less and you will not stay awake. Build something that does not sleep.",
+                [(blocks.IronBlock, 8), (blocks.CopperBlock, 4)],
+                ["turret"]
             ),
         ];
     }

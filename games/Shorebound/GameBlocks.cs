@@ -113,6 +113,48 @@ public sealed class GameBlocks
                 LightOpacity = 1,
             }
         );
+        Cable = registry.Register(
+            new BlockType
+            {
+                Name = "cable",
+                Color = byte3.HexColor(0x3E4044),
+                Pattern = BlockPattern.Smooth,
+                BreakSeconds = 0.3f,
+
+                // Run along a floor or up a wall and walked through, like a belt.
+                Collides = false,
+            }
+        );
+        Generator = registry.Register(
+            new BlockType
+            {
+                Name = "generator",
+                Color = byte3.HexColor(0x6B5A3E),
+                Pattern = BlockPattern.Mottled,
+                BreakSeconds = 2.6f,
+                Emission = 6,
+            }
+        );
+        Turret = registry.Register(
+            new BlockType
+            {
+                Name = "turret",
+                Color = byte3.HexColor(0x7C5248),
+                Pattern = BlockPattern.Smooth,
+                BreakSeconds = 2.8f,
+                Emission = 3,
+            }
+        );
+        Lift = registry.Register(
+            new BlockType
+            {
+                Name = "lift",
+                Color = byte3.HexColor(0x8A7A58),
+                Pattern = BlockPattern.Grained,
+                BreakSeconds = 0.8f,
+                Collides = false,
+            }
+        );
         Miner = registry.Register(
             new BlockType
             {
@@ -222,6 +264,18 @@ public sealed class GameBlocks
 
     /// <summary>Glass, melted out of sand, and the only block worth building a window from.</summary>
     public BlockId Glass { get; }
+
+    /// <summary>Cable, which joins machines into one grid.</summary>
+    public BlockId Cable { get; }
+
+    /// <summary>A generator, which burns fuel into electricity for everything wired to it.</summary>
+    public BlockId Generator { get; }
+
+    /// <summary>A turret, which shoots what comes out of the dark as long as it has power.</summary>
+    public BlockId Turret { get; }
+
+    /// <summary>A lift, which is a belt that goes up.</summary>
+    public BlockId Lift { get; }
 
     /// <summary>A miner, which stands on a seam and keeps bringing it up.</summary>
     public BlockId Miner { get; }

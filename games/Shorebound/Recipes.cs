@@ -104,6 +104,57 @@ public sealed class Recipes
                 1
             ),
 
+            // Cable: copper in a line, which is the cheapest thing in the game by some way.
+            // A grid is made of hundreds of metres of this and nobody should count it.
+            new Recipe(
+                "cable",
+                3,
+                1,
+                [blocks.CopperIngot, blocks.CopperIngot, blocks.CopperIngot],
+                blocks.Cable,
+                12
+            ),
+
+            // A lift: planks in a column with iron through the middle.
+            new Recipe(
+                "lift",
+                1,
+                3,
+                [blocks.Planks, blocks.IronIngot, blocks.Planks],
+                blocks.Lift,
+                4
+            ),
+
+            // A generator: a firebox of brick with iron around it and copper to take the
+            // current away.
+            new Recipe(
+                "generator",
+                3,
+                3,
+                [
+                    blocks.IronIngot, blocks.CopperIngot, blocks.IronIngot,
+                    blocks.StoneBrick, air, blocks.StoneBrick,
+                    blocks.StoneBrick, blocks.StoneBrick, blocks.StoneBrick,
+                ],
+                blocks.Generator,
+                1
+            ),
+
+            // A turret: iron over a stand of brick, with copper for the works. The most
+            // expensive thing here, because one of these replaces standing watch.
+            new Recipe(
+                "turret",
+                3,
+                3,
+                [
+                    air, blocks.IronIngot, air,
+                    blocks.IronIngot, blocks.CopperIngot, blocks.IronIngot,
+                    blocks.StoneBrick, blocks.IronBlock, blocks.StoneBrick,
+                ],
+                blocks.Turret,
+                1
+            ),
+
             // Nine ingots into one block. Packing, so that a long session at a smelter comes back
             // as something that fits in the row rather than filling the pack. Ingots and not ore,
             // because ore that could be packed straight into a block would make the smelter an

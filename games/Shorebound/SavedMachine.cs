@@ -56,4 +56,16 @@ public readonly record struct SavedMachine
 
     /// <summary>The name this file writes for a miner.</summary>
     public const string Miner = "miner";
+
+    /// <summary>The name this file writes for a cable.</summary>
+    public const string Cable = "cable";
+
+    /// <summary>The name this file writes for a generator.</summary>
+    public const string Generator = "generator";
+
+    /// <summary>The name this file writes for a turret.</summary>
+    public const string Turret = "turret";
+
+    /// <summary>The name this file writes for a lift.</summary>
+    public const string Lift = "lift";
 }

@@ -200,6 +200,35 @@ public sealed class Stalkers
         return true;
     }
 
+    /// <summary>Where the nearest one is, for something that is looking for a target.</summary>
+    /// <param name="fromMeters">Where to look from.</param>
+    /// <param name="withinMeters">How far to look.</param>
+    /// <returns>The middle of the nearest one, or nothing.</returns>
+    /// <remarks>
+    /// The middle rather than the feet, because whatever is aiming at one wants to point at the
+    /// body and not at the ground under it.
+    /// </remarks>
+    public double3? NearestTo(double3 fromMeters, double withinMeters)
+    {
+        double3? nearest = null;
+        var nearestAway = withinMeters;
+
+        foreach (var stalker in _stalkers)
+        {
+            var middle = stalker.FeetMeters + new double3(0.0, Size.Y * 0.5, 0.0);
+            var apart = middle - fromMeters;
+            var away = double.Sqrt(double3.Dot(apart, apart));
+
+            if (away > nearestAway)
+                continue;
+
+            nearest = middle;
+            nearestAway = away;
+        }
+
+        return nearest;
+    }
+
     /// <summary>Forgets the whole horde, as starting or loading a world does.</summary>
     public void Clear()
     {

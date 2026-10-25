@@ -382,6 +382,8 @@ public sealed class ShoreboundGame : IGame
 
         Listen(seconds);
 
+        FireTurrets(seconds);
+
         if (!_vitality.IsAlive)
             Respawn();
         // A player with a panel open keeps falling and stops steering. Reading the keyboard while
@@ -671,6 +673,10 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_world.Edits.Count} blocks changed, {_drops.Count} lying about");
         ImGui.Text($"{_grazers.Count} grazing");
         ImGui.Text($"{_machines.Count} machines, {_machines.LitCount} alight, {_machines.CarriedCount} on belts");
+        ImGui.Text(
+            $"{_machines.Power.NetworkCount} grids, "
+                + $"{_machines.Power.DeliveredWatts:F0} of {_machines.Power.DemandedWatts:F0} W"
+        );
         ImGui.Text($"{_stalkers.Count} stalking of {Stalkers.Allowed(_machines.LitCount)} allowed");
 
         ImGui.SeparatorText("Drawn"u8);
@@ -944,6 +950,37 @@ public sealed class ShoreboundGame : IGame
         );
     }
 
+    /// <summary>Lets every turret look for something and shoot it.</summary>
+    /// <remarks>
+    /// Stepped here rather than with the other machines because a turret needs to see the horde,
+    /// and the horde belongs to the game rather than to the machine map. Giving the map a
+    /// reference to the creatures would be giving every belt one.
+    /// </remarks>
+    private void FireTurrets(double seconds)
+    {
+        if (_stalkers.Count == 0)
+            return;
+
+        foreach (var (position, machine) in _machines.All)
+        {
+            if (machine is Turret turret && turret.Fire(position, _stalkers, seconds))
+                _sounds?.Struck();
+        }
+    }
+
+    /// <summary>Draws one thing riding on something, in its block's own colour.</summary>
+    private void DrawItem(double3 middleMeters, float3 sizeMeters, BlockId block)
+    {
+        var color = _world.Registry[block].Color;
+        _cubes.Draw(
+            middleMeters,
+            sizeMeters,
+            new float3(Channel(color.X), Channel(color.Y), Channel(color.Z)),
+            0f,
+            _camera.Position
+        );
+    }
+
     /// <summary>Draws what is riding on every belt near enough to see.</summary>
     /// <remarks>
     /// <para>
@@ -964,31 +1001,35 @@ public sealed class ShoreboundGame : IGame
 
         foreach (var (position, machine) in _machines.All)
         {
-            if (machine is not Conveyor belt || belt.Count == 0)
-                continue;
-
-            // On top of the belt's block rather than inside it. A belt is a whole block in the
-            // voxel grid — it has to be, that is what the grid holds — so the only place an item
-            // riding on one can be seen is its upper face.
+            // On top of a belt's block rather than inside it, and rising through a lift's.
             var middle = new double3(position.X + 0.5, position.Y + 1.13, position.Z + 0.5);
             if (Walking.Away(middle, _player.FeetMeters) > SeenWithinMeters)
                 continue;
 
-            // From the back of the block to the front of it, along whichever way it points, so
-            // that an item's drawn position is the same number its queue is ordered by.
-            var along = Facings.Along(belt.Facing);
-            var back = middle - (along * 0.5);
-
-            foreach (var item in belt.Items)
+            switch (machine)
             {
-                var color = _world.Registry[item.Block].Color;
-                _cubes.Draw(
-                    back + (along * item.Along),
-                    size,
-                    new float3(Channel(color.X), Channel(color.Y), Channel(color.Z)),
-                    0f,
-                    _camera.Position
-                );
+                case Conveyor belt when belt.Count > 0:
+                {
+                    // From the back of the block to the front, along whichever way it points, so
+                    // an item's drawn position is the same number its queue is ordered by.
+                    var along = Facings.Along(belt.Facing);
+                    var back = middle - (along * 0.5);
+
+                    foreach (var item in belt.Items)
+                        DrawItem(back + (along * item.Along), size, item.Block);
+
+                    break;
+                }
+
+                case Lift lift when lift.Count > 0:
+                {
+                    var bottom = new double3(middle.X, position.Y + 0.2, middle.Z);
+
+                    foreach (var item in lift.Items)
+                        DrawItem(bottom + new double3(0.0, item.Along, 0.0), size, item.Block);
+
+                    break;
+                }
             }
         }
     }
@@ -1196,6 +1237,14 @@ public sealed class ShoreboundGame : IGame
             _machines.Place(hit.Before, new Conveyor(Facings.FromYaw(_camera.Yaw)));
         else if (placing == _blocks.Miner)
             _machines.Place(hit.Before, new Miner());
+        else if (placing == _blocks.Cable)
+            _machines.Place(hit.Before, new Cable());
+        else if (placing == _blocks.Generator)
+            _machines.Place(hit.Before, new Generator());
+        else if (placing == _blocks.Turret)
+            _machines.Place(hit.Before, new Turret());
+        else if (placing == _blocks.Lift)
+            _machines.Place(hit.Before, new Lift());
     }
 
     /// <summary>Every machine standing in the world, flattened for a save file.</summary>
@@ -1245,6 +1294,18 @@ public sealed class ShoreboundGame : IGame
                         Output = Named(miner.Output.At(0)),
                         Carrying = [],
                     },
+                    Generator generator => Plain(SavedMachine.Generator, position) with
+                    {
+                        BurnLeftSeconds = generator.BurnLeftSeconds,
+                        BurnTotalSeconds = generator.BurnTotalSeconds,
+                        Fuel = Named(generator.Fuel.At(0)),
+                    },
+                    Lift lift => Plain(SavedMachine.Lift, position) with
+                    {
+                        Carrying = [.. lift.Items.Select(item => (_blocks.Registry[item.Block].Name, item.Along))],
+                    },
+                    Cable => Plain(SavedMachine.Cable, position),
+                    Turret => Plain(SavedMachine.Turret, position),
                     _ => throw new InvalidOperationException($"no save shape for {machine.GetType().Name}"),
                 }
             );
@@ -1252,6 +1313,21 @@ public sealed class ShoreboundGame : IGame
 
         return saved;
     }
+
+    /// <summary>A machine with nothing in it, for the kinds that hold nothing.</summary>
+    private static SavedMachine Plain(string kind, int3 position) =>
+        new()
+        {
+            Kind = kind,
+            Position = position,
+            BurnLeftSeconds = 0f,
+            BurnTotalSeconds = 0f,
+            WorkedSeconds = 0f,
+            Input = (string.Empty, 0),
+            Fuel = (string.Empty, 0),
+            Output = (string.Empty, 0),
+            Carrying = [],
+        };
 
     /// <summary>A stack as a save file writes one: a block's name and how many.</summary>
     private (string Block, int Count) Named(Stack stack) =>
@@ -1279,6 +1355,40 @@ public sealed class ShoreboundGame : IGame
                 }
 
                 _machines.Place(entry.Position, belt);
+                continue;
+            }
+
+            if (entry.Kind == SavedMachine.Cable)
+            {
+                _machines.Place(entry.Position, new Cable());
+                continue;
+            }
+
+            if (entry.Kind == SavedMachine.Turret)
+            {
+                _machines.Place(entry.Position, new Turret());
+                continue;
+            }
+
+            if (entry.Kind == SavedMachine.Generator)
+            {
+                var generator = new Generator();
+                generator.Restore(entry.BurnLeftSeconds, entry.BurnTotalSeconds);
+                Fill(generator.Fuel, entry.Fuel);
+                _machines.Place(entry.Position, generator);
+                continue;
+            }
+
+            if (entry.Kind == SavedMachine.Lift)
+            {
+                var lift = new Lift();
+                foreach (var (name, along) in entry.Carrying)
+                {
+                    if (_blocks.Registry.Find(name) is { } rising)
+                        lift.Restore(rising, along);
+                }
+
+                _machines.Place(entry.Position, lift);
                 continue;
             }
 
