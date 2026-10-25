@@ -85,6 +85,21 @@ public sealed class GameBlocks
             }
         );
 
+        // Made things, not found ones: nothing in the world generates these, and the only way to
+        // hold one is to make it. They are what the crafting grid is for.
+        Planks = registry.Register(
+            new BlockType { Name = "planks", Color = byte3.HexColor(0xB08A52), Pattern = BlockPattern.Grained, BreakSeconds = 0.8f }
+        );
+        StoneBrick = registry.Register(
+            new BlockType { Name = "stone brick", Color = byte3.HexColor(0x8C8C92), Pattern = BlockPattern.Mottled, BreakSeconds = 1.6f }
+        );
+        CopperBlock = registry.Register(
+            new BlockType { Name = "copper block", Color = byte3.HexColor(0xC87F42), Pattern = BlockPattern.Smooth, BreakSeconds = 2.4f }
+        );
+        IronBlock = registry.Register(
+            new BlockType { Name = "iron block", Color = byte3.HexColor(0xA8A099), Pattern = BlockPattern.Smooth, BreakSeconds = 3f }
+        );
+
         // The ores, appended last because registration order is id order and a saved world holds
         // the ids. Their names are what the save file and the recipes both refer to.
         CoalOre = registry.Register(
@@ -135,6 +150,18 @@ public sealed class GameBlocks
 
     /// <summary>The registry these ids index.</summary>
     public BlockRegistry Registry { get; }
+
+    /// <summary>Planks, cut from a log and the start of everything else.</summary>
+    public BlockId Planks { get; }
+
+    /// <summary>Stone brick, cut stone, for building with rather than for anything else.</summary>
+    public BlockId StoneBrick { get; }
+
+    /// <summary>A block of copper, which is nine ore packed into one.</summary>
+    public BlockId CopperBlock { get; }
+
+    /// <summary>A block of iron, which is nine ore packed into one.</summary>
+    public BlockId IronBlock { get; }
 
     /// <summary>Coal ore, the fuel seam, common and shallow.</summary>
     public BlockId CoalOre { get; }

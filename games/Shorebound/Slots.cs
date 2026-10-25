@@ -174,6 +174,45 @@ public sealed class Slots
         return held.Count == 1 ? Stack.Nothing : new Stack(held.Block, held.Count - 1);
     }
 
+    /// <summary>How many of one block are in here altogether.</summary>
+    /// <param name="block">The block to count.</param>
+    /// <returns>The total across every slot.</returns>
+    public int CountOf(BlockId block)
+    {
+        var total = 0;
+        foreach (var slot in _stacks)
+        {
+            if (slot.Count > 0 && slot.Block == block)
+                total += slot.Count;
+        }
+
+        return total;
+    }
+
+    /// <summary>Takes one of a particular block from wherever it is.</summary>
+    /// <param name="block">What to take.</param>
+    /// <returns>Whether there was one to take.</returns>
+    /// <remarks>
+    /// From the smallest stack rather than the first one found, so that filling a grid from the
+    /// pack tidies up as it goes instead of breaking into a full stack while a slot holds three.
+    /// </remarks>
+    public bool TakeOneOf(BlockId block)
+    {
+        var from = -1;
+
+        for (var index = 0; index < _stacks.Length; index++)
+        {
+            var slot = _stacks[index];
+            if (slot.Count <= 0 || slot.Block != block)
+                continue;
+
+            if (from < 0 || slot.Count < _stacks[from].Count)
+                from = index;
+        }
+
+        return from >= 0 && TakeOne(from);
+    }
+
     /// <summary>Empties every slot.</summary>
     public void Clear() => Array.Clear(_stacks);
 }

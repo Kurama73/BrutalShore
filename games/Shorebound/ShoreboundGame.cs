@@ -137,6 +137,9 @@ public sealed class ShoreboundGame : IGame
 
     /// <summary>What the cursor is carrying between two slots while the inventory is open.</summary>
     private Stack _held;
+
+    private readonly Recipes _recipes;
+    private readonly Bench _bench;
     private readonly GameUi _ui = new();
     private readonly DayClock _clock;
     private readonly TitleCamera _titleCamera;
@@ -190,6 +193,8 @@ public sealed class ShoreboundGame : IGame
             new ChunkStreamer(_generator, WorkerCount, StreamingQueueCapacity)
         );
         _inventory = new Inventory(_blocks);
+        _recipes = new Recipes(_blocks);
+        _bench = new Bench(_recipes);
         _drops = new Drops(options.Seed);
         _grazers = new Grazers(options.Seed);
         _clock = new DayClock(options.StartHour, _settings.DayLengthSeconds);
@@ -469,7 +474,7 @@ public sealed class ShoreboundGame : IGame
                 break;
 
             case Screen.Inventory:
-                _ui.DrawInventory(_inventory, ref _held);
+                _ui.DrawInventory(_inventory, _bench, _recipes, ref _held);
                 break;
         }
     }
@@ -661,6 +666,7 @@ public sealed class ShoreboundGame : IGame
             _held = Stack.Nothing;
         }
 
+        _bench.ReturnTo(_inventory);
         Enter(context);
     }
 
@@ -891,6 +897,7 @@ public sealed class ShoreboundGame : IGame
     {
         _world.Edits.Clear();
         _inventory.Clear();
+        _bench.Grid.Clear();
         _held = Stack.Nothing;
         _drops.Clear();
         _grazers.Clear();
@@ -919,6 +926,7 @@ public sealed class ShoreboundGame : IGame
             _controller.AimAt(save.Yaw, save.Pitch);
             _inventory.Select(save.RowIndex);
             _inventory.Restore(save.Carried, _blocks.Registry);
+            _bench.Grid.Clear();
             _held = Stack.Nothing;
             _drops.Clear();
             _grazers.Clear();

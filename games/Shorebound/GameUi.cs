@@ -397,6 +397,8 @@ public sealed class GameUi
 
     /// <summary>Draws the inventory, moving stacks about as the player clicks them.</summary>
     /// <param name="inventory">What the player is carrying, which this moves around in place.</param>
+    /// <param name="bench">The crafting grid, which this lays blocks out on and takes from.</param>
+    /// <param name="recipes">The table the recipe list is read from.</param>
     /// <param name="held">
     /// What the cursor is carrying between two slots, which this reads and writes. It lives
     /// outside the inventory because a stack on the cursor is in no slot at all, and lives
@@ -418,7 +420,7 @@ public sealed class GameUi
     /// method's: it reports which slot was clicked and with which button, and nothing else.
     /// </para>
     /// </remarks>
-    public void DrawInventory(Inventory inventory, ref Stack held)
+    public void DrawInventory(Inventory inventory, Bench bench, Recipes recipes, ref Stack held)
     {
         var viewport = ImGui.GetMainViewport();
         var scale = ImGui.GetStyle().FontScaleMain;
@@ -435,9 +437,15 @@ public sealed class GameUi
         var headingSize = ImGui.GetFontSize() * 1.05f;
         var packRows = (Inventory.SlotCount - Inventory.RowCount) / Inventory.RowCount;
 
-        // The pack, a gap wide enough to read as a division, then the row that is in hand.
+        var benchHeight = (Recipes.GridHeight * pitch) - gap;
         var packHeight = (packRows * pitch) - gap;
-        var height = headingSize + (26f * scale) + packHeight + (22f * scale) + slot + (24f * scale);
+
+        // Bench, a rule, the pack, a gap wide enough to read as a division, then the row in hand.
+        var height =
+            headingSize + (30f * scale)
+            + benchHeight + (30f * scale)
+            + packHeight + (24f * scale)
+            + slot + (26f * scale);
 
         var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
         var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
@@ -448,59 +456,284 @@ public sealed class GameUi
         UiCanvas.PanelHeading(cardMinimum, cardMaximum.X - cardMinimum.X, "Carrying", scale);
 
         var named = string.Empty;
-        var packTop = top + headingSize + (26f * scale);
-        DrawSlots(inventory, ref held, Inventory.RowCount, Inventory.SlotCount, new float2(left, packTop), slot, gap, ref named);
+        var benchTop = top + headingSize + (30f * scale);
 
-        var rowTop = packTop + packHeight + (22f * scale);
-        DrawSlots(inventory, ref held, 0, Inventory.RowCount, new float2(left, rowTop), slot, gap, ref named);
+        DrawBench(inventory, bench, recipes, ref held, new float2(left, benchTop), slot, gap, ref named);
+
+        var ruleY = benchTop + benchHeight + (15f * scale);
+        UiCanvas.Line(new float2(left, ruleY), new float2(left + width, ruleY), UiPalette.Divider);
+
+        var packTop = ruleY + (15f * scale);
+        DrawSlots(
+            inventory.Store,
+            inventory,
+            ref held,
+            Inventory.RowCount,
+            Inventory.SlotCount,
+            Inventory.RowCount,
+            new float2(left, packTop),
+            slot,
+            gap,
+            selected: -1,
+            ref named
+        );
+
+        var rowTop = packTop + packHeight + (24f * scale);
+        DrawSlots(
+            inventory.Store,
+            inventory,
+            ref held,
+            0,
+            Inventory.RowCount,
+            Inventory.RowCount,
+            new float2(left, rowTop),
+            slot,
+            gap,
+            inventory.SelectedIndex,
+            ref named
+        );
 
         // The name of whatever is under the cursor, in the space the division already left. A
         // tooltip would cover the slot it is describing, which in a grid this tight is the slot
         // next to the one being aimed at.
-        if (named.Length > 0)
-        {
-            var noteSize = ImGui.GetFontSize() * 0.86f;
-            UiCanvas.Text(
-                new float2(left, rowTop - (16f * scale) - noteSize),
-                UiPalette.MutedText,
-                named,
-                noteSize
-            );
-        }
-
-        DrawHeld(inventory, held, slot, scale);
-
         var footSize = ImGui.GetFontSize() * 0.84f;
         UiCanvas.Text(
-            new float2(left, top + height - footSize),
-            UiPalette.MutedText,
-            "I, tab or escape to close",
+            new float2(left, rowTop - (18f * scale) - footSize),
+            named.Length > 0 ? UiPalette.Text : UiPalette.MutedText,
+            named.Length > 0 ? named : "I, tab or escape to close",
             footSize
         );
+
+        DrawHeld(inventory, held, slot, scale);
 
         ImGui.End();
     }
 
+    /// <summary>Draws the crafting grid, what it makes, and the list of what could be made.</summary>
+    /// <remarks>
+    /// <para>
+    /// The list is the half that matters. A shaped recipe a player has not been told is a recipe
+    /// they will never find, and a game that answers that with a wiki has given up; a column of
+    /// what is currently possible, with the ones they cannot afford greyed rather than hidden,
+    /// turns the same table into something to read and to aim at.
+    /// </para>
+    /// <para>
+    /// Clicking a row lays the recipe out rather than making it. The difference is the whole
+    /// reason the grid is still there: the shortcut saves the remembering, and the grid keeps the
+    /// making a thing the player does and can see before they do it.
+    /// </para>
+    /// </remarks>
+    /// <param name="inventory">What the player is carrying, for colours, names and ingredients.</param>
+    /// <param name="bench">The grid, which this draws and acts on.</param>
+    /// <param name="recipes">The table the list is read from.</param>
+    /// <param name="held">What the cursor is carrying, which this reads and writes.</param>
+    /// <param name="origin">The top-left corner of the grid, in screen pixels.</param>
+    /// <param name="slot">How wide and tall one slot is, in screen pixels.</param>
+    /// <param name="gap">How much space goes between two slots, in screen pixels.</param>
+    /// <param name="named">Set to the name of whatever the cursor is over.</param>
+    private void DrawBench(
+        Inventory inventory,
+        Bench bench,
+        Recipes recipes,
+        ref Stack held,
+        float2 origin,
+        float slot,
+        float gap,
+        ref string named
+    )
+    {
+        var scale = ImGui.GetStyle().FontScaleMain;
+        var pitch = slot + gap;
+        var gridWidth = (Recipes.GridWidth * pitch) - gap;
+        var gridHeight = (Recipes.GridHeight * pitch) - gap;
+
+        DrawSlots(
+            bench.Grid,
+            inventory,
+            ref held,
+            0,
+            Recipes.GridSize,
+            Recipes.GridWidth,
+            origin,
+            slot,
+            gap,
+            selected: -1,
+            ref named
+        );
+
+        // The arrow, which is the only thing on the screen that says the grid on its left becomes
+        // the slot on its right.
+        var made = bench.Result;
+        var arrowLeft = origin.X + gridWidth + (16f * scale);
+        var arrowRight = arrowLeft + (34f * scale);
+        var arrowY = origin.Y + (gridHeight * 0.5f);
+        var arrowColor = made.IsNothing ? UiPalette.Fade(UiPalette.MutedText, 0.4f) : UiPalette.Accent;
+
+        UiCanvas.Line(new float2(arrowLeft, arrowY), new float2(arrowRight, arrowY), arrowColor, 2f * scale);
+        UiCanvas.Line(
+            new float2(arrowRight - (10f * scale), arrowY - (7f * scale)),
+            new float2(arrowRight, arrowY),
+            arrowColor,
+            2f * scale
+        );
+        UiCanvas.Line(
+            new float2(arrowRight - (10f * scale), arrowY + (7f * scale)),
+            new float2(arrowRight, arrowY),
+            arrowColor,
+            2f * scale
+        );
+
+        var resultSize = slot * 1.3f;
+        var resultMinimum = new float2(arrowRight + (16f * scale), arrowY - (resultSize * 0.5f));
+        var resultMaximum = resultMinimum + new float2(resultSize, resultSize);
+
+        var mouse = ImGui.GetMousePos();
+        var overResult =
+            mouse.X >= resultMinimum.X
+            && mouse.X < resultMaximum.X
+            && mouse.Y >= resultMinimum.Y
+            && mouse.Y < resultMaximum.Y;
+
+        Slot(
+            resultMinimum,
+            resultMaximum,
+            made.IsNothing ? null : inventory.ColorOf(made.Block),
+            made.Count,
+            selected: !made.IsNothing,
+            overResult,
+            scale
+        );
+
+        if (overResult && !made.IsNothing)
+        {
+            named = $"{inventory.NameOf(made.Block)}  ×{made.Count}";
+
+            // Crafting puts the result on the cursor rather than into the inventory, which is how
+            // a player sees that something happened. It is also the only way a full inventory can
+            // refuse a craft without losing what it made.
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left) && held.IsNothing)
+                held = bench.Craft();
+        }
+
+        DrawRecipeList(
+            inventory,
+            bench,
+            recipes,
+            new float2(resultMaximum.X + (22f * scale), origin.Y),
+            origin.X + ((SlotSize * scale) + gap) * Inventory.RowCount - gap - resultMaximum.X - (22f * scale),
+            gridHeight,
+            scale
+        );
+    }
+
+    /// <summary>The column of recipes, with the ones that can be made now picked out.</summary>
+    /// <param name="inventory">What the player is carrying, for colours and ingredients.</param>
+    /// <param name="bench">The grid a clicked recipe is laid out on.</param>
+    /// <param name="recipes">The table to list.</param>
+    /// <param name="origin">The top-left corner of the list, in screen pixels.</param>
+    /// <param name="width">How wide the list is, in pixels.</param>
+    /// <param name="height">How tall it is, in pixels.</param>
+    /// <param name="scale">The interface scale.</param>
+    private void DrawRecipeList(
+        Inventory inventory,
+        Bench bench,
+        Recipes recipes,
+        float2 origin,
+        float width,
+        float height,
+        float scale
+    )
+    {
+        var size = ImGui.GetFontSize() * 0.82f;
+        var rowHeight = height / recipes.All.Count;
+        var swatch = float.Min(rowHeight - (5f * scale), 18f * scale);
+        var mouse = ImGui.GetMousePos();
+
+        for (var index = 0; index < recipes.All.Count; index++)
+        {
+            var recipe = recipes.All[index];
+            var minimum = new float2(origin.X, origin.Y + (index * rowHeight));
+            var maximum = new float2(origin.X + width, minimum.Y + rowHeight - (3f * scale));
+
+            var affordable = CanMake(recipe, inventory);
+            var over =
+                mouse.X >= minimum.X && mouse.X < maximum.X && mouse.Y >= minimum.Y && mouse.Y < maximum.Y;
+
+            UiCanvas.Chamfer(
+                minimum,
+                maximum,
+                over && affordable ? UiPalette.Hovered : UiPalette.Fade(UiPalette.Recess, 0.7f),
+                4f * scale
+            );
+
+            var inset = (rowHeight - (3f * scale) - swatch) * 0.5f;
+            UiCanvas.Chamfer(
+                new float2(minimum.X + inset, minimum.Y + inset),
+                new float2(minimum.X + inset + swatch, minimum.Y + inset + swatch),
+                UiPalette.Fade(inventory.ColorOf(recipe.Result), affordable ? 1f : 0.3f),
+                3f * scale
+            );
+
+            UiCanvas.Text(
+                new float2(minimum.X + inset + swatch + (8f * scale), minimum.Y + ((rowHeight - size) * 0.5f) - (2f * scale)),
+                affordable ? UiPalette.Text : UiPalette.Fade(UiPalette.MutedText, 0.55f),
+                recipe.Name,
+                size
+            );
+
+            if (affordable)
+            {
+                UiCanvas.ChamferOutline(
+                    minimum,
+                    maximum,
+                    UiPalette.Fade(UiPalette.Accent, over ? 0.9f : 0.3f),
+                    4f * scale
+                );
+            }
+
+            if (over && affordable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                bench.Fill(recipe, inventory);
+        }
+    }
+
+    /// <summary>Whether what is carried covers a recipe, counting the grid as spent.</summary>
+    private static bool CanMake(Recipe recipe, Inventory inventory)
+    {
+        foreach (var block in recipe.Pattern.Where(block => !block.IsAir).Distinct())
+        {
+            if (inventory.CountOf(block) < recipe.Pattern.Count(wanted => wanted == block))
+                return false;
+        }
+
+        return true;
+    }
+
     /// <summary>Draws one block of slots and acts on a click in it.</summary>
-    /// <param name="inventory">What the player is carrying, which this moves around in place.</param>
+    /// <param name="slots">The slots to draw, which this moves stacks around in.</param>
+    /// <param name="lookup">Where a block's name and colour come from.</param>
     /// <param name="held">What the cursor is carrying, which this reads and writes.</param>
     /// <param name="first">The first slot to draw.</param>
     /// <param name="end">One past the last slot to draw.</param>
+    /// <param name="perRow">How many slots go in a row before it wraps.</param>
     /// <param name="origin">The top-left corner of the block, in screen pixels.</param>
     /// <param name="slot">How wide and tall one slot is, in screen pixels.</param>
     /// <param name="gap">How much space goes between two slots, in screen pixels.</param>
+    /// <param name="selected">Which slot wears the accent, or -1 for none.</param>
     /// <param name="named">
     /// Set to the name of whatever the cursor is over, so that the caller can write it somewhere
     /// that is not on top of the grid.
     /// </param>
-    private void DrawSlots(
-        Inventory inventory,
+    private static void DrawSlots(
+        Slots slots,
+        Inventory lookup,
         ref Stack held,
         int first,
         int end,
+        int perRow,
         float2 origin,
         float slot,
         float gap,
+        int selected,
         ref string named
     )
     {
@@ -511,25 +744,22 @@ public sealed class GameUi
         for (var index = first; index < end; index++)
         {
             var place = index - first;
-            var minimum = origin + new float2(
-                (place % Inventory.RowCount) * pitch,
-                (place / Inventory.RowCount) * pitch
-            );
+            var minimum = origin + new float2((place % perRow) * pitch, (place / perRow) * pitch);
             var maximum = minimum + new float2(slot, slot);
 
             var over =
                 mouse.X >= minimum.X && mouse.X < maximum.X && mouse.Y >= minimum.Y && mouse.Y < maximum.Y;
 
-            var (block, count) = inventory.At(index);
-            if (over && count > 0)
-                named = $"{inventory.NameOf(block)}  ×{count}";
+            var stack = slots.At(index);
+            if (over && !stack.IsNothing)
+                named = $"{lookup.NameOf(stack.Block)}  ×{stack.Count}";
 
             Slot(
                 minimum,
                 maximum,
-                count > 0 ? inventory.ColorOf(index) : null,
-                count,
-                index == inventory.SelectedIndex,
+                stack.IsNothing ? null : lookup.ColorOf(stack.Block),
+                stack.Count,
+                index == selected,
                 over,
                 scale
             );
@@ -538,9 +768,9 @@ public sealed class GameUi
                 continue;
 
             if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                held = held.IsNothing ? inventory.Take(index) : inventory.Put(index, held);
+                held = held.IsNothing ? slots.Take(index) : slots.Put(index, held);
             else if (ImGui.IsMouseClicked(ImGuiMouseButton.Right))
-                held = held.IsNothing ? inventory.TakeHalf(index) : inventory.PutOne(index, held);
+                held = held.IsNothing ? slots.TakeHalf(index) : slots.PutOne(index, held);
         }
     }
 

@@ -49,6 +49,14 @@ public sealed class Inventory
     /// <summary>How many slots there are altogether.</summary>
     public int Count => SlotCount;
 
+    /// <summary>The slots themselves, for a screen that draws them the same way it draws a grid.</summary>
+    /// <remarks>
+    /// Exposed so that the inventory screen has one routine for a block of slots rather than one
+    /// for the pack and a second, drifting copy for the bench. What a slot <em>means</em> is
+    /// still this type's business; what a slot looks like is the screen's.
+    /// </remarks>
+    public Slots Store => _slots;
+
     /// <summary>Which slot of the row is in hand, counting from zero.</summary>
     public int SelectedIndex { get; private set; }
 
@@ -136,6 +144,16 @@ public sealed class Inventory
     /// <param name="held">What is being carried on the cursor.</param>
     /// <returns>What is left on the cursor afterwards.</returns>
     public Stack PutOne(int index, Stack held) => _slots.PutOne(index, held);
+
+    /// <summary>How many of one block are being carried altogether.</summary>
+    /// <param name="block">The block to count.</param>
+    /// <returns>The total across the row and the pack.</returns>
+    public int CountOf(BlockId block) => _slots.CountOf(block);
+
+    /// <summary>Takes one of a particular block from wherever it is being carried.</summary>
+    /// <param name="block">What to take.</param>
+    /// <returns>Whether there was one to take.</returns>
+    public bool TakeOneOf(BlockId block) => _slots.TakeOneOf(block);
 
     /// <summary>Empties every slot, as starting a fresh world does.</summary>
     public void Clear() => _slots.Clear();
