@@ -72,6 +72,10 @@ public sealed class GameHost : IDisposable
             if (_window.IsMinimised || !_renderer.BeginFrame())
                 continue;
 
+            // Off-screen passes first: once the swapchain's render pass is open, no other can be.
+            game.DrawOffscreen(Context);
+            _renderer.BeginSceneRenderPass();
+
             game.Draw(Context);
 
             // The overlay is built after the game has drawn, so it can report what that draw did,

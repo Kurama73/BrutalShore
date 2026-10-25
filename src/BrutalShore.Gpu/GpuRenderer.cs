@@ -65,12 +65,18 @@ public sealed unsafe class GpuRenderer : IDisposable
             : throw new InvalidOperationException("No frame is being recorded.");
 
     /// <summary>
-    /// Waits for a frame slot, acquires an image and starts the render pass.
+    /// Waits for a frame slot, acquires an image and opens the command buffer.
     /// </summary>
     /// <returns>
     /// <see langword="false" /> when the swapchain had to be rebuilt and this frame must be skipped;
     /// the caller should simply try again next tick rather than draw into a stale target.
     /// </returns>
+    /// <remarks>
+    /// This stops short of the swapchain's render pass, which
+    /// <see cref="BeginSceneRenderPass" /> opens. The gap between the two is where a pass that
+    /// renders somewhere else — a shadow map — belongs, because Vulkan allows no render pass
+    /// inside another.
+    /// </remarks>
     public bool BeginFrame()
     {
         var frame = _frames[_frameIndex];
@@ -103,6 +109,19 @@ public sealed unsafe class GpuRenderer : IDisposable
         var commands = frame.CommandBuffer;
         commands.Begin(new VkCommandBufferBeginInfo { Flags = VkCommandBufferUsageFlags.OneTimeSubmitBit });
 
+        _recording = true;
+        return true;
+    }
+
+    /// <summary>Opens the swapchain's render pass and sets the viewport to the whole window.</summary>
+    /// <exception cref="InvalidOperationException">Outside a frame.</exception>
+    public void BeginSceneRenderPass()
+    {
+        if (!_recording)
+            throw new InvalidOperationException("No frame is being recorded.");
+
+        var commands = _frames[_frameIndex].CommandBuffer;
+
         Span<VkClearValue> clearValues =
         [
             new VkClearValue { Color = new VkClearColorValue { Float32 = ClearColor } },
@@ -113,7 +132,7 @@ public sealed unsafe class GpuRenderer : IDisposable
             new VkRenderPassBeginInfo
             {
                 RenderPass = _target.RenderPass,
-                Framebuffer = _target.FramebufferAt(imageIndex),
+                Framebuffer = _target.FramebufferAt(_imageIndex),
                 RenderArea = new VkRect2D { Extent = _target.Extent },
                 ClearValueCount = clearValues.Length,
                 ClearValues = clearValues.AsPointer(),
@@ -128,9 +147,6 @@ public sealed unsafe class GpuRenderer : IDisposable
             [new VkViewport { Width = _target.Extent.Width, Height = _target.Extent.Height, MaxDepth = 1f }]
         );
         commands.SetScissor(0, [new VkRect2D { Extent = _target.Extent }]);
-
-        _recording = true;
-        return true;
     }
 
     /// <summary>Closes the render pass, submits the frame and presents it.</summary>
