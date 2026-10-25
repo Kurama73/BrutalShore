@@ -16,11 +16,21 @@ public sealed class GameBlocks
     public GameBlocks(BlockRegistry registry)
     {
         Registry = registry;
-        Stone = registry.Register(new BlockType { Name = "stone", Color = byte3.HexColor(0x7F7F84) });
-        Dirt = registry.Register(new BlockType { Name = "dirt", Color = byte3.HexColor(0x6B4A2F) });
-        Grass = registry.Register(new BlockType { Name = "grass", Color = byte3.HexColor(0x5A8F3C) });
-        Sand = registry.Register(new BlockType { Name = "sand", Color = byte3.HexColor(0xD8CB94) });
-        Snow = registry.Register(new BlockType { Name = "snow", Color = byte3.HexColor(0xEDF2F7) });
+        Stone = registry.Register(
+            new BlockType { Name = "stone", Color = byte3.HexColor(0x7F7F84), Pattern = BlockPattern.Mottled }
+        );
+        Dirt = registry.Register(
+            new BlockType { Name = "dirt", Color = byte3.HexColor(0x6B4A2F), Pattern = BlockPattern.Crumbly }
+        );
+        Grass = registry.Register(
+            new BlockType { Name = "grass", Color = byte3.HexColor(0x5A8F3C), Pattern = BlockPattern.Bladed }
+        );
+        Sand = registry.Register(
+            new BlockType { Name = "sand", Color = byte3.HexColor(0xD8CB94), Pattern = BlockPattern.Grainy }
+        );
+        Snow = registry.Register(
+            new BlockType { Name = "snow", Color = byte3.HexColor(0xEDF2F7), Pattern = BlockPattern.Glinting }
+        );
         Water = registry.Register(
             new BlockType
             {
@@ -31,6 +41,7 @@ public sealed class GameBlocks
                 // shallows and is lost in the deep, which is the whole of what makes a coast
                 // legible from above.
                 Opacity = 170,
+                Pattern = BlockPattern.Rippled,
                 Collides = false,
                 IsLiquid = true,
 
@@ -40,14 +51,21 @@ public sealed class GameBlocks
                 LightOpacity = 2,
             }
         );
-        Bedrock = registry.Register(new BlockType { Name = "bedrock", Color = byte3.HexColor(0x2B2B30) });
-        Log = registry.Register(new BlockType { Name = "log", Color = byte3.HexColor(0x5A4228) });
-        Leaves = registry.Register(new BlockType { Name = "leaves", Color = byte3.HexColor(0x3E6B2A) });
+        Bedrock = registry.Register(
+            new BlockType { Name = "bedrock", Color = byte3.HexColor(0x2B2B30), Pattern = BlockPattern.Mottled }
+        );
+        Log = registry.Register(
+            new BlockType { Name = "log", Color = byte3.HexColor(0x5A4228), Pattern = BlockPattern.Grained }
+        );
+        Leaves = registry.Register(
+            new BlockType { Name = "leaves", Color = byte3.HexColor(0x3E6B2A), Pattern = BlockPattern.Scattered }
+        );
         Lantern = registry.Register(
             new BlockType
             {
                 Name = "lantern",
                 Color = byte3.HexColor(0xFFE2A8),
+                Pattern = BlockPattern.Radiant,
 
                 // One below the brightest there is, so a lantern lights fourteen blocks around
                 // itself and a corridor still needs a second one. Full brightness would make a
