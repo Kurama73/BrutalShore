@@ -90,8 +90,8 @@ src/   the engine — BrutalShore.*, knows nothing about any particular game
 
 games/ the games — each one an executable that composes the engine
   Shorebound  blocks, terrain, biomes, trees, the player, controls, breaking,
-              dropping and carrying, the title and settings screens, saving,
-              the player's settings, the length of a day, streaming budgets
+              dropping and carrying, animals, the title and settings screens,
+              saving, the player's settings, the length of a day, budgets
 ```
 
 ### Where the engine stops and a game starts

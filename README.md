@@ -49,6 +49,12 @@ and breaking one pointless. There is no crafting and there are no tools: a block
 comes from where it was, and that is the whole economy. Holding the lantern lights the way, so a cave
 is worth going into with it in hand and not worth going into without.
 
+Animals graze the open ground around you. They wander on their own, step up the
+same one-block ledges you do, and will not let you get close: walk towards one
+and it runs. They are born out of the ground wherever there is room and are
+forgotten once you have walked far enough away, so the herd follows you around
+the world rather than filling it.
+
 `Escape` opens the menu, which has the settings and saves the world; `F3` shows
 what the engine is doing.
 
@@ -132,7 +138,7 @@ were deleted.
 
 | Game            | What is in it                                        |
 | --------------- | ---------------------------------------------------- |
-| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, breaking and dropping, the controls, the row of stacks they carry, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
+| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, breaking and dropping, the controls, the row of stacks they carry, the animals, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
 
 A game is an `IGame` the runtime runs, and an `IChunkGenerator` the world asks
 for blocks. Those two interfaces are the whole of the engine's knowledge of it.
