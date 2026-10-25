@@ -87,6 +87,13 @@ public sealed class ShoreboundGame : IGame
     /// <summary>The shadow map's size in texels.</summary>
     private const int ShadowResolution = 2048;
 
+    /// <summary>How much of its direct light a fully shadowed surface loses.</summary>
+    /// <remarks>
+    /// Kept here rather than taken from the renderer's own default so the debug switch has
+    /// something to put back when it is turned on again.
+    /// </remarks>
+    private const float DefaultShadowStrength = 0.9f;
+
     /// <summary>How far anything can be seen through a liquid, in metres.</summary>
     /// <remarks>
     /// Short, because that is what makes being underwater feel like being underwater rather than
@@ -124,6 +131,8 @@ public sealed class ShoreboundGame : IGame
     private float4x4 _lightViewProjection;
     private VoxelHit? _aimedAt;
     private float4 _submerged;
+    private bool _showShadows = true;
+    private bool _showFog = true;
     private string _notice = string.Empty;
     private double _noticeLeftSeconds;
 
@@ -261,14 +270,24 @@ public sealed class ShoreboundGame : IGame
         _submerged = LiquidAtTheEye();
         var inLiquid = _submerged.W > 0f;
 
+        // Turning fog off pushes it past the far plane rather than branching in the shader: the
+        // point of the switch is to see how far the world really goes, and a world with no fog
+        // and no far plane would be a different question.
+        var fogStart = _showFog ? viewMeters * FogStartFraction : viewMeters * 8f;
+        var fogEnd = _showFog ? viewMeters * FogEndFraction : viewMeters * 9f;
+
         _scene.Update(
             context.Renderer.FrameIndex,
-            _viewProjection,
-            _lightViewProjection,
-            sky,
-            inLiquid ? UnderwaterSightMeters * 0.15f : viewMeters * FogStartFraction,
-            inLiquid ? UnderwaterSightMeters : viewMeters * FogEndFraction,
-            _submerged
+            new SceneFrame
+            {
+                ViewProjection = _viewProjection,
+                LightViewProjection = _lightViewProjection,
+                Sky = sky,
+                FogStartMeters = inLiquid ? UnderwaterSightMeters * 0.15f : fogStart,
+                FogEndMeters = inLiquid ? UnderwaterSightMeters : fogEnd,
+                Submerged = _submerged,
+                ShadowStrength = _showShadows ? DefaultShadowStrength : 0f,
+            }
         );
 
         _shadowMap.Begin(context.Renderer.Commands);
@@ -343,6 +362,19 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_chunks.DrawnChunkCount} chunks, {_chunks.DrawnTriangleCount} triangles");
         ImGui.Text($"{_chunks.ShadowedChunkCount} chunks into the shadow map");
         ImGui.Text($"{_chunks.ResidentBytes / (1024.0 * 1024.0):F1} MiB of geometry");
+
+        ImGui.SeparatorText("Render"u8);
+        ImGui.Checkbox("shadows"u8, ref _showShadows);
+        ImGui.SameLine();
+        ImGui.Checkbox("fog"u8, ref _showFog);
+
+        var frozen = _clock.IsFrozen;
+        if (ImGui.Checkbox("hold the sun"u8, ref frozen))
+            _clock.IsFrozen = frozen;
+
+        var hour = (float)_clock.Hour;
+        if (ImGui.SliderFloat("hour"u8, ref hour, 0f, 24f))
+            _clock.SetDayFraction(double.Floor(_clock.DayFraction) + (hour / 24.0));
 
         ImGui.SeparatorText("Controls"u8);
         ImGui.Text("WASD, space, shift to sprint, F to fly"u8);

@@ -26,22 +26,6 @@ public sealed unsafe class SceneBindings : IDisposable
     private readonly VkDescriptorPool _pool;
     private readonly DepthTarget _shadowMap;
 
-    /// <summary>How much of its direct light a fully shadowed surface loses.</summary>
-    /// <remarks>
-    /// Not quite all of it. The ambient term already keeps a shadow from going black, but a
-    /// sliver of direct light left in means a surface still shows which way it faces inside
-    /// one, which is what keeps a shadowed cliff from reading as a flat silhouette.
-    /// </remarks>
-    private const float ShadowStrength = 0.9f;
-
-    /// <summary>How far along its own normal a surface is nudged before it is looked up.</summary>
-    /// <remarks>
-    /// Six centimetres, against blocks a metre across. Every surface in this world is an axis
-    /// aligned plane, so moving the lookup off the surface is worth more than any depth bias:
-    /// it scales with nothing and cannot detach a shadow from the thing casting it.
-    /// </remarks>
-    private const float ShadowNormalOffsetMeters = 0.06f;
-
     /// <summary>Creates the layout, the pool and one buffer and set per frame in flight.</summary>
     /// <param name="context">The device everything is allocated from.</param>
     /// <param name="shadowMap">The depth target the fragment shaders sample for shadows.</param>
@@ -121,40 +105,24 @@ public sealed unsafe class SceneBindings : IDisposable
 
     /// <summary>Fills in this frame's copy of the block.</summary>
     /// <param name="frameIndex">The frame being recorded; see <see cref="GpuRenderer.FrameIndex" />.</param>
-    /// <param name="viewProjection">The camera's view-projection, in render space.</param>
-    /// <param name="lightViewProjection">Render space to the shadow map's clip space.</param>
-    /// <param name="sky">The sun, the moon and the sky's colours at this moment.</param>
-    /// <param name="fogStartMeters">How far away fog begins.</param>
-    /// <param name="fogEndMeters">How far away fog is total.</param>
-    /// <param name="submerged">
-    /// The colour and strength of the liquid the eye is inside; see
-    /// <see cref="SceneUniforms.Submerged" />. All zero above the surface.
-    /// </param>
-    public void Update(
-        int frameIndex,
-        in float4x4 viewProjection,
-        in float4x4 lightViewProjection,
-        in SkyLight sky,
-        float fogStartMeters,
-        float fogEndMeters,
-        float4 submerged
-    )
+    /// <param name="frame">Everything the shaders read once for this frame.</param>
+    public void Update(int frameIndex, in SceneFrame frame)
     {
         var shadow = new float4(
-            ShadowStrength,
-            ShadowNormalOffsetMeters,
+            frame.ShadowStrength,
+            frame.ShadowNormalOffsetMeters,
             1f / _shadowMap.Resolution,
             0f
         );
 
         var uniforms = new SceneUniforms(
-            viewProjection,
-            lightViewProjection,
-            sky,
-            fogStartMeters,
-            fogEndMeters,
+            frame.ViewProjection,
+            frame.LightViewProjection,
+            frame.Sky,
+            frame.FogStartMeters,
+            frame.FogEndMeters,
             shadow,
-            submerged
+            frame.Submerged
         );
         _buffers[frameIndex].Rewrite(new ReadOnlySpan<SceneUniforms>(in uniforms));
     }
