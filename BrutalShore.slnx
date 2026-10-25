@@ -11,6 +11,7 @@
     <Project Path="games/Shorebound/Shorebound.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/BrutalShore.Core.Tests/BrutalShore.Core.Tests.csproj" />
     <Project Path="tests/BrutalShore.Voxel.Tests/BrutalShore.Voxel.Tests.csproj" />
     <Project Path="tests/BrutalShore.World.Tests/BrutalShore.World.Tests.csproj" />
     <Project Path="tests/BrutalShore.Render.Tests/BrutalShore.Render.Tests.csproj" />

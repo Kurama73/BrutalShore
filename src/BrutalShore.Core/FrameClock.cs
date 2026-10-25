@@ -56,8 +56,23 @@ public sealed class FrameClock
         if (_lastTimestamp == 0)
             _lastTimestamp = now;
 
-        FrameSeconds = (now - _lastTimestamp) / (double)System.Diagnostics.Stopwatch.Frequency;
+        var elapsed = (now - _lastTimestamp) / (double)System.Diagnostics.Stopwatch.Frequency;
         _lastTimestamp = now;
+        return Advance(elapsed);
+    }
+
+    /// <summary>Begins a frame of a length given rather than measured.</summary>
+    /// <param name="elapsedSeconds">How much real time the frame took.</param>
+    /// <returns>How many simulation steps to run before drawing it.</returns>
+    /// <remarks>
+    /// Everything <see cref="BeginFrame" /> does apart from reading the clock. It is public
+    /// because the behaviour worth being sure of here — what happens to the accumulator across a
+    /// stall — cannot be provoked by waiting, and a clock that can only be driven by real time is
+    /// a clock whose catch-up rule is never tested.
+    /// </remarks>
+    public int Advance(double elapsedSeconds)
+    {
+        FrameSeconds = elapsedSeconds;
         FrameCount++;
 
         // An exponential average rather than a windowed one: it needs one number of state, and the
