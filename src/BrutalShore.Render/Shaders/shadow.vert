@@ -20,6 +20,7 @@ layout(set = 0, binding = 0, std140) uniform Scene {
 
 layout(push_constant) uniform Push {
     vec4 chunkOrigin; // xyz: the chunk's origin relative to the camera, in metres
+    vec4 chunkWorld;  // xyz: the chunk's origin in the world, unused here
 } push;
 
 // The pipeline describes both vertex attributes because it shares the voxel vertex format; this

@@ -20,6 +20,7 @@ layout(set = 0, binding = 0, std140) uniform Scene {
 
 layout(push_constant) uniform Push {
     vec4 chunkOrigin; // xyz: the chunk's origin relative to the camera, in metres
+    vec4 chunkWorld;  // xyz: the chunk's origin in the world, in blocks
 } push;
 
 layout(location = 0) in uint inPacked0;
@@ -31,6 +32,7 @@ layout(location = 2) out vec2 outSurface;
 layout(location = 3) out float outOcclusion;
 layout(location = 4) out vec3 outViewOffset;
 layout(location = 5) out float outOpacity;
+layout(location = 6) out vec3 outWorldPosition;
 
 const vec3 NORMALS[6] = vec3[6](
     vec3( 1.0,  0.0,  0.0),
@@ -73,6 +75,10 @@ void main() {
     // Render space has the camera at the origin, so the position is also the offset from the eye
     // — which is what the fragment shader needs for both the fog distance and the view ray.
     outViewOffset = push.chunkOrigin.xyz + local;
+
+    // The same point in a frame that does not move with the camera. Only the look of a block
+    // is decided from it, never its position, so f32 at world scale is enough.
+    outWorldPosition = push.chunkWorld.xyz + local;
 
     gl_Position = scene.viewProjection * vec4(outViewOffset, 1.0);
 }

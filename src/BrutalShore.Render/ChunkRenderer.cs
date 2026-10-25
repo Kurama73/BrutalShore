@@ -252,7 +252,7 @@ public sealed class ChunkRenderer : IDisposable
                 layout,
                 VkShaderStageFlags.VertexBit,
                 ByteSize.Zero,
-                new VoxelPushConstants(origin)
+                new VoxelPushConstants(origin, WorldCoordinates.ChunkOrigin(coordinate))
             );
             commands.DrawIndexed(half.Indices.Count, 1, 0, 0, 0);
 

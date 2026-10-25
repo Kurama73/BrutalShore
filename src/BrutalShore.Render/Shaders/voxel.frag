@@ -23,6 +23,7 @@ layout(location = 2) in vec2 inSurface;
 layout(location = 3) in float inOcclusion;
 layout(location = 4) in vec3 inViewOffset;
 layout(location = 5) in float inOpacity;
+layout(location = 6) in vec3 inWorldPosition;
 
 // Compares rather than reads: each fetch answers "is this fragment nearer the light than what
 // was stored", and with a linear filter the hardware averages four of those answers for free.
@@ -32,6 +33,7 @@ layout(location = 0) out vec4 outColor;
 
 const float OCCLUSION_FLOOR = 0.42;
 const float EDGE_DARKENING = 0.14;
+const float VARIATION = 0.13;
 
 // Shared with sky.frag, and it has to stay identical: the far edge of the world fades into the
 // sky it would see in that direction, and any disagreement shows up as a band on the horizon.
@@ -75,6 +77,15 @@ float sunlightReaching(vec3 viewOffset, vec3 normal) {
     return 1.0 - (1.0 - reaching) * inside * scene.shadow.x;
 }
 
+// Dave Hoskins, "Hash without Sine" (https://www.shadertoy.com/view/4djSRW), the same one the
+// stars use. A sine-based hash differs between drivers, and a world that looked different on two
+// machines would be a world the seed no longer describes.
+float hash13(vec3 position) {
+    vec3 scrambled = fract(position * 0.1031);
+    scrambled += dot(scrambled, scrambled.zyx + 31.32);
+    return fract((scrambled.x + scrambled.y) * scrambled.z);
+}
+
 void main() {
     // Two lights, one of which is always off: the sun while it is up, the moon while it is not.
     // Both terms are kept because dawn and dusk have the sun setting while the moon is already
@@ -88,7 +99,18 @@ void main() {
         + reaching * scene.moonColor.rgb * max(dot(inNormal, scene.moonDirection.xyz), 0.0);
 
     float occlusion = mix(OCCLUSION_FLOOR, 1.0, inOcclusion);
-    vec3 lit = inColor * light * occlusion;
+
+    // Which block this fragment belongs to, in world coordinates. Stepping half a block back
+    // along the normal is what turns a position on a face into the block behind it, and the whole
+    // point of using the world frame is that the answer does not change as the camera moves.
+    vec3 cell = floor(inWorldPosition - inNormal * 0.5);
+
+    // A few per cent either way, per block. Nothing in this world has a texture, so without it a
+    // field of grass is one flat colour however large it is, and the shape of the ground is
+    // carried entirely by the lighting.
+    float shade = 1.0 + (hash13(cell) - 0.5) * VARIATION;
+
+    vec3 lit = inColor * light * occlusion * shade;
 
     // A thin darker line along every block edge, drawn from the surface coordinate rather than a
     // texture so it stays one pixel wide at any distance.
