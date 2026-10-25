@@ -49,6 +49,14 @@ public sealed unsafe class GpuRenderer : IDisposable
     /// </summary>
     public int LastImageIndex => _imageIndex;
 
+    /// <summary>Which of the <see cref="MaxFramesInFlight" /> frames is being recorded.</summary>
+    /// <remarks>
+    /// Anything that keeps one copy of a resource per frame in flight — a uniform buffer, a
+    /// descriptor set — indexes it with this. The fence waited on in <see cref="BeginFrame" />
+    /// is what makes writing to that copy safe.
+    /// </remarks>
+    public int FrameIndex => _frameIndex;
+
     /// <summary>The command buffer of the frame being recorded.</summary>
     /// <exception cref="InvalidOperationException">Outside a frame.</exception>
     public CommandBuffer Commands =>
