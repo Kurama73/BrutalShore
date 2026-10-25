@@ -224,7 +224,9 @@ public sealed class GameUi
         var width = (segment * Segments) + (gap * (Segments - 1));
 
         var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
-        var bottom = viewport.Pos.Y + viewport.Size.Y - (108f * scale);
+        // Above the name of what is in hand, which sits above the row. Clearing it by hand
+        // rather than by luck: the two were drawn on top of each other first time round.
+        var bottom = viewport.Pos.Y + viewport.Size.Y - (134f * scale);
 
         // Red as it runs out rather than red from the start: the colour is the reading.
         var low = fraction < 0.35f;

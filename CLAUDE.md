@@ -10,11 +10,17 @@ Everything in this file is binding for code in this repository.
 
 ## What this is trying to be
 
-A Minecraft-like that is worth reading as much as playing: an unbounded voxel
-world, generated rather than stored, streamed around the player, drawn by a
-renderer written here rather than taken whole. The engine parts exist to make
-the game, and when the two goals conflict the game wins — an engine nobody can
-ship a game with has failed, however educational its internals.
+An unbounded voxel world, generated rather than stored, streamed around the
+player, drawn by a renderer written here rather than taken whole — and on top of
+it a game that takes its building from Minecraft, its production chains and its
+hordes from Factorio, and its tiers and its look from Satisfactory. You dig
+down, the ore gets better and the dark gets worse; you smelt what you find into
+what the next tier costs; what you build draws more of what comes out of the
+dark.
+
+The engine parts exist to make the game, and when the two goals conflict the
+game wins — an engine nobody can ship a game with has failed, however
+educational its internals.
 
 ## BRUTAL is a dependency, not a fork
 
@@ -89,9 +95,10 @@ src/   the engine — BrutalShore.*, knows nothing about any particular game
            Runtime   the window, the device and the frame loop around an IGame  (Core + Gpu + Ui)
 
 games/ the games — each one an executable that composes the engine
-  Shorebound  blocks, terrain, biomes, trees, the player, controls, breaking,
-              dropping and carrying, animals, the title and settings screens,
-              saving, the player's settings, the length of a day, budgets
+  Shorebound  blocks, terrain, biomes, trees, ore seams, the player, controls,
+              breaking, dropping, carrying and crafting, smelters, milestones,
+              animals and the horde, the title and settings screens, saving,
+              the player's settings, the length of a day, budgets
 ```
 
 ### Where the engine stops and a game starts
