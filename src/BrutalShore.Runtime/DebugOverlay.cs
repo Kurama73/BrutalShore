@@ -105,10 +105,27 @@ public sealed unsafe class DebugOverlay : IDisposable
         if (!IsVisible)
             return;
 
-        ImGui.SetNextWindowPos(new float2(16f, 16f), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSize(new float2(440f, 0f), ImGuiCond.FirstUseEver);
+        var viewport = ImGui.GetMainViewport();
+        var width = 460f * ImGui.GetStyle().FontScaleMain;
 
-        if (!ImGui.Begin("BrutalShore"u8))
+        // Along the right edge, because a game's own menus go on the left or in the middle and
+        // this is the one panel that is nobody's but the developer's. It is still draggable; the
+        // right is only where it starts.
+        ImGui.SetNextWindowPos(
+            viewport.Pos + new float2(viewport.Size.X - width - 16f, 16f),
+            ImGuiCond.FirstUseEver
+        );
+
+        // Sized every frame rather than remembered. The panel's contents grow as the engine does,
+        // and a height worked out once and stored in an interface settings file is a height that
+        // was right for whatever the overlay said the first time it was ever opened.
+        ImGui.SetNextWindowSize(new float2(width, viewport.Size.Y * 0.74f), ImGuiCond.Always);
+
+        // Not saved between runs. A developer moving the panel out of the way should have it stay
+        // there for the session, and a position written to a file beside the game is a position
+        // that silently beats every later default — including the one that stops it covering a
+        // menu that did not exist when the file was written.
+        if (!ImGui.Begin("BrutalShore"u8, ImGuiWindowFlags.NoSavedSettings))
         {
             ImGui.End();
             return;
