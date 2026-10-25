@@ -117,6 +117,10 @@ void main() {
         + daylight * reaching * scene.moonColor.rgb * max(dot(inNormal, scene.moonDirection.xyz), 0.0)
         + GLOW_COLOR * inLight.y * inLight.y;
 
+    // The player's own exposure, applied to the light rather than to the finished pixel so that
+    // the fog in front of it keeps its strength. sky.frag scales by the same number.
+    light *= scene.shadow.w;
+
     float occlusion = mix(OCCLUSION_FLOOR, 1.0, inOcclusion);
 
     // Which block this fragment belongs to, in world coordinates. Stepping half a block back
@@ -141,7 +145,8 @@ void main() {
     // Fog towards the sky in this direction, which is what hides the edge of the loaded world.
     float distance = length(inViewOffset);
     float fog = smoothstep(scene.fog.x, scene.fog.y, distance);
-    vec3 distant = mix(skyColorAt(normalize(inViewOffset).y), scene.submerged.rgb, scene.submerged.a);
+    vec3 distant =
+        mix(skyColorAt(normalize(inViewOffset).y) * scene.shadow.w, scene.submerged.rgb, scene.submerged.a);
     lit = mix(lit, distant, fog);
 
     // Fog has to reach the alpha too, or a see-through surface stays sharp against a sky the

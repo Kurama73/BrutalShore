@@ -58,7 +58,7 @@ internal readonly struct SceneUniforms
     /// <summary>
     /// x: how much direct light a shadow takes away. y: how far along its normal a surface is
     /// nudged before being looked up, in metres. z: one shadow map texel in map coordinates.
-    /// w: spare.
+    /// w: how much every light is scaled by before anything is drawn with it.
     /// </summary>
     public readonly float4 Shadow;
 

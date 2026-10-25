@@ -79,5 +79,9 @@ void main() {
     color += vec3(0.85, 0.86, 0.80) * pow(towardsMoon, 6000.0) * moonIsUp;
 
     // Under a liquid there is no sky to see: what the far plane shows is more of the liquid.
+    // The same exposure voxel.frag applies, and it has to be the same number: the world fades
+    // into this sky at its far edge, and any disagreement shows up as a band on the horizon.
+    color *= scene.shadow.w;
+
     outColor = vec4(mix(color, scene.submerged.rgb, scene.submerged.a), 1.0);
 }

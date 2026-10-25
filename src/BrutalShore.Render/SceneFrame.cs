@@ -56,6 +56,15 @@ public readonly record struct SceneFrame
     /// </remarks>
     public float ShadowNormalOffsetMeters { get; init; } = 0.06f;
 
+    /// <summary>How much every light is scaled before anything is drawn with it, 1 being none.</summary>
+    /// <remarks>
+    /// Applied to the light rather than to the finished pixel, so what it moves is the exposure
+    /// of the scene and not the strength of the fog in front of it. The sky is scaled by the same
+    /// number in its own shader, because the far edge of the world fades into the sky and the two
+    /// have to agree or the horizon grows a band.
+    /// </remarks>
+    public float Brightness { get; init; } = 1f;
+
     /// <summary>Builds a frame with the settings that are not required at their defaults.</summary>
     public SceneFrame() { }
 }

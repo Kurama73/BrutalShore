@@ -112,7 +112,7 @@ public sealed unsafe class SceneBindings : IDisposable
             frame.ShadowStrength,
             frame.ShadowNormalOffsetMeters,
             1f / _shadowMap.Resolution,
-            0f
+            frame.Brightness
         );
 
         var uniforms = new SceneUniforms(
