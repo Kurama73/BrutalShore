@@ -81,6 +81,24 @@ public sealed record BlockType
     /// </remarks>
     public byte Emission { get; init; }
 
+    /// <summary>How long it takes to break this block by hand, in seconds.</summary>
+    /// <remarks>
+    /// <para>
+    /// Zero breaks the moment it is touched, which is what a block of nothing much should do.
+    /// <see cref="float.PositiveInfinity" /> never breaks at all, which is how the floor of a
+    /// world stays the floor of a world.
+    /// </para>
+    /// <para>
+    /// A time rather than a hardness on some scale of its own, because a time is the thing a
+    /// player experiences and the thing a designer has an opinion about. What a tool would do to
+    /// it is a tool's business, and there are no tools.
+    /// </para>
+    /// </remarks>
+    public float BreakSeconds { get; init; }
+
+    /// <summary>Whether this block can be broken at all.</summary>
+    public bool IsBreakable => !float.IsPositiveInfinity(BreakSeconds);
+
     /// <summary>Whether a body inside this block is swimming rather than falling.</summary>
     /// <remarks>
     /// Separate from <see cref="Collides" /> because they are different questions: tall grass
