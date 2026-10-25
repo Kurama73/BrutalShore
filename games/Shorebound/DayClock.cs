@@ -51,6 +51,14 @@ public sealed class DayClock
     /// <summary>The hour of the day, from 0 up to 24.</summary>
     public double Hour => (DayFraction - double.Floor(DayFraction)) * 24.0;
 
+    /// <summary>Whether the sun is up.</summary>
+    /// <remarks>
+    /// Six to six, which is what the sky is drawn from. It matters to more than the sky: what
+    /// comes out of the dark comes out when this is false and burns when it turns true, so a
+    /// player learns the hours the same way they learn where the ore is.
+    /// </remarks>
+    public bool IsDay => Hour is >= 6.0 and < 18.0;
+
     /// <summary>Whether time stands still.</summary>
     public bool IsFrozen { get; set; }
 

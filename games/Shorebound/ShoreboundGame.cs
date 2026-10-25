@@ -152,6 +152,18 @@ public sealed class ShoreboundGame : IGame
     private readonly Mining _mining = new();
     private readonly Drops _drops;
     private readonly Grazers _grazers;
+    private readonly Stalkers _stalkers;
+    private readonly Vitality _vitality = new();
+
+    /// <summary>How far a swing reaches, in metres.</summary>
+    private const double StrikeReachMeters = 3.2;
+
+    /// <summary>How much one swing takes off something.</summary>
+    /// <remarks>
+    /// Three, against six of health, so two connected swings finish one. Enough that a player
+    /// who turns and fights one creature wins; nowhere near enough that they win against six.
+    /// </remarks>
+    private const float StrikeDamage = 3f;
 
     // Assigned in Load, because each of these needs a device, and there is none until the host has
     // opened a window.
@@ -206,6 +218,7 @@ public sealed class ShoreboundGame : IGame
         _machines = new Machines(_smelting);
         _drops = new Drops(options.Seed);
         _grazers = new Grazers(options.Seed);
+        _stalkers = new Stalkers(options.Seed);
         _clock = new DayClock(options.StartHour, _settings.DayLengthSeconds);
 
         // Above where the player will spawn, which is the one place the world is certain to have
@@ -337,6 +350,20 @@ public sealed class ShoreboundGame : IGame
 
         _drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _inventory);
         _grazers.Step(_world, _world.Registry, seconds, _player.FeetMeters);
+
+        _vitality.Step(seconds);
+        _stalkers.Step(
+            _world,
+            _world.Registry,
+            seconds,
+            _player.FeetMeters,
+            _vitality,
+            _machines.LitCount,
+            _clock.IsDay
+        );
+
+        if (!_vitality.IsAlive)
+            Respawn();
         // A player with a panel open keeps falling and stops steering. Reading the keyboard while
         // they are clicking around a grid would walk them off whatever they are standing on.
         var intent = playing ? _controller.ReadIntent() : PlayerIntent.Still;
@@ -359,9 +386,14 @@ public sealed class ShoreboundGame : IGame
             ReadPlayingKeys(context);
             Aim();
 
+            // A swing lands on the click; mining is what a held button does. Testing the swing
+            // first means a player with something on them who clicks hits it rather than
+            // starting to mine the wall behind it.
+            var swung = context.Window.WasMouseButtonPressed(GlfwMouseButton.Left) && Strike();
+
             // Read here and used by the step, because a button is a thing that is held and a
             // step is where held things are acted on.
-            _isBreaking = context.Window.IsMouseButtonDown(GlfwMouseButton.Left);
+            _isBreaking = !swung && context.Window.IsMouseButtonDown(GlfwMouseButton.Left);
         }
         else if (_screen == Screen.Title)
         {
@@ -437,7 +469,7 @@ public sealed class ShoreboundGame : IGame
         _sky.Draw();
         _chunks.Draw(_camera, _viewProjection);
 
-        if (_drops.Count > 0 || _grazers.Count > 0)
+        if (_drops.Count > 0 || _grazers.Count > 0 || _stalkers.Count > 0)
         {
             _cubes.Begin();
 
@@ -447,6 +479,13 @@ public sealed class ShoreboundGame : IGame
                 GrazerShape.Lay(grazer, parts);
                 foreach (var part in parts)
                     _cubes.Draw(part.MiddleMeters, part.SizeMeters, part.Color, grazer.Yaw, _camera.Position);
+            }
+
+            foreach (var stalker in _stalkers.All)
+            {
+                StalkerShape.Lay(stalker, parts);
+                foreach (var part in parts)
+                    _cubes.Draw(part.MiddleMeters, part.SizeMeters, part.Color, stalker.Yaw, _camera.Position);
             }
 
             foreach (var drop in _drops.All)
@@ -485,6 +524,7 @@ public sealed class ShoreboundGame : IGame
             case Screen.Playing:
                 _ui.DrawCrosshair(_aimedAt is not null);
                 _ui.DrawRow(_inventory);
+                _ui.DrawVitality(_vitality);
                 break;
 
             case Screen.Paused:
@@ -604,6 +644,7 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_world.Edits.Count} blocks changed, {_drops.Count} lying about");
         ImGui.Text($"{_grazers.Count} grazing");
         ImGui.Text($"{_machines.Count} machines, {_machines.LitCount} alight");
+        ImGui.Text($"{_stalkers.Count} stalking of {Stalkers.Allowed(_machines.LitCount)} allowed");
 
         ImGui.SeparatorText("Drawn"u8);
         ImGui.Text($"{_chunks.DrawnChunkCount} chunks, {_chunks.DrawnTriangleCount} triangles");
@@ -875,6 +916,45 @@ public sealed class ShoreboundGame : IGame
         );
     }
 
+    /// <summary>Swings at whatever is in front of the player, and says whether it connected.</summary>
+    /// <remarks>
+    /// Tried before breaking a block, because a player with something biting them who clicks is
+    /// asking to hit it and not to mine the wall behind it. Nothing is done with a hit beyond
+    /// hurting it: there is no weapon to hold and no damage to choose, so a swing is a swing.
+    /// </remarks>
+    private bool Strike()
+    {
+        var forward = _camera.Forward;
+
+        return _stalkers.Strike(
+            _player.EyeMeters,
+            new double3(forward.X, forward.Y, forward.Z),
+            StrikeReachMeters,
+            StrikeDamage
+        );
+    }
+
+    /// <summary>Puts the player back on their feet somewhere safe, having lost what they carried.</summary>
+    /// <remarks>
+    /// Everything carried is dropped where they fell rather than destroyed. Losing an afternoon
+    /// of mining to a creature in a corridor is the kind of punishment that makes people stop
+    /// playing; having to walk back for it is the kind that makes them light the corridor.
+    /// </remarks>
+    private void Respawn()
+    {
+        for (var slot = 0; slot < Inventory.SlotCount; slot++)
+        {
+            var (block, count) = _inventory.At(slot);
+            for (var one = 0; one < count; one++)
+                _drops.Spawn(block, WorldCoordinates.ToBlock(_player.FeetMeters));
+        }
+
+        _inventory.Clear();
+        _vitality.Restore();
+        _player.TeleportTo(new double3(0.5, _generator.SurfaceHeight(0, 0) + 2.0, 0.5));
+        Say("You went down in the dark. What you carried is where you fell.");
+    }
+
     /// <summary>Opens what the player is aiming at, or puts the block in hand against it.</summary>
     /// <param name="context">The frame's context, for letting go of the mouse at a machine.</param>
     private void UseOrPlace(GameContext context)
@@ -1071,6 +1151,8 @@ public sealed class ShoreboundGame : IGame
         _held = Stack.Nothing;
         _drops.Clear();
         _grazers.Clear();
+        _stalkers.Clear();
+        _vitality.Restore();
 
         // One block above the surface, so the first step is a short fall rather than a long one
         // through terrain that has not streamed in yet.
@@ -1102,6 +1184,8 @@ public sealed class ShoreboundGame : IGame
             _held = Stack.Nothing;
             _drops.Clear();
             _grazers.Clear();
+            _stalkers.Clear();
+            _vitality.Restore();
             _clock.SetDayFraction(save.DayFraction);
 
             Say(

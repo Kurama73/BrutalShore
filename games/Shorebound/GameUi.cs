@@ -193,6 +193,67 @@ public sealed class GameUi
         );
     }
 
+    /// <summary>Draws how much of the player is left, over on the left of the row.</summary>
+    /// <param name="vitality">What is left of them.</param>
+    /// <remarks>
+    /// <para>
+    /// Hidden while whole. A bar that is always there is a bar nobody looks at, and in a game
+    /// where most hours are spent digging rather than fighting, a health bar appearing at all is
+    /// itself the warning.
+    /// </para>
+    /// <para>
+    /// Cut into segments rather than drawn as one strip, because a player under attack is
+    /// counting how many more bites they can take and not reading a percentage.
+    /// </para>
+    /// </remarks>
+    public void DrawVitality(Vitality vitality)
+    {
+        var fraction = vitality.Fraction;
+        if (fraction >= 1f && !vitality.WasHurtRecently)
+            return;
+
+        var viewport = ImGui.GetMainViewport();
+        var scale = ImGui.GetStyle().FontScaleMain;
+
+        FullScreen("vitality"u8, takesInput: false);
+
+        const int Segments = 10;
+        var segment = 22f * scale;
+        var gap = 3f * scale;
+        var height = 11f * scale;
+        var width = (segment * Segments) + (gap * (Segments - 1));
+
+        var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
+        var bottom = viewport.Pos.Y + viewport.Size.Y - (108f * scale);
+
+        // Red as it runs out rather than red from the start: the colour is the reading.
+        var low = fraction < 0.35f;
+        var filled = fraction * Segments;
+
+        for (var index = 0; index < Segments; index++)
+        {
+            var minimum = new float2(left + (index * (segment + gap)), bottom - height);
+            var maximum = minimum + new float2(segment, height);
+            var part = float.Clamp(filled - index, 0f, 1f);
+
+            UiCanvas.Chamfer(minimum, maximum, UiPalette.Fade(UiPalette.Scrim, 0.78f), 3f * scale);
+
+            if (part > 0f)
+            {
+                UiCanvas.Chamfer(
+                    minimum,
+                    new float2(float.Lerp(minimum.X, maximum.X, part), maximum.Y),
+                    low ? UiPalette.Warning : UiPalette.Accent,
+                    3f * scale
+                );
+            }
+
+            UiCanvas.ChamferOutline(minimum, maximum, UiPalette.Fade(UiPalette.Edge, 0.45f), 3f * scale);
+        }
+
+        ImGui.End();
+    }
+
     /// <summary>Draws the row of blocks along the bottom of the screen.</summary>
     /// <param name="inventory">The row to draw.</param>
     /// <remarks>
