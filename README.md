@@ -9,7 +9,8 @@ Kitten Space Agency.
 An unbounded world of 32³ chunks, generated from a seed rather than stored,
 streamed around the player on worker threads, greedy-meshed with ambient
 occlusion, and drawn through a Vulkan renderer written here: a sky with a sun
-and a moon crossing it, shadows cast from whichever is up, water you can see
+and a moon crossing it, shadows cast from whichever is up, light that floods a
+cave through a hole in its roof and stops fifteen blocks in, water you can see
 through and swim in, and biomes from desert to tundra whose forests span chunk
 boundaries without anything being saved.
 
@@ -32,25 +33,38 @@ names the command above.
 dotnet run --project games/Shorebound -c Release
 ```
 
-Click `Play`, then `WASD` to move, `space` to jump, `shift` to sprint, `F` to
-switch between walking and flying — `space` and `ctrl` go up and down while
-flying, and `space` swims up in water. Whichever block is in reach of the
-crosshair is outlined: left click breaks it, right click places against the face
-being looked at, and the number keys or `Q` and `E` pick which block that is.
-`Escape` opens the menu, where the world can be saved; `F3` hides the overlay.
+Click `Play`, then `WASD` to move, `space` to jump, `shift` to sprint and `ctrl`
+to crouch — crouching is slower, lower, and will not walk off an edge. A ledge
+one block high is walked up rather than jumped. `F` switches between walking and
+flying, where `space` and `ctrl` go up and down; `space` swims up in water.
+
+Whichever block is in reach of the crosshair is outlined: left click breaks it,
+right click places against the face being looked at, and the number keys or `Q`
+and `E` pick which block that is. Holding the lantern lights the way, so a cave
+is worth going into with it in hand and not worth going into without.
+
+`Escape` opens the menu, which has the settings and saves the world; `F3` shows
+what the engine is doing.
 
 A world is its seed plus the blocks you have changed, so a save holds nothing
 else: an untouched world is about a hundred bytes however far you have walked.
+
+Everything the settings screen offers applies as the slider moves — view
+distance, field of view, sensitivity, brightness, shadows, fog, interface scale,
+the length of a day — and is written to `shorebound.settings`, one name and one
+value a line, for the times it is easier to fix a setting in an editor than from
+inside the game. Anything the command line mentions beats what is in that file.
 
 ### Options
 
 | Flag                               | What it does                                     |
 | ---------------------------------- | ------------------------------------------------ |
 | `--seed <n>`                       | The world seed. The same seed is the same world. |
-| `--view-radius <chunks>`           | How far chunks stay loaded. Default 8.           |
+| `--view-radius <chunks>`           | How far chunks stay loaded. Overrides the setting. |
 | `--time <hour>`                    | The hour the world starts at. Default 8.         |
-| `--day-length <seconds>`           | Real seconds per in-game day; 0 stops the sun.   |
+| `--day-length <seconds>`           | Real seconds per in-game day, 0 stopping the sun. Overrides the setting. |
 | `--save <path>`                    | Where the world is kept. Default `shorebound.world`. |
+| `--settings <path>`                | Where the player's settings are kept. Default `shorebound.settings`. |
 | `--no-overlay`                     | Start with the debug overlay hidden.             |
 | `--validation`                     | Turn on the Vulkan validation layers.            |
 | `--frames <n>`                     | Close after this many frames.                    |
@@ -112,16 +126,49 @@ were deleted.
 
 | Game            | What is in it                                        |
 | --------------- | ---------------------------------------------------- |
-| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, the controls, the hotbar, the menus, the save file, how long a day lasts, how much work a frame may spend loading and meshing |
+| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, the controls, the hotbar, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
 
 A game is an `IGame` the runtime runs, and an `IChunkGenerator` the world asks
 for blocks. Those two interfaces are the whole of the engine's knowledge of it.
 
 Dependencies point downwards only. Everything that does not need a device is
 tested without one: `dotnet test` runs the mesher, the noise, the streaming, the
-block edits, the ray cast and the collision, the camera, the frustum, the sun's
-arc, the shadow box, and Shorebound's own terrain, biomes, trees, player and
-save file.
+block edits, the ray cast and the collision, the light fill, the camera, the
+frustum, the sun's arc, the shadow box, and Shorebound's own terrain, biomes,
+trees, player, settings and save file.
+
+## How the world is lit
+
+Four kinds of light, and only one of them costs anything per frame.
+
+**Sky light** is a flood fill, worked out on a worker thread when a chunk is
+meshed, over the chunk and sixteen blocks around it — which is the smallest box
+that gives the right answer, since light travels fifteen blocks and a source any
+further out arrives at nothing. Every cell with nothing above it starts at
+fifteen and loses a level per block it travels, so a cave mouth is bright, the
+twentieth metre of a tunnel is black, and a shaft open to the sky carries
+daylight to the floor however deep it is. Water costs two levels a block, which
+is what turns depth into darkness.
+
+**Block light** is the same fill from a different seed: anything that glows,
+which so far is the lantern.
+
+Both are sampled per face corner, averaged over the four cells touching it, and
+baked into the eight bytes of each vertex — so the frame reads two nibbles it
+already had room for, and nothing about lighting a world of caves reaches the
+renderer. Putting light into the merge key costs 1.2% more triangles, measured:
+outdoor terrain is almost uniformly skylit, so the splits happen only under
+canopies and at cave mouths.
+
+**The sun and the moon** are a shadow map, which is the one thing the two fills
+cannot do: a mountain's shadow falling across a valley at low sun is directional,
+and sky light is not.
+
+**The light in your hand** is the only one that moves, and the only one computed
+per frame. It needs no shadows and is given none — a light at the eye reaches
+everything the eye can see, because anything blocking it would be blocking the
+view. Putting the lantern down hands it back to the flood fill, where it gets
+real occlusion for free.
 
 ## How the world is drawn
 
