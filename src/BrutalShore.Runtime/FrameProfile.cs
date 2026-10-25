@@ -41,6 +41,21 @@ public sealed class FrameProfile
     /// </remarks>
     public FrameTimeline Presenting { get; } = new(WindowFrames);
 
+    /// <summary>Whatever divisions the game itself cares about, on top of the host's.</summary>
+    /// <remarks>
+    /// <para>
+    /// The phases above are the host's and they are fixed, because the host is what decides what
+    /// a frame is made of. What is inside the game's share of a frame is the game's business —
+    /// one wants meshing, lighting and machines, another would want pathfinding — so it opens
+    /// whatever counters it likes and they appear in the overlay underneath the host's.
+    /// </para>
+    /// <para>
+    /// This is the seam that keeps the overlay an engine thing. Without it, showing a game's own
+    /// timings would mean the engine knowing what a chunk is.
+    /// </para>
+    /// </remarks>
+    public Profiler Counters { get; } = new();
+
     /// <summary>Times a block of work into one of the timelines.</summary>
     /// <param name="into">Where to record how long it took.</param>
     /// <returns>A scope that records the elapsed time when it is disposed.</returns>

@@ -45,7 +45,7 @@ public sealed class GameHost : IDisposable
         _shaders = new ShaderLibrary(_gpu, Path.Combine(AppContext.BaseDirectory, "Shaders"));
         _overlay = new DebugOverlay(_window, _gpu, _target, options.ShowOverlay, options.UiScale);
 
-        Context = new GameContext(_window, _gpu, _target, _renderer, _shaders, _clock);
+        Context = new GameContext(_window, _gpu, _target, _renderer, _shaders, _clock, _profile.Counters);
     }
 
     /// <summary>What the host lends to the game.</summary>
@@ -98,6 +98,10 @@ public sealed class GameHost : IDisposable
 
             using (FrameProfile.Measure(_profile.Presenting))
                 _renderer.EndFrame();
+
+            // After everything, so that a counter opened anywhere in the frame — stepping,
+            // updating, drawing — lands in the same frame's window.
+            _profile.Counters.EndFrame();
 
             if (_options.FrameLimit > 0 && _clock.FrameCount >= _options.FrameLimit)
                 _window.Close();

@@ -17,7 +17,8 @@ public sealed class GameContext
         SwapchainTarget target,
         GpuRenderer renderer,
         ShaderLibrary shaders,
-        FrameClock clock
+        FrameClock clock,
+        Profiler counters
     )
     {
         Window = window;
@@ -26,7 +27,16 @@ public sealed class GameContext
         Renderer = renderer;
         Shaders = shaders;
         Clock = clock;
+        Counters = counters;
     }
+
+    /// <summary>Where the game times its own work, for the overlay to show.</summary>
+    /// <remarks>
+    /// Handed to the game rather than reached for, so that timing something is available
+    /// everywhere the context is and nothing has to be wired through on purpose. Counters are
+    /// meant to be opened once, at load, and the handles kept.
+    /// </remarks>
+    public Profiler Counters { get; }
 
     /// <summary>The window, for input and its framebuffer size.</summary>
     public GameWindow Window { get; }

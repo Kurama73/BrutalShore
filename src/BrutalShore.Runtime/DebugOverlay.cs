@@ -191,6 +191,43 @@ public sealed unsafe class DebugOverlay : IDisposable
         ImGui.Text(
             $"record {profile.Recording.Average():F2} ms   present {profile.Presenting.Average():F2} ms"
         );
+
+        DrawCounters(profile.Counters);
+    }
+
+    /// <summary>Draws whatever counters the game opened, worst first.</summary>
+    /// <param name="counters">The game's own divisions of its share of a frame.</param>
+    /// <remarks>
+    /// <para>
+    /// Sorted by cost rather than shown in the order they were opened. The order they were opened
+    /// in is the order the work happens, which is the right way to read a frame — but the
+    /// question anyone opens this panel to answer is "what is slow", and that is answered by
+    /// putting the largest at the top.
+    /// </para>
+    /// <para>
+    /// The ninety-ninth percentile beside the average, because the frames a player notices are
+    /// not the average ones. A counter whose average is half a millisecond and whose ninety-ninth
+    /// is nine is a counter with a hitch in it, and the average alone hides that completely.
+    /// </para>
+    /// </remarks>
+    private static void DrawCounters(Profiler counters)
+    {
+        if (counters.Count == 0)
+            return;
+
+        ImGui.SeparatorText("Game"u8);
+
+        foreach (var (name, timeline) in counters.All().OrderByDescending(counter => counter.Timeline.Average()))
+        {
+            var average = timeline.Average();
+
+            // Anything that never costs a tenth of a millisecond is noise in a list of what is
+            // slow, and a list that is mostly noise is one nobody reads.
+            if (average < 0.01f)
+                continue;
+
+            ImGui.Text($"{name} {average:F2} ms   {timeline.Percentile(0.99f):F2} at the 99th");
+        }
     }
 
     /// <summary>Records the interface's draw commands into the frame.</summary>
