@@ -14,6 +14,9 @@ public sealed class VoxelBodyTests
     /// <summary>A player-shaped box: six tenths across, one and four fifths tall.</summary>
     private static readonly double3 PlayerSize = new(0.6, 1.8, 0.6);
 
+    /// <summary>A step tall enough to climb one block, which is the only ledge this world has.</summary>
+    private const double StepHeight = 1.05;
+
     /// <summary>
     /// A registry whose one block stops a body, matching what the test worlds below put down.
     /// </summary>
@@ -177,6 +180,90 @@ public sealed class VoxelBodyTests
         Assert.False(VoxelBody.IsStandingOn(world, registry, new double3(0.5, 1.0, 0.5), PlayerSize));
     }
 
+    [Fact]
+    public void a_body_given_no_step_height_is_stopped_by_a_single_block_ledge()
+    {
+        var world = new StepAt(1, height: 1);
+
+        var move = Walk(world, from: 0.5, delta: 1.5, stepHeight: 0.0);
+
+        Assert.True(move.HitWall);
+        Assert.False(move.SteppedUp);
+        Assert.Equal(1.0, move.FeetMeters.Y, 1e-9);
+    }
+
+    [Fact]
+    public void a_body_that_can_step_climbs_a_single_block_ledge_without_jumping()
+    {
+        // The whole point: walking across broken ground should not need a key. One block is the
+        // height every ledge in a voxel world is some multiple of.
+        var world = new StepAt(1, height: 1);
+
+        var move = Walk(world, from: 0.5, delta: 1.5, stepHeight: StepHeight);
+
+        Assert.True(move.SteppedUp);
+        Assert.False(move.HitWall);
+        // A tenth of a millimetre of slack: a body comes to rest just clear of what it landed
+        // on rather than exactly on it, which is what keeps the contact out of a rounding mode.
+        Assert.Equal(2.0, move.FeetMeters.Y, 1e-3);
+        Assert.True(move.FeetMeters.X > 1.0, $"the body stopped at {move.FeetMeters.X} instead of crossing the ledge");
+    }
+
+    [Fact]
+    public void a_body_that_can_step_is_still_stopped_by_anything_taller_than_its_step()
+    {
+        var world = new StepAt(1, height: 2);
+
+        var move = Walk(world, from: 0.5, delta: 1.5, stepHeight: StepHeight);
+
+        Assert.True(move.HitWall);
+        Assert.False(move.SteppedUp);
+        Assert.Equal(1.0, move.FeetMeters.Y, 1e-9);
+    }
+
+    [Fact]
+    public void a_body_in_mid_air_does_not_climb_the_wall_it_is_pressed_against()
+    {
+        // Stepping has to be a property of walking, not of touching. A body that could step while
+        // falling would climb any wall by holding a direction against it.
+        var world = new WallAt(2);
+
+        var move = VoxelBody.Move(
+            world,
+            Registry,
+            new double3(0.5, 8.0, 0.5),
+            PlayerSize,
+            new double3(2.0, 0.0, 0.0),
+            stepHeightMeters: StepHeight
+        );
+
+        Assert.False(move.SteppedUp);
+        Assert.Equal(8.0, move.FeetMeters.Y, 1e-9);
+    }
+
+    [Fact]
+    public void a_body_does_not_step_up_onto_a_ledge_with_no_headroom()
+    {
+        // A ledge one block high under a ceiling two blocks up leaves nowhere to stand.
+        var world = new StepUnderCeiling(1, ceiling: 3);
+
+        var move = Walk(world, from: 0.5, delta: 1.5, stepHeight: StepHeight);
+
+        Assert.False(move.SteppedUp);
+        Assert.Equal(1.0, move.FeetMeters.Y, 1e-9);
+    }
+
+    /// <summary>One walk along x from a standing start on the floor at y = 1.</summary>
+    private static BodyMove Walk(IVoxelSource world, double from, double delta, double stepHeight) =>
+        VoxelBody.Move(
+            world,
+            Registry,
+            new double3(from, 1.0, 0.5),
+            PlayerSize,
+            new double3(delta, 0.0, 0.0),
+            stepHeight
+        );
+
     /// <summary>One block everywhere, whatever it is.</summary>
     private sealed class FilledWorld(BlockId block) : IVoxelSource
     {
@@ -194,6 +281,24 @@ public sealed class VoxelBodyTests
     {
         public BlockId BlockAt(int x, int y, int z) =>
             y == floor || y == ceiling ? new BlockId(1) : BlockId.Air;
+    }
+
+    /// <summary>A floor at y = 0, raised by some blocks from one x onwards.</summary>
+    private sealed class StepAt(int x, int height) : IVoxelSource
+    {
+        public BlockId BlockAt(int blockX, int blockY, int blockZ) =>
+            blockY == 0 || (blockX >= x && blockY >= 1 && blockY <= height)
+                ? new BlockId(1)
+                : BlockId.Air;
+    }
+
+    /// <summary>The same ledge, with a ceiling low enough that there is no room on top of it.</summary>
+    private sealed class StepUnderCeiling(int x, int ceiling) : IVoxelSource
+    {
+        public BlockId BlockAt(int blockX, int blockY, int blockZ) =>
+            blockY == 0 || blockY == ceiling || (blockX >= x && blockY == 1)
+                ? new BlockId(1)
+                : BlockId.Air;
     }
 
     /// <summary>A floor, and a wall filling everything from one x onwards.</summary>

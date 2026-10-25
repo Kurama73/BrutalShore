@@ -18,6 +18,9 @@ public readonly record struct BodyMove
 
     /// <summary>Whether something solid stopped it sideways.</summary>
     public required bool HitWall { get; init; }
+
+    /// <summary>Whether it climbed a ledge on the way rather than being stopped by it.</summary>
+    public bool SteppedUp { get; init; }
 }
 
 /// <summary>Slides an upright box through the voxel grid without letting it into anything.</summary>
@@ -63,13 +66,19 @@ public static class VoxelBody
     /// <param name="feetMeters">The middle of the body's base, in world metres.</param>
     /// <param name="sizeMeters">Its width, height and depth, in metres.</param>
     /// <param name="deltaMeters">How far it is trying to move.</param>
+    /// <param name="stepHeightMeters">
+    /// How tall a ledge the body climbs rather than stops at, or zero for none. Only taken while
+    /// it is standing on something: a body in mid-air that could step would be a body climbing a
+    /// wall by walking into it.
+    /// </param>
     /// <returns>Where it ended up and what stopped it.</returns>
     public static BodyMove Move(
         IVoxelSource source,
         BlockRegistry registry,
         double3 feetMeters,
         double3 sizeMeters,
-        double3 deltaMeters
+        double3 deltaMeters,
+        double stepHeightMeters = 0.0
     )
     {
         var remaining = deltaMeters;
@@ -77,6 +86,7 @@ public static class VoxelBody
         var onGround = false;
         var ceiling = false;
         var wall = false;
+        var stepped = false;
 
         var longest = double.Max(
             double.Abs(deltaMeters.X),
@@ -96,8 +106,25 @@ public static class VoxelBody
                     ceiling = true;
             }
 
-            wall |= Slide(source, registry, ref feet, sizeMeters, 0, perStep.X);
-            wall |= Slide(source, registry, ref feet, sizeMeters, 2, perStep.Z);
+            // Whether a ledge may be climbed is decided before the horizontal moves, not after:
+            // the first of the two can walk the body off the edge it was standing on, and the
+            // second would then be a step taken in mid-air.
+            var grounded = stepHeightMeters > 0.0 && IsStandingOn(source, registry, feet, sizeMeters);
+
+            foreach (var axis in (ReadOnlySpan<int>)[0, 2])
+            {
+                var along = axis == 0 ? perStep.X : perStep.Z;
+                if (!Slide(source, registry, ref feet, sizeMeters, axis, along))
+                    continue;
+
+                if (grounded && TryStepUp(source, registry, ref feet, sizeMeters, axis, along, stepHeightMeters))
+                {
+                    stepped = true;
+                    continue;
+                }
+
+                wall = true;
+            }
         }
 
         return new BodyMove
@@ -106,7 +133,55 @@ public static class VoxelBody
             IsOnGround = onGround,
             HitCeiling = ceiling,
             HitWall = wall,
+            SteppedUp = stepped,
         };
+    }
+
+    /// <summary>
+    /// Tries to climb whatever stopped the body along one axis: up, across, and back down onto it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three moves and an all-or-nothing result. Up by the step height, which fails against a low
+    /// ceiling; across by what was left, which fails against anything taller than a step; and
+    /// down again, which fails if there is nothing to land on — a body that stepped up into thin
+    /// air would be a body that climbed the outside corner of a wall.
+    /// </para>
+    /// <para>
+    /// The body is put back exactly where it was if any of the three fails, so a failed step
+    /// costs nothing and leaves the ordinary wall behaviour alone.
+    /// </para>
+    /// </remarks>
+    private static bool TryStepUp(
+        IVoxelSource source,
+        BlockRegistry registry,
+        ref double3 feet,
+        double3 size,
+        int axis,
+        double along,
+        double stepHeight
+    )
+    {
+        var before = feet;
+        var lifted = Offset(feet, 1, stepHeight);
+
+        if (Overlaps(source, registry, lifted, size))
+            return false;
+
+        var across = Offset(lifted, axis, along);
+        if (Overlaps(source, registry, across, size))
+            return false;
+
+        // Settle back down onto whatever is now underneath, which is the ledge if there is one.
+        var settled = across;
+        if (Slide(source, registry, ref settled, size, 1, -stepHeight) is false)
+        {
+            feet = before;
+            return false;
+        }
+
+        feet = settled;
+        return true;
     }
 
     /// <summary>Whether a body standing here has something solid immediately under it.</summary>
