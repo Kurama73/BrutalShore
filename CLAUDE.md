@@ -89,9 +89,9 @@ src/   the engine — BrutalShore.*, knows nothing about any particular game
            Runtime   the window, the device and the frame loop around an IGame  (Core + Gpu + Ui)
 
 games/ the games — each one an executable that composes the engine
-  Shorebound  blocks, terrain, biomes, trees, the player, controls, the hotbar,
-              the title and settings screens, saving, the player's settings,
-              the length of a day, streaming budgets
+  Shorebound  blocks, terrain, biomes, trees, the player, controls, breaking,
+              dropping and carrying, the title and settings screens, saving,
+              the player's settings, the length of a day, streaming budgets
 ```
 
 ### Where the engine stops and a game starts

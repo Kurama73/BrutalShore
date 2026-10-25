@@ -40,9 +40,13 @@ flying, where `space` and `ctrl` go up and down; `space` swims up in water.
 
 Whichever block is in reach of the crosshair is outlined. **Hold** left click to
 break it — each block takes its own time and cracks while it goes, and looking
-away gives up whatever was done. Right click places against the face being
-looked at, and the number keys, `Q` and `E`, or the mouse wheel pick which block
-that is. Holding the lantern lights the way, so a cave
+away gives up whatever was done. What comes out falls on the ground, and walking
+near it puts it in your row. Right click places one back, which spends it, and
+the number keys, `Q` and `E`, or the mouse wheel pick which.
+
+The row starts empty, because a row that never ran out made placing a block free
+and breaking one pointless. There is no crafting and there are no tools: a block
+comes from where it was, and that is the whole economy. Holding the lantern lights the way, so a cave
 is worth going into with it in hand and not worth going into without.
 
 `Escape` opens the menu, which has the settings and saves the world; `F3` shows
@@ -123,12 +127,12 @@ were deleted.
 | `BrutalShore.Gpu`     | Window, Vulkan device, swapchain, frames in flight, shaders   |
 | `BrutalShore.Ui`      | What every panel looks like: the palette, the ImGui theme, the shared widgets |
 | `BrutalShore.World`   | Coordinates, gradient noise, streaming, block edits, ray casting and collision, `IChunkGenerator` |
-| `BrutalShore.Render`  | Camera, view frustum, the sun and sky, shadows, the ray marching field, the voxel pipeline, chunk meshes |
+| `BrutalShore.Render`  | Camera, view frustum, the sun and sky, shadows, the ray marching field, the voxel pipeline, chunk meshes, loose cubes |
 | `BrutalShore.Runtime` | The window, the device and the frame loop around an `IGame`   |
 
 | Game            | What is in it                                        |
 | --------------- | ---------------------------------------------------- |
-| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, the controls, the hotbar, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
+| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, breaking and dropping, the controls, the row of stacks they carry, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
 
 A game is an `IGame` the runtime runs, and an `IChunkGenerator` the world asks
 for blocks. Those two interfaces are the whole of the engine's knowledge of it.
@@ -137,7 +141,7 @@ Dependencies point downwards only. Everything that does not need a device is
 tested without one: `dotnet test` runs the mesher, the noise, the streaming, the
 block edits, the ray cast and the collision, the light fill, the camera, the
 frustum, the sun's arc, the shadow box, and Shorebound's own terrain, biomes,
-trees, player, settings and save file.
+trees, player, breaking, dropping, carrying, settings and save file.
 
 ## How the world is lit
 
