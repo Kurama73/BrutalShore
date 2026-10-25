@@ -463,6 +463,7 @@ public sealed class GameUi
     /// <param name="bench">The crafting grid, which this lays blocks out on and takes from.</param>
     /// <param name="recipes">The table the recipe list is read from.</param>
     /// <param name="progression">How far the player has got, which decides what the list offers.</param>
+    /// <returns>Whether the player made something this frame.</returns>
     /// <param name="held">
     /// What the cursor is carrying between two slots, which this reads and writes. It lives
     /// outside the inventory because a stack on the cursor is in no slot at all, and lives
@@ -484,7 +485,7 @@ public sealed class GameUi
     /// method's: it reports which slot was clicked and with which button, and nothing else.
     /// </para>
     /// </remarks>
-    public void DrawInventory(
+    public bool DrawInventory(
         Inventory inventory,
         Bench bench,
         Recipes recipes,
@@ -528,7 +529,7 @@ public sealed class GameUi
         var named = string.Empty;
         var benchTop = top + headingSize + (30f * scale);
 
-        DrawBench(inventory, bench, recipes, progression, ref held, new float2(left, benchTop), slot, gap, ref named);
+        var made = DrawBench(inventory, bench, recipes, progression, ref held, new float2(left, benchTop), slot, gap, ref named);
 
         var ruleY = benchTop + benchHeight + (15f * scale);
         UiCanvas.Line(new float2(left, ruleY), new float2(left + width, ruleY), UiPalette.Divider);
@@ -577,6 +578,7 @@ public sealed class GameUi
         DrawHeld(inventory, held, slot, scale);
 
         ImGui.End();
+        return made;
     }
 
     /// <summary>Draws the crafting grid, what it makes, and the list of what could be made.</summary>
@@ -602,7 +604,8 @@ public sealed class GameUi
     /// <param name="slot">How wide and tall one slot is, in screen pixels.</param>
     /// <param name="gap">How much space goes between two slots, in screen pixels.</param>
     /// <param name="named">Set to the name of whatever the cursor is over.</param>
-    private void DrawBench(
+    /// <returns>Whether the player made something this frame.</returns>
+    private bool DrawBench(
         Inventory inventory,
         Bench bench,
         Recipes recipes,
@@ -614,6 +617,7 @@ public sealed class GameUi
         ref string named
     )
     {
+        var crafted = false;
         var scale = ImGui.GetStyle().FontScaleMain;
         var pitch = slot + gap;
         var gridWidth = (Recipes.GridWidth * pitch) - gap;
@@ -684,7 +688,10 @@ public sealed class GameUi
             // a player sees that something happened. It is also the only way a full inventory can
             // refuse a craft without losing what it made.
             if (ImGui.IsMouseClicked(ImGuiMouseButton.Left) && held.IsNothing)
+            {
                 held = bench.Craft();
+                crafted = !held.IsNothing;
+            }
         }
 
         DrawRecipeList(
@@ -697,6 +704,8 @@ public sealed class GameUi
             gridHeight,
             scale
         );
+
+        return crafted;
     }
 
     /// <summary>The column of recipes, with the ones that can be made now picked out.</summary>
@@ -1698,12 +1707,21 @@ public sealed class GameUi
         var changed = false;
         var uiScale = settings.UiScale;
         var overlay = settings.ShowOverlay;
+        var volume = settings.Volume;
 
         if (_controls.Slider("Interface scale", ref uiScale, UiTheme.MinimumScale, UiTheme.MaximumScale, width, $"{uiScale:F2}×"))
         {
             settings = settings with { UiScale = uiScale };
             changed = true;
         }
+
+        if (_controls.Slider("Volume", ref volume, 0f, 1f, width, $"{volume * 100f:F0}%"))
+        {
+            settings = settings with { Volume = volume };
+            changed = true;
+        }
+
+        UiControls.Note("Every sound here is made out of arithmetic when the world opens.");
 
         if (_controls.Toggle("Debug overlay", ref overlay, width))
         {

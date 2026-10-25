@@ -60,6 +60,13 @@ public sealed record Settings
     /// <summary>How bright everything is drawn, 1 being as the sky lights it.</summary>
     public float Brightness { get; init; } = 1f;
 
+    /// <summary>How loud everything is, 0 for silence and 1 for as made.</summary>
+    /// <remarks>
+    /// One number rather than a mixer. There are a dozen sounds in this game and no music, so a
+    /// row of sliders would be a row of sliders for one decision.
+    /// </remarks>
+    public float Volume { get; init; } = 0.8f;
+
     /// <summary>How large the interface is drawn, 1 being the designed size.</summary>
     public float UiScale { get; init; } = 1f;
 
@@ -95,6 +102,7 @@ public sealed record Settings
             LookSensitivity = float.Clamp(LookSensitivity, 5f, 200f),
             ShadowStrength = float.Clamp(ShadowStrength, 0f, 1f),
             Brightness = float.Clamp(Brightness, 0.5f, 1.8f),
+            Volume = float.Clamp(Volume, 0f, 1f),
             UiScale = float.Clamp(UiScale, 0.75f, 2f),
             DayLengthSeconds = double.Clamp(DayLengthSeconds, 0.0, 3600.0),
         };

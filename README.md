@@ -92,9 +92,20 @@ what the engine is doing.
 A world is its seed plus the blocks you have changed, so a save holds nothing
 else: an untouched world is about a hundred bytes however far you have walked.
 
+### Sound
+
+There are no audio files in this repository. Every sound is built out of
+arithmetic when the world opens: a burst of filtered noise under a falling tone
+is a block coming apart, and how dull the filter is comes from the same pattern
+the renderer draws that block's surface with — so stone, sand, wood and snow all
+sound like what they look like, and a block added tomorrow is audible without
+anyone recording anything.
+
+A machine with no working sound device plays nothing and says nothing about it.
+
 Everything the settings screen offers applies as the slider moves — view
-distance, field of view, sensitivity, brightness, shadows, fog, interface scale,
-the length of a day — and is written to `shorebound.settings`, one name and one
+distance, field of view, sensitivity, brightness, volume, shadows, fog,
+interface scale, the length of a day — and is written to `shorebound.settings`, one name and one
 value a line, for the times it is easier to fix a setting in an editor than from
 inside the game. Anything the command line mentions beats what is in that file.
 
@@ -163,13 +174,14 @@ were deleted.
 | `BrutalShore.Voxel`   | Chunks, the block registry, the greedy mesher                 |
 | `BrutalShore.Gpu`     | Window, Vulkan device, swapchain, frames in flight, shaders   |
 | `BrutalShore.Ui`      | What every panel looks like: the palette, the ImGui theme, the shared widgets |
+| `BrutalShore.Audio`   | Waveforms, a synthesiser that makes them out of arithmetic, and the device they play through |
 | `BrutalShore.World`   | Coordinates, gradient noise, streaming, block edits, ray casting and collision, `IChunkGenerator` |
 | `BrutalShore.Render`  | Camera, view frustum, the sun and sky, shadows, the ray marching field, the voxel pipeline, chunk meshes, loose cubes |
 | `BrutalShore.Runtime` | The window, the device and the frame loop around an `IGame`   |
 
 | Game            | What is in it                                        |
 | --------------- | ---------------------------------------------------- |
-| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, breaking and dropping, the controls, what they carry and craft, ore seams, smelters, milestones, the animals and the horde, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
+| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, breaking and dropping, the controls, what they carry and craft, ore seams, smelters, milestones, its own sounds, the animals and the horde, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
 
 A game is an `IGame` the runtime runs, and an `IChunkGenerator` the world asks
 for blocks. Those two interfaces are the whole of the engine's knowledge of it.

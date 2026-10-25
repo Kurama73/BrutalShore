@@ -90,6 +90,7 @@ src/   the engine — BrutalShore.*, knows nothing about any particular game
   Layer 1  Voxel     chunks, block registry, the greedy mesher        (Core)
            Gpu       window, input, device, swapchain, frames, shaders, depth targets  (Core)
            Ui        the palette, the ImGui theme, the shared widgets  (Core)
+           Audio     waveforms, a synthesiser, the device                (Core)
   Layer 2  World     coordinates, noise, streaming, edits, rays, collision, IChunkGenerator  (Core + Voxel)
   Layer 3  Render    camera, frustum, sun and sky, shadows, the ray marching field, voxel pipeline, chunk meshes  (Core + Voxel + World + Gpu)
            Runtime   the window, the device and the frame loop around an IGame  (Core + Gpu + Ui)
@@ -97,8 +98,9 @@ src/   the engine — BrutalShore.*, knows nothing about any particular game
 games/ the games — each one an executable that composes the engine
   Shorebound  blocks, terrain, biomes, trees, ore seams, the player, controls,
               breaking, dropping, carrying and crafting, smelters, milestones,
-              animals and the horde, the title and settings screens, saving,
-              the player's settings, the length of a day, budgets
+              animals and the horde, its own sounds, the title and settings
+              screens, saving, the player's settings, the length of a day,
+              budgets
 ```
 
 ### Where the engine stops and a game starts
@@ -142,6 +144,22 @@ place by having two implementations, one of them a test double.
 Specifically, do not introduce a wrapper over BRUTAL's Vulkan layer. It is
 already the abstraction over Vulkan; a second one would only be a second thing
 to keep in step.
+
+### Nothing in this repository is an asset
+
+There are no textures, no models and no audio files, and that is a rule rather
+than a stage. A block's surface is a pattern computed in the fragment shader, a
+creature is six boxes, and a sound is a burst of noise shaped by an envelope and
+built at load from a handful of numbers.
+
+What it buys is the same thing three times: nothing to licence, nothing that can
+drift out of step with the code, and nothing in the repository that cannot be
+read and changed by editing a constant. It also means every one of those things
+can be *tested* — `Synth` and `GameSounds` are asserted about under
+`dotnet test`, with no device open, which is not possible for a recording.
+
+When something genuinely needs to be an asset, that is a decision to write down
+here first, with what it buys.
 
 ### The world is generated, not stored
 

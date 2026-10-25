@@ -1,4 +1,5 @@
 using Brutal.ImGuiApi;
+using BrutalShore.Audio;
 using BrutalShore.Core;
 using BrutalShore.Gpu;
 using BrutalShore.Render;
@@ -154,6 +155,20 @@ public sealed class ShoreboundGame : IGame
     private readonly Grazers _grazers;
     private readonly Stalkers _stalkers;
     private readonly Vitality _vitality = new();
+    private readonly AudioDevice _audio = new();
+    private GameSounds? _sounds;
+
+    /// <summary>How far the player had walked when their last footfall was heard, in metres.</summary>
+    private double _walkedSinceStepMeters;
+
+    /// <summary>How many smelters were alight last step, for hearing one catch.</summary>
+    private int _litLastStep;
+
+    /// <summary>How long since something in the dark was last heard, in seconds.</summary>
+    private double _sinceStalkerHeardSeconds;
+
+    /// <summary>Whether the sound for the current bite has already been played.</summary>
+    private bool _hurtHeard;
 
     /// <summary>How far a swing reaches, in metres.</summary>
     private const double StrikeReachMeters = 3.2;
@@ -216,6 +231,7 @@ public sealed class ShoreboundGame : IGame
         _bench = new Bench(_recipes, _progression);
         _smelting = new Smelting(_blocks);
         _machines = new Machines(_smelting);
+        _sounds = new GameSounds(_audio, _blocks.Registry);
         _drops = new Drops(options.Seed);
         _grazers = new Grazers(options.Seed);
         _stalkers = new Stalkers(options.Seed);
@@ -339,6 +355,7 @@ public sealed class ShoreboundGame : IGame
             {
                 _drops.Spawn(fallen, broken);
                 EmptyMachine(broken);
+                _sounds?.Broke(fallen, Nearby(broken));
             }
         }
 
@@ -348,7 +365,8 @@ public sealed class ShoreboundGame : IGame
         // about and "whatever order they were written in" is not.
         _machines.Step(seconds);
 
-        _drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _inventory);
+        if (_drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _inventory) > 0)
+            _sounds?.PickedUp();
         _grazers.Step(_world, _world.Registry, seconds, _player.FeetMeters);
 
         _vitality.Step(seconds);
@@ -361,6 +379,8 @@ public sealed class ShoreboundGame : IGame
             _machines.LitCount,
             _clock.IsDay
         );
+
+        Listen(seconds);
 
         if (!_vitality.IsAlive)
             Respawn();
@@ -537,7 +557,8 @@ public sealed class ShoreboundGame : IGame
                 break;
 
             case Screen.Inventory:
-                _ui.DrawInventory(_inventory, _bench, _recipes, _progression, ref _held);
+                if (_ui.DrawInventory(_inventory, _bench, _recipes, _progression, ref _held))
+                    _sounds?.Crafted();
                 break;
 
             case Screen.Machine:
@@ -547,7 +568,10 @@ public sealed class ShoreboundGame : IGame
 
             case Screen.Milestones:
                 if (_ui.DrawMilestones(_progression, _inventory))
+                {
                     Say(_progression.All[_progression.Reached - 1].Name);
+                    _sounds?.Advanced();
+                }
                 break;
         }
     }
@@ -583,6 +607,7 @@ public sealed class ShoreboundGame : IGame
 
         _controller.Sensitivity = _settings.RadiansPerPixel;
         _clock.DayLengthSeconds = _settings.DayLengthSeconds;
+        _audio.Volume = _settings.Volume;
         UiTheme.Apply(_settings.UiScale);
     }
 
@@ -690,6 +715,7 @@ public sealed class ShoreboundGame : IGame
         _field.Dispose();
         _shadowMap.Dispose();
         _world.Dispose();
+        _audio.Dispose();
     }
 
     /// <summary>Reads the keys that change which screen is showing.</summary>
@@ -916,6 +942,121 @@ public sealed class ShoreboundGame : IGame
         );
     }
 
+    /// <summary>Everything heard rather than shown: footfalls, bites, machines, the dark.</summary>
+    /// <remarks>
+    /// Gathered in one place rather than spread through whatever caused each one, because all of
+    /// these are consequences of the step as a whole rather than of a single call. A footfall is
+    /// not caused by anything except having walked far enough, and what is out in the dark is
+    /// heard because it is near rather than because it did something.
+    /// </remarks>
+    private void Listen(double seconds)
+    {
+        if (_sounds is null)
+            return;
+
+        // Which way the player is facing, so a sound on their left arrives on their left.
+        var forward = _camera.Forward;
+        _audio.PointListener(forward, new float3(0f, 1f, 0f));
+
+        Footfalls();
+        Bites();
+        SmeltersCatching();
+        TheDark(seconds);
+    }
+
+    /// <summary>A footfall every stride, from whatever is underfoot.</summary>
+    private void Footfalls()
+    {
+        // Measured in distance rather than in time, so that walking, sprinting and crouching all
+        // sound like themselves without any of them being told what their rhythm is.
+        const double StrideMeters = 1.9;
+
+        if (!_player.IsOnGround || _player.IsFlying)
+        {
+            _walkedSinceStepMeters = StrideMeters;
+            return;
+        }
+
+        _walkedSinceStepMeters += _player.SpeedMetersPerSecond * FrameClock.StepSeconds;
+        if (_walkedSinceStepMeters < StrideMeters)
+            return;
+
+        _walkedSinceStepMeters = 0.0;
+
+        var under = WorldCoordinates.ToBlock(_player.FeetMeters - new double3(0.0, 0.3, 0.0));
+        var block = _world.BlockAt(under.X, under.Y, under.Z);
+        if (!block.IsAir)
+            _sounds?.Stepped(block);
+    }
+
+    /// <summary>A sound when something lands on the player, and not once a frame while it does.</summary>
+    private void Bites()
+    {
+        if (_vitality.WasHurtRecently && _vitality.CanBeHurt is false && _hurtHeard is false)
+        {
+            _sounds?.Bitten();
+            _hurtHeard = true;
+        }
+        else if (_vitality.CanBeHurt)
+        {
+            _hurtHeard = false;
+        }
+    }
+
+    /// <summary>A roar when a smelter catches, once per smelter rather than once per frame.</summary>
+    private void SmeltersCatching()
+    {
+        var lit = _machines.LitCount;
+        if (lit > _litLastStep)
+            _sounds?.SmelterCaught(float3.Zero);
+
+        _litLastStep = lit;
+    }
+
+    /// <summary>Something breathing out in the dark, now and then, from where it actually is.</summary>
+    private void TheDark(double seconds)
+    {
+        const double HeardEverySeconds = 3.5;
+        const double HeardWithinMeters = 26.0;
+
+        _sinceStalkerHeardSeconds += seconds;
+        if (_sinceStalkerHeardSeconds < HeardEverySeconds || _stalkers.Count == 0)
+            return;
+
+        _sinceStalkerHeardSeconds = 0.0;
+
+        // The nearest one, because hearing the far ones would make a horde a wall of noise with
+        // no information in it. One breath from the nearest is a direction to look in.
+        var nearest = _stalkers.All[0];
+        var nearestAway = double.MaxValue;
+
+        foreach (var stalker in _stalkers.All)
+        {
+            var away = Walking.Away(stalker.FeetMeters, _player.FeetMeters);
+            if (away >= nearestAway)
+                continue;
+
+            nearest = stalker;
+            nearestAway = away;
+        }
+
+        if (nearestAway <= HeardWithinMeters)
+            _sounds?.StalkerHeard(Nearby(WorldCoordinates.ToBlock(nearest.FeetMeters)));
+    }
+
+    /// <summary>Where a block is, relative to the listener, narrowed after subtracting.</summary>
+    /// <remarks>
+    /// The same rule as every other distance handed to a float in this program: the subtraction
+    /// happens in f64 and the result is narrowed, because a world coordinate a kilometre out has
+    /// no business being put into a float.
+    /// </remarks>
+    private float3 Nearby(int3 blockPosition)
+    {
+        var middle = new double3(blockPosition.X + 0.5, blockPosition.Y + 0.5, blockPosition.Z + 0.5);
+        var apart = middle - _player.EyeMeters;
+        return new float3((float)apart.X, (float)apart.Y, (float)apart.Z);
+    }
+
     /// <summary>Swings at whatever is in front of the player, and says whether it connected.</summary>
     /// <remarks>
     /// Tried before breaking a block, because a player with something biting them who clicks is
@@ -926,12 +1067,17 @@ public sealed class ShoreboundGame : IGame
     {
         var forward = _camera.Forward;
 
-        return _stalkers.Strike(
+        var struck = _stalkers.Strike(
             _player.EyeMeters,
             new double3(forward.X, forward.Y, forward.Z),
             StrikeReachMeters,
             StrikeDamage
         );
+
+        if (struck)
+            _sounds?.Struck();
+
+        return struck;
     }
 
     /// <summary>Puts the player back on their feet somewhere safe, having lost what they carried.</summary>
@@ -989,6 +1135,7 @@ public sealed class ShoreboundGame : IGame
             return;
 
         _inventory.TakeOne();
+        _sounds?.Placed(placing, Nearby(hit.Before));
 
         // A smelter is a block plus the machine standing in it. Registering it here rather than
         // inside the world is what keeps the voxel grid a grid of numbers.
