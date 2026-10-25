@@ -138,7 +138,8 @@ public sealed unsafe class SceneBindings : IDisposable
             frame.Submerged,
             frame.Held.Position,
             frame.Held.Burn,
-            frame.Field
+            frame.Field,
+            frame.Breaking
         );
         _buffers[frameIndex].Rewrite(new ReadOnlySpan<SceneUniforms>(in uniforms));
     }

@@ -109,6 +109,16 @@ internal readonly struct SceneUniforms
     /// </remarks>
     public readonly float4 Field;
 
+    /// <summary>
+    /// xyz: the world block being broken. w: how far through, 0 to 1, or 0 when nothing is.
+    /// </summary>
+    /// <remarks>
+    /// A world coordinate rather than a render-space one, because the fragment shader already
+    /// works out which block it belongs to in the world frame — it needs that frame anyway, so
+    /// that a block's own speckle does not swim across it as the camera moves.
+    /// </remarks>
+    public readonly float4 Breaking;
+
     /// <summary>Packs one frame's view and sky into the block the shaders read.</summary>
     /// <param name="viewProjection">The camera's view-projection, in render space.</param>
     /// <param name="lightViewProjection">Render space to the shadow map's clip space.</param>
@@ -120,6 +130,7 @@ internal readonly struct SceneUniforms
     /// <param name="heldLight">Where the carried light is, laid out as <see cref="HeldLight" /> describes.</param>
     /// <param name="heldLightColor">Its colour, laid out as <see cref="HeldLightColor" /> describes.</param>
     /// <param name="field">Where the ray marching cube is, laid out as <see cref="Field" /> describes.</param>
+    /// <param name="breaking">The block coming apart, laid out as <see cref="Breaking" /> describes.</param>
     public SceneUniforms(
         in float4x4 viewProjection,
         in float4x4 lightViewProjection,
@@ -130,7 +141,8 @@ internal readonly struct SceneUniforms
         float4 submerged,
         float4 heldLight,
         float4 heldLightColor,
-        float4 field
+        float4 field,
+        float4 breaking
     )
     {
         ViewProjection = viewProjection;
@@ -153,5 +165,6 @@ internal readonly struct SceneUniforms
         HeldLight = heldLight;
         HeldLightColor = heldLightColor;
         Field = field;
+        Breaking = breaking;
     }
 }

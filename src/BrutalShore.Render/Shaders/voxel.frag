@@ -18,6 +18,7 @@ layout(set = 0, binding = 0, std140) uniform Scene {
     vec4 heldLight;
     vec4 heldLightColor;
     vec4 field;
+    vec4 breaking;
 } scene;
 
 layout(location = 0) in vec3 inColor;
@@ -350,6 +351,45 @@ float patternShade(uint pattern, vec2 across, vec3 cell) {
     return 1.0;
 }
 
+// How much darker this point is for the block coming apart under it, 0 for none.
+//
+// Cracks spreading from the middle of the face rather than a picture of cracks: branches hashed
+// from the block's own coordinate, so the same block always breaks the same way and two beside
+// each other do not. What progress changes is how far out they have reached and how wide they
+// are, which is what makes the block look like it is losing rather than like it is being
+// shaded in.
+float breakingShade(vec3 cell, vec2 across) {
+    if (scene.breaking.w <= 0.0 || any(notEqual(cell, scene.breaking.xyz))) {
+        return 0.0;
+    }
+
+    vec2 fromMiddle = fract(across) - 0.5;
+    float distance = length(fromMiddle);
+    float angle = atan(fromMiddle.y, fromMiddle.x);
+
+    // Nine branches, each wandering by an amount this block decides for itself, so no two blocks
+    // break the same way and the same block always breaks the way it did before.
+    const float BRANCHES = 9.0;
+
+    float branch = (angle / 6.2831853) + 0.5;
+    float wander = (hash13(cell + vec3(floor(branch * BRANCHES), 0.0, 0.0)) - 0.5) * 0.3;
+    float offBranch = abs(fract((branch + wander) * BRANCHES) - 0.5) * 2.0;
+
+    // Each branch stops at its own length, so the break spreads unevenly rather than as a disc.
+    float branchReach = 0.45 + (hash13(cell + vec3(0.0, floor(branch * BRANCHES), 0.0)) * 0.3);
+    float reach = scene.breaking.w * branchReach;
+
+    // Perpendicular distance from the branch's line, which is what keeps a crack the same width
+    // along its whole length instead of opening out into a wedge.
+    float fromLine = offBranch * distance;
+    float width = 0.024 + (scene.breaking.w * 0.045);
+
+    float crack = smoothstep(width, 0.0, fromLine) * smoothstep(reach, reach * 0.7, distance);
+
+    // Plus a general bruising towards the end, so the last moment before it goes is the darkest.
+    return clamp((crack * 0.8) + (smoothstep(0.6, 1.0, scene.breaking.w) * 0.22), 0.0, 0.78);
+}
+
 void main() {
     // Two lights, one of which is always off: the sun while it is up, the moon while it is not.
     // Both terms are kept because dawn and dusk have the sun setting while the moon is already
@@ -396,6 +436,8 @@ void main() {
     shade *= mix(1.0, patternShade(inPattern, inSurface, cell), detail);
 
     vec3 lit = inColor * light * occlusion * shade;
+
+    lit *= 1.0 - breakingShade(cell, inSurface);
 
     // A thin darker line along every block edge, drawn from the surface coordinate rather than a
     // texture so it stays one pixel wide at any distance.

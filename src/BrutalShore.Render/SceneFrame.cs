@@ -74,6 +74,11 @@ public readonly record struct SceneFrame
     /// </summary>
     public float4 Field { get; init; }
 
+    /// <summary>
+    /// xyz: the world block being broken. w: how far through, 0 to 1, or all zero when none is.
+    /// </summary>
+    public float4 Breaking { get; init; }
+
     /// <summary>Builds a frame with the settings that are not required at their defaults.</summary>
     public SceneFrame() { }
 }
