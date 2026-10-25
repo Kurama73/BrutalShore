@@ -123,6 +123,7 @@ public sealed class ShoreboundGame : IGame
     private VoxelPipeline _translucentPipeline = null!;
     private ShadowPipeline _shadowPipeline = null!;
     private SkyRenderer _sky = null!;
+    private OutlineRenderer _outline = null!;
     private ChunkRenderer _chunks = null!;
 
     private Screen _screen = Screen.Title;
@@ -180,6 +181,13 @@ public sealed class ShoreboundGame : IGame
         );
         _shadowPipeline = new ShadowPipeline(context.Gpu, context.Shaders, _scene, _shadowMap.RenderPass);
         _sky = new SkyRenderer(context.Gpu, context.Renderer, context.Shaders, _scene, context.Target.RenderPass);
+        _outline = new OutlineRenderer(
+            context.Gpu,
+            context.Renderer,
+            context.Shaders,
+            _scene,
+            context.Target.RenderPass
+        );
         _chunks = new ChunkRenderer(
             context.Gpu,
             context.Renderer,
@@ -301,6 +309,10 @@ public sealed class ShoreboundGame : IGame
         // The sky first: it writes no depth, so everything below lands on top of it.
         _sky.Draw();
         _chunks.Draw(_camera, _viewProjection);
+
+        // Last, so it sits over the world rather than under the water in front of it.
+        if (_screen == Screen.Playing && _aimedAt is { } aimed)
+            _outline.Draw(aimed.Block, _camera.Position);
     }
 
     /// <inheritdoc />
@@ -386,6 +398,7 @@ public sealed class ShoreboundGame : IGame
     public void Dispose()
     {
         _chunks.Dispose();
+        _outline.Dispose();
         _sky.Dispose();
         _shadowPipeline.Dispose();
         _translucentPipeline.Dispose();
