@@ -1,8 +1,10 @@
-# RustSpace — engineering standards
+# BrutalShore — engineering standards
 
-A voxel game in C# on [BRUTAL](https://github.com/Ahwoo/BRUTAL), the framework
-Kitten Space Agency is built on. The name is inherited from a previous attempt
-in Rust; the designs survived, the code did not.
+A voxel game, and the engine under it, in C# on
+[BRUTAL](https://github.com/ahwootech/BRUTAL) — the framework Kitten Space
+Agency is built on. The name is the Forgotten Shore of *Shadow Slave* crossed
+with the framework it stands on. It supersedes an attempt at the same game in
+Rust: the designs survived, the code did not.
 
 Everything in this file is binding for code in this repository.
 
@@ -19,16 +21,22 @@ ship a game with has failed, however educational its internals.
 BRUTAL is consumed from NuGet, pinned to exact versions in
 `Directory.Packages.props`, and never vendored, forked or edited.
 
-It is nine days old as of this writing, versioned CalVer with each package on
-its own number, and already taking community fixes within days — including the
-macOS loader lookup this project depends on. Upstream improvements therefore
-arrive by editing one line per package; a fork would turn every one of them into
-a merge.
+It was opened in October 2026, is versioned CalVer with each package on its own
+number, and already takes community fixes within days — including the macOS
+loader lookup this project depends on. Upstream improvements therefore arrive by
+editing one line per package; a fork would turn every one of them into a merge.
 
-The checkout at `../BRUTAL-2026.10.1/` is **reference source only**. There is no
-API documentation site, so reading the framework's own code is how its API is
-learned. Nothing is copied out of it, and nothing in this repository builds
-against the path.
+The clone at `../BRUTAL/` is **reference source only**. There is no API
+documentation site, so reading the framework's own code is how its API is
+learned. It is a clone of upstream rather than a fork or a downloaded snapshot,
+so it can be moved to the tag matching whatever is pinned here:
+
+```bash
+git -C ../BRUTAL fetch --tags && git -C ../BRUTAL checkout Vulkan/v2026.10.3
+```
+
+Nothing is copied out of it, and nothing in this repository builds against the
+path. Fork it the day there is something to send upstream, and not before.
 
 ## Language
 
@@ -45,13 +53,13 @@ Projects are organized in layers. **Dependencies point downwards only — never
 upwards, never sideways between projects of the same layer.**
 
 ```
-Layer 0  RustSpace.Core     frame clock, render space, the f64/f32 boundary
-Layer 1  RustSpace.Voxel    chunks, block registry, the greedy mesher   (Core)
-         RustSpace.Gpu      window, device, swapchain, frames, shaders  (Core)
-Layer 2  RustSpace.World    coordinates, noise, generation, streaming   (Core + Voxel)
-Layer 3  RustSpace.Render   camera, frustum, voxel pipeline, chunk meshes
+Layer 0  BrutalShore.Core     frame clock, render space, the f64/f32 boundary
+Layer 1  BrutalShore.Voxel    chunks, block registry, the greedy mesher   (Core)
+         BrutalShore.Gpu      window, device, swapchain, frames, shaders  (Core)
+Layer 2  BrutalShore.World    coordinates, noise, generation, streaming   (Core + Voxel)
+Layer 3  BrutalShore.Render   camera, frustum, voxel pipeline, chunk meshes
                             (Core + Voxel + World + Gpu)
-Layer 4  RustSpace.App      the loop, input, the debug overlay
+Layer 4  BrutalShore.App      the loop, input, the debug overlay
 ```
 
 `Voxel` must not know what a device is: a mesh is an array of vertices, and the
@@ -91,7 +99,7 @@ geometry a kilometre away has the same precision as geometry underfoot.
 
 | Item                              | Convention                                     |
 | --------------------------------- | ---------------------------------------------- |
-| Projects                          | `RustSpace.<Domain>`                           |
+| Projects                          | `BrutalShore.<Domain>`                           |
 | Types, methods, properties        | `UpperCamelCase`                               |
 | Parameters, locals                | `lowerCamelCase`                               |
 | Private fields                    | `_lowerCamelCase`                              |
@@ -124,7 +132,7 @@ does, rename something instead.
 
 ## Testing
 
-- Tests live in `tests/RustSpace.<Domain>.Tests`, mirroring the project they
+- Tests live in `tests/BrutalShore.<Domain>.Tests`, mirroring the project they
   cover. xUnit v3.
 - Test the **property**, not the implementation. A test should survive a rewrite
   of the method it covers.
@@ -159,6 +167,14 @@ re-encoded on the way to a native call.
 External dependencies are declared **once**, in `Directory.Packages.props`, with
 an exact version. Never put a version in a project file.
 
+## Attribution
+
+BRUTAL's licence is MIT-shaped with three conditions on any product distributed
+to end users: the copyright notice in the credits screen, the BRUTAL logo shown
+before gameplay starts, and `NOTICE.txt` shipped alongside. `NOTICE.txt` is in
+the repository; the other two have to exist before any build is handed to
+anyone.
+
 ## Commits
 
 Conventional Commits, **one line, no body** unless the maintainer asks for one.
@@ -182,6 +198,6 @@ Conventional Commits, **one line, no body** unless the maintainer asks for one.
 1. Create the directory under `src/` and a `.csproj` that declares only its
    project references and its package references — every setting worth sharing
    is already in `Directory.Build.props`.
-2. Add it to `RustSpace.slnx`, in layer order.
+2. Add it to `BrutalShore.slnx`, in layer order.
 3. Add its row to the layer table in this file and in the README.
 4. If it is testable without a device, create its test project at the same time.

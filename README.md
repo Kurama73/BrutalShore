@@ -1,7 +1,8 @@
-# RustSpace
+# BrutalShore
 
-A voxel game in C# on [BRUTAL](https://github.com/Ahwoo/BRUTAL), the open-source
-framework behind Kitten Space Agency.
+A voxel game, and the engine under it, in C# on
+[BRUTAL](https://github.com/ahwootech/BRUTAL) — the open-source framework behind
+Kitten Space Agency.
 
 ![A coastline seen from above: ocean, a beach, rolling grassland](docs/coastline.png)
 
@@ -25,7 +26,7 @@ environment variables have to be set. If either is missing, the game says so and
 names the command above.
 
 ```bash
-dotnet run --project src/RustSpace.App -c Release
+dotnet run --project src/BrutalShore.App -c Release
 ```
 
 Click to capture the mouse, `WASD` to move, `space` and `ctrl` for up and down,
@@ -47,7 +48,7 @@ fixed camera for a fixed number of frames produce an image that can be compared
 against the one before.
 
 ```bash
-dotnet run --project src/RustSpace.App -c Release -- \
+dotnet run --project src/BrutalShore.App -c Release -- \
     --frames 400 --camera -140 190 -140 45 -22 --screenshot coastline.png
 ```
 
@@ -55,12 +56,12 @@ dotnet run --project src/RustSpace.App -c Release -- \
 
 | Project            | What is in it                                               |
 | ------------------ | ----------------------------------------------------------- |
-| `RustSpace.Core`   | The frame clock and the f64 world to f32 render-space boundary |
-| `RustSpace.Voxel`  | Chunks, the block registry, the greedy mesher                 |
-| `RustSpace.Gpu`    | Window, Vulkan device, swapchain, frames in flight, shaders   |
-| `RustSpace.World`  | Coordinates, gradient noise, terrain and caves, streaming     |
-| `RustSpace.Render` | Camera, view frustum, the voxel pipeline, chunk meshes        |
-| `RustSpace.App`    | The loop, the controls, the debug overlay                     |
+| `BrutalShore.Core`   | The frame clock and the f64 world to f32 render-space boundary |
+| `BrutalShore.Voxel`  | Chunks, the block registry, the greedy mesher                 |
+| `BrutalShore.Gpu`    | Window, Vulkan device, swapchain, frames in flight, shaders   |
+| `BrutalShore.World`  | Coordinates, gradient noise, terrain and caves, streaming     |
+| `BrutalShore.Render` | Camera, view frustum, the voxel pipeline, chunk meshes        |
+| `BrutalShore.App`    | The loop, the controls, the debug overlay                     |
 
 Dependencies point downwards only. Everything above `Gpu` can be tested without
 a device, and is: `dotnet test` runs the mesher, the noise, the generator, the
@@ -88,8 +89,11 @@ narrowed to f32, so there is no distance at which vertices start to shimmer.
 
 BRUTAL is consumed from NuGet and pinned in `Directory.Packages.props`. It is
 not forked and not vendored: the framework is weeks old and improving quickly,
-and an upstream release should cost one line here rather than a merge.
+and an upstream release should cost one line here rather than a merge. A clone
+of the upstream repository sits beside this one as reference source, since there
+is no documentation site — reading the framework is how its API is learned.
 
-Its licence is MIT with an attribution requirement — a credits notice, the logo
-before gameplay, and `NOTICE.txt` shipped with the build. None of that is in
-place yet, and all of it has to be before anything is distributed.
+Its licence is MIT-shaped with an attribution requirement on anything shipped to
+end users: the copyright notice in the credits, the BRUTAL logo before gameplay,
+and `NOTICE.txt` alongside the build. `NOTICE.txt` is here; the credits screen
+and the logo have to exist before any build is distributed.

@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <ItemGroup>
-    <ProjectReference Include="../RustSpace.Core/RustSpace.Core.csproj" />
-    <ProjectReference Include="../RustSpace.Voxel/RustSpace.Voxel.csproj" />
-  </ItemGroup>
-
-</Project>

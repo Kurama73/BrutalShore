@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../BrutalShore.Core/BrutalShore.Core.csproj" />
+    <ProjectReference Include="../BrutalShore.Voxel/BrutalShore.Voxel.csproj" />
+    <ProjectReference Include="../BrutalShore.World/BrutalShore.World.csproj" />
+    <ProjectReference Include="../BrutalShore.Gpu/BrutalShore.Gpu.csproj" />
+    <ProjectReference Include="../BrutalShore.Render/BrutalShore.Render.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Ahwoo.BRUTAL.ImGui" />
+    <PackageReference Include="Ahwoo.BRUTAL.ImGui.Backends" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BrutalShore.Core/BrutalShore.Core.csproj" />
+    <Project Path="src/BrutalShore.Voxel/BrutalShore.Voxel.csproj" />
+    <Project Path="src/BrutalShore.World/BrutalShore.World.csproj" />
+    <Project Path="src/BrutalShore.Gpu/BrutalShore.Gpu.csproj" />
+    <Project Path="src/BrutalShore.Render/BrutalShore.Render.csproj" />
+    <Project Path="src/BrutalShore.App/BrutalShore.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BrutalShore.Voxel.Tests/BrutalShore.Voxel.Tests.csproj" />
+    <Project Path="tests/BrutalShore.World.Tests/BrutalShore.World.Tests.csproj" />
+    <Project Path="tests/BrutalShore.Render.Tests/BrutalShore.Render.Tests.csproj" />
+  </Folder>
+</Solution>
