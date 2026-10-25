@@ -45,6 +45,13 @@ public sealed class GameUi
         | ImGuiWindowFlags.NoBackground
         | ImGuiWindowFlags.NoScrollbar;
 
+    /// <summary>
+    /// The same, for the panels that are only ever looked at. They cover the whole viewport, so
+    /// without this the crosshair would be sitting on top of every menu drawn under it, taking
+    /// the clicks meant for them.
+    /// </summary>
+    private const ImGuiWindowFlags Passive = Bare | ImGuiWindowFlags.NoInputs;
+
     private readonly UiControls _controls = new();
     private SettingsSection _section = SettingsSection.World;
 
@@ -74,7 +81,7 @@ public sealed class GameUi
         var viewport = ImGui.GetMainViewport();
         var middle = viewport.Pos + (viewport.Size * 0.5f);
 
-        FullScreen("crosshair"u8);
+        FullScreen("crosshair"u8, takesInput: false);
 
         var scale = ImGui.GetStyle().FontScaleMain;
         var grown = aiming ? 1f : 0f;
@@ -112,7 +119,7 @@ public sealed class GameUi
         var bottom = viewport.Pos.Y + viewport.Size.Y - (34f * scale);
         var top = bottom - slot;
 
-        FullScreen("hotbar"u8);
+        FullScreen("hotbar"u8, takesInput: false);
 
         var size = ImGui.GetFontSize();
         var name = hotbar.SelectedName;
@@ -451,7 +458,7 @@ public sealed class GameUi
         var scale = ImGui.GetStyle().FontScaleMain;
         var size = ImGui.GetFontSize();
 
-        FullScreen("notice"u8);
+        FullScreen("notice"u8, takesInput: false);
 
         var textWidth = UiCanvas.Measure(message, size).X;
         var padding = new float2(18f * scale, 10f * scale);
@@ -483,12 +490,12 @@ public sealed class GameUi
     /// a draw list and, where there are controls, somewhere for ImGui to track them. It takes
     /// input only when it holds something that wants it.
     /// </remarks>
-    private static void FullScreen(ReadOnlySpan<byte> name)
+    private static void FullScreen(ReadOnlySpan<byte> name, bool takesInput = true)
     {
         var viewport = ImGui.GetMainViewport();
         ImGui.SetNextWindowPos(viewport.Pos);
         ImGui.SetNextWindowSize(viewport.Size);
-        ImGui.Begin(name, Bare);
+        ImGui.Begin(name, takesInput ? Bare : Passive);
     }
 
     private void DrawRail(float left, float top, float rail, float height, float scale)
