@@ -40,6 +40,22 @@ public sealed class Player
     private const double FlySpeedMetersPerSecond = 14.0;
     private const double FlySprintFactor = 5.0;
 
+    /// <summary>How much of its weight a body keeps once it is in water.</summary>
+    /// <remarks>
+    /// A quarter. Enough that letting go still sinks, little enough that a fall into the sea is
+    /// survivable rather than a drop to the seabed.
+    /// </remarks>
+    private const double BuoyancyFactor = 0.25;
+
+    /// <summary>How fast a body can sink through water, in metres per second.</summary>
+    private const double SinkSpeedMetersPerSecond = 3.0;
+
+    /// <summary>How fast holding jump swims upwards, in metres per second.</summary>
+    private const double SwimSpeedMetersPerSecond = 4.2;
+
+    /// <summary>How much of the walking speed is left when swimming.</summary>
+    private const double SwimDragFactor = 0.55;
+
     /// <summary>The box the player occupies: width, height and depth in metres.</summary>
     private static readonly double3 BodySize = new(0.6, 1.8, 0.6);
 
@@ -60,16 +76,28 @@ public sealed class Player
     /// <summary>Whether the player is resting on something solid.</summary>
     public bool IsOnGround { get; private set; }
 
+    /// <summary>Whether the player is in a liquid, and so swimming rather than falling.</summary>
+    public bool IsSwimming { get; private set; }
+
     /// <summary>How fast the player is falling, in metres per second.</summary>
     public double FallSpeedMetersPerSecond => _fallSpeed;
 
     /// <summary>Moves the player for one simulation step.</summary>
     /// <param name="world">The blocks to move through.</param>
+    /// <param name="registry">Where a block id is resolved to what it does to a body.</param>
     /// <param name="seconds">How long the step is.</param>
     /// <param name="intent">What the player is asking for.</param>
     /// <param name="yaw">Which way the player is facing, in radians.</param>
-    public void Step(IVoxelSource world, double seconds, in PlayerIntent intent, float yaw)
+    public void Step(
+        IVoxelSource world,
+        BlockRegistry registry,
+        double seconds,
+        in PlayerIntent intent,
+        float yaw
+    )
     {
+        IsSwimming = !IsFlying && IsInLiquid(world, registry);
+
         var (sinYaw, cosYaw) = double.SinCos(yaw);
 
         // Moving diagonally must not be faster than moving straight, and normalising only when
@@ -83,6 +111,9 @@ public sealed class Player
             ? FlySpeedMetersPerSecond * (intent.Sprint ? FlySprintFactor : 1.0)
             : WalkSpeedMetersPerSecond * (intent.Sprint ? SprintFactor : 1.0);
 
+        if (IsSwimming)
+            speed *= SwimDragFactor;
+
         var horizontal = new double3(
             ((forward * cosYaw) + (right * -sinYaw)) * speed * seconds,
             0.0,
@@ -95,6 +126,19 @@ public sealed class Player
             _fallSpeed = 0.0;
             var rise = (intent.Jump ? 1.0 : 0.0) - (intent.Sink ? 1.0 : 0.0);
             vertical = rise * speed * seconds;
+        }
+        else if (IsSwimming)
+        {
+            // Holding jump swims; letting go sinks, slowly. Both are a speed rather than an
+            // acceleration, because water has far too much drag for anything else to read right.
+            _fallSpeed = intent.Jump
+                ? -SwimSpeedMetersPerSecond
+                : double.Min(
+                    _fallSpeed + (GravityMetersPerSecondSquared * BuoyancyFactor * seconds),
+                    SinkSpeedMetersPerSecond
+                );
+
+            vertical = -_fallSpeed * seconds;
         }
         else
         {
@@ -110,6 +154,7 @@ public sealed class Player
 
         var move = VoxelBody.Move(
             world,
+            registry,
             FeetMeters,
             BodySize,
             new double3(horizontal.X, vertical, horizontal.Z)
@@ -130,7 +175,7 @@ public sealed class Player
 
         // Asked rather than taken from the move, because walking off a ledge leaves the ground
         // with nothing having stopped the body.
-        IsOnGround = VoxelBody.IsStandingOn(world, FeetMeters, BodySize);
+        IsOnGround = VoxelBody.IsStandingOn(world, registry, FeetMeters, BodySize);
     }
 
     /// <summary>Whether a block placed here would be inside the player.</summary>
@@ -159,6 +204,17 @@ public sealed class Player
             && blockCoordinate.Y + 1 > double.Floor(minimum.Y)
             && blockCoordinate.Z < double.Ceiling(maximum.Z)
             && blockCoordinate.Z + 1 > double.Floor(minimum.Z);
+    }
+
+    /// <summary>Whether the block at the player's feet is something to swim in.</summary>
+    /// <remarks>
+    /// The feet rather than the eyes: stepping into shallow water should slow the player down
+    /// immediately, and a body up to its waist in the sea is already swimming in it.
+    /// </remarks>
+    private bool IsInLiquid(IVoxelSource world, BlockRegistry registry)
+    {
+        var at = WorldCoordinates.ToBlock(new double3(FeetMeters.X, FeetMeters.Y + 0.1, FeetMeters.Z));
+        return registry[world.BlockAt(at.X, at.Y, at.Z)].IsLiquid;
     }
 
     /// <summary>Puts the player somewhere, standing still.</summary>

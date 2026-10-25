@@ -21,7 +21,20 @@ public sealed class GameBlocks
         Grass = registry.Register(new BlockType { Name = "grass", Color = byte3.HexColor(0x5A8F3C) });
         Sand = registry.Register(new BlockType { Name = "sand", Color = byte3.HexColor(0xD8CB94) });
         Snow = registry.Register(new BlockType { Name = "snow", Color = byte3.HexColor(0xEDF2F7) });
-        Water = registry.Register(new BlockType { Name = "water", Color = byte3.HexColor(0x2E6FA8) });
+        Water = registry.Register(
+            new BlockType
+            {
+                Name = "water",
+                Color = byte3.HexColor(0x2E6FA8),
+
+                // Enough to read as water rather than as glass: the seabed shows through in the
+                // shallows and is lost in the deep, which is the whole of what makes a coast
+                // legible from above.
+                Opacity = 170,
+                Collides = false,
+                IsLiquid = true,
+            }
+        );
         Bedrock = registry.Register(new BlockType { Name = "bedrock", Color = byte3.HexColor(0x2B2B30) });
     }
 

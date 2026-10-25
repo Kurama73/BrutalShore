@@ -87,6 +87,13 @@ public sealed class ShoreboundGame : IGame
     /// <summary>The shadow map's size in texels.</summary>
     private const int ShadowResolution = 2048;
 
+    /// <summary>How far anything can be seen through a liquid, in metres.</summary>
+    /// <remarks>
+    /// Short, because that is what makes being underwater feel like being underwater rather than
+    /// like being outside with a blue filter on. Twenty metres is roughly a clear sea.
+    /// </remarks>
+    private const float UnderwaterSightMeters = 28f;
+
     /// <summary>How long a message about saving or loading stays on screen, in seconds.</summary>
     private const double NoticeSeconds = 3.0;
 
@@ -105,7 +112,8 @@ public sealed class ShoreboundGame : IGame
     private PlayerController _controller = null!;
     private DepthTarget _shadowMap = null!;
     private SceneBindings _scene = null!;
-    private VoxelPipeline _pipeline = null!;
+    private VoxelPipeline _opaquePipeline = null!;
+    private VoxelPipeline _translucentPipeline = null!;
     private ShadowPipeline _shadowPipeline = null!;
     private SkyRenderer _sky = null!;
     private ChunkRenderer _chunks = null!;
@@ -115,6 +123,7 @@ public sealed class ShoreboundGame : IGame
     private float4x4 _viewProjection;
     private float4x4 _lightViewProjection;
     private VoxelHit? _aimedAt;
+    private float4 _submerged;
     private string _notice = string.Empty;
     private double _noticeLeftSeconds;
 
@@ -146,14 +155,28 @@ public sealed class ShoreboundGame : IGame
     {
         _shadowMap = new DepthTarget(context.Gpu, ShadowResolution);
         _scene = new SceneBindings(context.Gpu, _shadowMap);
-        _pipeline = new VoxelPipeline(context.Gpu, context.Shaders, _scene, context.Target.RenderPass);
+        _opaquePipeline = new VoxelPipeline(
+            context.Gpu,
+            context.Shaders,
+            _scene,
+            context.Target.RenderPass,
+            VoxelPass.Opaque
+        );
+        _translucentPipeline = new VoxelPipeline(
+            context.Gpu,
+            context.Shaders,
+            _scene,
+            context.Target.RenderPass,
+            VoxelPass.Translucent
+        );
         _shadowPipeline = new ShadowPipeline(context.Gpu, context.Shaders, _scene, _shadowMap.RenderPass);
         _sky = new SkyRenderer(context.Gpu, context.Renderer, context.Shaders, _scene, context.Target.RenderPass);
         _chunks = new ChunkRenderer(
             context.Gpu,
             context.Renderer,
             _world,
-            _pipeline,
+            _opaquePipeline,
+            _translucentPipeline,
             _scene,
             new MeshStreamer(_blocks.Registry, WorkerCount, MeshQueueCapacity)
         );
@@ -191,7 +214,7 @@ public sealed class ShoreboundGame : IGame
             return;
 
         _clock.Step(seconds);
-        _player.Step(_world, seconds, _controller.ReadIntent(), _camera.Yaw);
+        _player.Step(_world, _world.Registry, seconds, _controller.ReadIntent(), _camera.Yaw);
         _camera.Position = _player.EyeMeters;
 
         if (_noticeLeftSeconds > 0.0)
@@ -235,13 +258,17 @@ public sealed class ShoreboundGame : IGame
         );
 
         var viewMeters = _options.ViewRadiusChunks * Chunk.Size;
+        _submerged = LiquidAtTheEye();
+        var inLiquid = _submerged.W > 0f;
+
         _scene.Update(
             context.Renderer.FrameIndex,
             _viewProjection,
             _lightViewProjection,
             sky,
-            viewMeters * FogStartFraction,
-            viewMeters * FogEndFraction
+            inLiquid ? UnderwaterSightMeters * 0.15f : viewMeters * FogStartFraction,
+            inLiquid ? UnderwaterSightMeters : viewMeters * FogEndFraction,
+            _submerged
         );
 
         _shadowMap.Begin(context.Renderer.Commands);
@@ -287,12 +314,15 @@ public sealed class ShoreboundGame : IGame
         ImGui.SeparatorText("Player"u8);
         ImGui.Text($"{_player.FeetMeters.X:F1}, {_player.FeetMeters.Y:F1}, {_player.FeetMeters.Z:F1}");
         ImGui.Text($"chunk {_centre.X}, {_centre.Y}, {_centre.Z}");
+        ImGui.Text(_submerged.W > 0f ? "under water" : "in the open");
         ImGui.Text(
             _player.IsFlying
                 ? "flying"
-                : _player.IsOnGround
-                    ? "on the ground"
-                    : $"falling at {_player.FallSpeedMetersPerSecond:F1} m/s"
+                : _player.IsSwimming
+                    ? "swimming"
+                    : _player.IsOnGround
+                        ? "on the ground"
+                        : $"falling at {_player.FallSpeedMetersPerSecond:F1} m/s"
         );
         ImGui.Text(
             _aimedAt is { } hit
@@ -326,7 +356,8 @@ public sealed class ShoreboundGame : IGame
         _chunks.Dispose();
         _sky.Dispose();
         _shadowPipeline.Dispose();
-        _pipeline.Dispose();
+        _translucentPipeline.Dispose();
+        _opaquePipeline.Dispose();
         _scene.Dispose();
         _shadowMap.Dispose();
         _world.Dispose();
@@ -376,6 +407,39 @@ public sealed class ShoreboundGame : IGame
 
         if (window.WasMouseButtonPressed(GlfwMouseButton.Right))
             Place();
+    }
+
+    /// <summary>The colour of the liquid the eye is in, and nothing if it is in none.</summary>
+    /// <remarks>
+    /// Darkened, because a sea's colour as seen from above is light coming back off it, and from
+    /// inside what is left is what got through.
+    /// </remarks>
+    private float4 LiquidAtTheEye()
+    {
+        var eye = WorldCoordinates.ToBlock(_camera.Position);
+        var type = _world.Registry[_world.BlockAt(eye.X, eye.Y, eye.Z)];
+
+        if (!type.IsLiquid)
+            return float4.Zero;
+
+        var linear = SrgbToLinear(type.Color);
+        return new float4(linear.X * 0.3f, linear.Y * 0.3f, linear.Z * 0.3f, 1f);
+    }
+
+    /// <summary>
+    /// Undoes the sRGB encoding of a block's colour, the way the vertex shader does.
+    /// </summary>
+    /// <remarks>
+    /// The shaders work in linear light, so a colour handed to them straight out of the registry
+    /// would be noticeably paler than the same block drawn as geometry.
+    /// </remarks>
+    private static float3 SrgbToLinear(byte3 color) =>
+        new(Channel(color.X), Channel(color.Y), Channel(color.Z));
+
+    private static float Channel(byte encoded)
+    {
+        var value = encoded / 255f;
+        return value <= 0.04045f ? value / 12.92f : float.Pow((value + 0.055f) / 1.055f, 2.4f);
     }
 
     /// <summary>Works out which block the player is looking at.</summary>
