@@ -4,7 +4,7 @@ using BrutalShore.World;
 namespace Shorebound;
 
 /// <summary>
-/// Generates terrain: a height field, a surface that depends on altitude, caves, and sea level.
+/// Generates terrain: a height field, a surface that depends on altitude, caves, ore and sea level.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -67,6 +67,7 @@ public sealed class TerrainGenerator : IChunkGenerator, IGround
     private readonly GameBlocks _blocks;
     private readonly Trees _trees;
     private readonly Biomes _biomes;
+    private readonly Ores _ores;
 
     /// <summary>Creates a generator for one world.</summary>
     /// <param name="blocks">The block types to build terrain out of.</param>
@@ -84,6 +85,7 @@ public sealed class TerrainGenerator : IChunkGenerator, IGround
         _caveFieldB = new GradientNoise(seed ^ 0x27D4EB2D);
         _trees = new Trees(blocks, seed);
         _biomes = new Biomes(blocks, seed);
+        _ores = new Ores(blocks, seed);
     }
 
     /// <summary>The seed this world was generated from.</summary>
@@ -175,7 +177,7 @@ public sealed class TerrainGenerator : IChunkGenerator, IGround
             return BlockId.Air;
 
         if (depth > 3)
-            return _blocks.Stone;
+            return _ores.At(worldX, worldY, worldZ, _blocks.Stone);
 
         // A shore is a shore and a mountain top is snow whatever the biome says: both are facts
         // about the height, and a desert that ran into the sea without a beach, or a tundra whose

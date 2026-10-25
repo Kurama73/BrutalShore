@@ -84,10 +84,69 @@ public sealed class GameBlocks
                 Emission = 14,
             }
         );
+
+        // The ores, appended last because registration order is id order and a saved world holds
+        // the ids. Their names are what the save file and the recipes both refer to.
+        CoalOre = registry.Register(
+            new BlockType
+            {
+                Name = "coal ore",
+                Color = byte3.HexColor(0x3A3A40),
+                Pattern = BlockPattern.Scattered,
+
+                // Softer than the stone it sits in, so a seam gives way faster than the rock
+                // around it and following one reads as following something.
+                BreakSeconds = 1.2f,
+            }
+        );
+        CopperOre = registry.Register(
+            new BlockType
+            {
+                Name = "copper ore",
+                Color = byte3.HexColor(0xB4703C),
+                Pattern = BlockPattern.Mottled,
+                BreakSeconds = 1.8f,
+            }
+        );
+        IronOre = registry.Register(
+            new BlockType
+            {
+                Name = "iron ore",
+                Color = byte3.HexColor(0x9C8C7C),
+                Pattern = BlockPattern.Mottled,
+                BreakSeconds = 2.2f,
+            }
+        );
+        EmberOre = registry.Register(
+            new BlockType
+            {
+                Name = "ember ore",
+                Color = byte3.HexColor(0xE8873C),
+                Pattern = BlockPattern.Radiant,
+                BreakSeconds = 2.8f,
+
+                // It glows, which is the whole reason to go that deep for it: a seam of it is
+                // visible down a tunnel before the tunnel reaches it. Dimmer than a lantern, so
+                // finding one is not the same as lighting the cave.
+                Emission = 9,
+            }
+        );
     }
 
     /// <summary>The registry these ids index.</summary>
     public BlockRegistry Registry { get; }
+
+    /// <summary>Coal ore, the fuel seam, common and shallow.</summary>
+    public BlockId CoalOre { get; }
+
+    /// <summary>Copper ore, the first metal, found at most depths.</summary>
+    public BlockId CopperOre { get; }
+
+    /// <summary>Iron ore, the structural metal, deeper than copper.</summary>
+    public BlockId IronOre { get; }
+
+    /// <summary>Ember ore, which glows, and is only down where the bedrock starts.</summary>
+    public BlockId EmberOre { get; }
 
     /// <summary>Stone, what the ground is made of below the surface.</summary>
     public BlockId Stone { get; }
