@@ -587,6 +587,11 @@ public sealed class ShoreboundGame : IGame
         if (window.WasKeyPressed(GlfwKey.E))
             _hotbar.Cycle(1);
 
+        // The wheel, the way every game of this kind does it: away from the hand moves left along
+        // the row, which is the direction the numbers count down in.
+        if (window.ScrollDelta != 0.0)
+            _hotbar.Cycle(window.ScrollDelta > 0.0 ? -1 : 1);
+
         if (window.WasMouseButtonPressed(GlfwMouseButton.Left))
             Break();
 

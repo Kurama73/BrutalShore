@@ -32,6 +32,12 @@ public sealed class GameWindow : IDisposable
     private double2 _lastCursorPosition;
     private bool _hasCursorPosition;
 
+    // Added to by the callback as events arrive and taken by the frame that reads it. A wheel
+    // has no state to ask for the way a key does — it only ever reports that it turned — so the
+    // notches have to be collected between one poll and the next or they are lost.
+    private double _scrollSinceRead;
+    private double _scrolledThisFrame;
+
     /// <summary>Opens a window with no graphics API bound, ready for a Vulkan surface.</summary>
     public GameWindow(string title, int2 size)
     {
@@ -46,6 +52,8 @@ public sealed class GameWindow : IDisposable
         // keys that suffer are exactly the tapped ones: jump, the hotbar, the menu.
         Glfw.PInvoke.SetInputMode(Handle, Glfw.Constants.GLFW_STICKY_KEYS, 1);
         Glfw.PInvoke.SetInputMode(Handle, Glfw.Constants.GLFW_STICKY_MOUSE_BUTTONS, 1);
+
+        Handle.OnScroll += OnScrolled;
     }
 
     /// <summary>The GLFW window, for the surface and for the ImGui platform backend.</summary>
@@ -69,6 +77,16 @@ public sealed class GameWindow : IDisposable
     /// <summary>Whether the cursor is hidden and locked to the window, as it is while flying.</summary>
     public bool IsMouseCaptured { get; private set; }
 
+    /// <summary>
+    /// How far the wheel turned since the last <see cref="PollEvents" />, in notches; positive
+    /// is away from the hand.
+    /// </summary>
+    /// <remarks>
+    /// Summed over the poll rather than reported per event, because a frame wants to know how far
+    /// the wheel went, and a fast flick is several events that all belong to the same gesture.
+    /// </remarks>
+    public double ScrollDelta => _scrolledThisFrame;
+
     /// <summary>Pumps the event queue and refreshes the cursor delta.</summary>
     public void PollEvents()
     {
@@ -82,6 +100,9 @@ public sealed class GameWindow : IDisposable
         for (var button = 0; button < ButtonCount; button++)
             _buttonsNow[button] = Glfw.PInvoke.GetMouseButton(Handle, button) == (int)GlfwButtonAction.Press;
 
+        _scrolledThisFrame = _scrollSinceRead;
+        _scrollSinceRead = 0.0;
+
         var position = Handle.CursorPos;
 
         // The first frame after capture has no previous position to subtract, and using the
@@ -90,6 +111,8 @@ public sealed class GameWindow : IDisposable
         _lastCursorPosition = position;
         _hasCursorPosition = true;
     }
+
+    private void OnScrolled(GlfwWindow window, double2 offset) => _scrollSinceRead += offset.Y;
 
     /// <summary>Whether a key is held down this frame.</summary>
     public bool IsKeyDown(GlfwKey key) => InRange((int)key, KeyCount) && _keysNow[(int)key];

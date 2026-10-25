@@ -39,8 +39,8 @@ one block high is walked up rather than jumped. `F` switches between walking and
 flying, where `space` and `ctrl` go up and down; `space` swims up in water.
 
 Whichever block is in reach of the crosshair is outlined: left click breaks it,
-right click places against the face being looked at, and the number keys or `Q`
-and `E` pick which block that is. Holding the lantern lights the way, so a cave
+right click places against the face being looked at, and the number keys, `Q`
+and `E`, or the mouse wheel pick which block that is. Holding the lantern lights the way, so a cave
 is worth going into with it in hand and not worth going into without.
 
 `Escape` opens the menu, which has the settings and saves the world; `F3` shows
@@ -205,11 +205,20 @@ greedily into the largest rectangles that share a colour, an opacity **and** an
 ambient occlusion pattern. A solid chunk goes from 196,608 triangles to 12.
 
 Each corner is eight bytes: position on a 33-point lattice, one of six face
-directions, two bits of ambient occlusion, a colour and an opacity. There is no
-texture coordinate, because the shader derives one from the position — which is
-also what makes a merged quad tile per block instead of stretching. Nothing has
-a texture at all; what breaks up a field of grass is a few per cent of shade per
-block, hashed from where that block is in the world.
+directions, two bits of ambient occlusion, two light levels, a colour, an
+opacity in sixteenths and a surface pattern. There is no texture coordinate,
+because the shader derives one from the position — which is also what makes a
+merged quad tile per block instead of stretching.
+
+Nothing has a texture at all, and nothing is going to. What a surface looks like
+closer than a block is a function of where the fragment is: stone is mottled in
+patches a few shades apart, grass is short upright strokes each starting at its
+own height, wood is bent lines with knots in them, a canopy is clumps with gaps
+between them, snow is flat with the odd bright fleck. There is no image to load,
+no atlas to pack, nothing in memory, and the detail is as fine as the screen
+rather than as fine as a texel — and it fades out once a block is small on
+screen, because a pattern finer than a pixel is noise that crawls, and a
+function has no mip levels to fall back on.
 
 A frame is three passes. The sun's shadow map first, off-screen, with the solid
 half of every chunk the light can see — snapped to a texel grid so the shadows
