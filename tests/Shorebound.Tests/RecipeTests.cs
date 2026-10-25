@@ -133,16 +133,31 @@ public sealed class RecipeTests
     }
 
     [Fact]
-    public void nine_ore_pack_into_one_block()
+    public void nine_ingots_pack_into_one_block()
     {
         var grid = Grid();
         for (var slot = 0; slot < Recipes.GridSize; slot++)
-            grid.Put(slot, new Stack(_blocks.IronOre, 1));
+            grid.Put(slot, new Stack(_blocks.IronIngot, 1));
 
         var made = _recipes.Match(grid);
 
         Assert.Equal(_blocks.IronBlock, made.Block);
         Assert.Equal(1, made.Count);
+    }
+
+    [Fact]
+    public void no_arrangement_of_ore_makes_anything_without_a_smelter()
+    {
+        // The claim that gives the smelter a reason to exist. Ore out of the ground is dead
+        // weight until one is built, and a stray recipe that packed it straight into a block
+        // would quietly make the whole machine optional.
+        foreach (var ore in (ReadOnlySpan<BlockId>)[_blocks.CopperOre, _blocks.IronOre])
+        {
+            Assert.DoesNotContain(
+                _recipes.All,
+                recipe => recipe.Pattern.Contains(ore)
+            );
+        }
     }
 
     [Fact]

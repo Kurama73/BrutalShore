@@ -32,4 +32,12 @@ public enum Screen
     /// world keeping its light and its sky behind the panel is what says the game is still there.
     /// </remarks>
     Inventory,
+
+    /// <summary>In the world, mouse free, standing at a machine and looking inside it.</summary>
+    /// <remarks>
+    /// A state of its own rather than a mode of the inventory, because the world has to keep
+    /// running behind it: a smelter a player is watching has to be smelting, and the whole point
+    /// of the screen is to see that happen.
+    /// </remarks>
+    Machine,
 }

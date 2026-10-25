@@ -708,6 +708,239 @@ public sealed class GameUi
         return true;
     }
 
+    /// <summary>Draws a smelter: what goes in, what it burns, and what has come out.</summary>
+    /// <param name="smelter">The machine standing in the world, which this moves stacks in.</param>
+    /// <param name="smelting">The tables, for how far along the current block is.</param>
+    /// <param name="inventory">What the player is carrying, drawn under it and swapped with.</param>
+    /// <param name="held">What the cursor is carrying, which this reads and writes.</param>
+    /// <remarks>
+    /// <para>
+    /// The player's own slots are on the same screen, because every single thing anyone does at a
+    /// smelter is move something between the two. A screen that showed only the machine would
+    /// make feeding it a matter of closing one panel and opening another.
+    /// </para>
+    /// <para>
+    /// Two gauges rather than numbers: how much fuel is left and how far through the block it is.
+    /// A machine's whole job is to be understood at a glance from across a room, and seconds
+    /// remaining is not something anyone reads at a glance.
+    /// </para>
+    /// </remarks>
+    public void DrawSmelter(Smelter smelter, Smelting smelting, Inventory inventory, ref Stack held)
+    {
+        var viewport = ImGui.GetMainViewport();
+        var scale = ImGui.GetStyle().FontScaleMain;
+
+        FullScreen("smelter"u8);
+        UiCanvas.Scrim(1f);
+
+        var slot = SlotSize * scale;
+        var gap = SlotGap * scale;
+        var padding = 28f * scale;
+        var pitch = slot + gap;
+
+        var width = (slot * Inventory.RowCount) + (gap * (Inventory.RowCount - 1));
+        var headingSize = ImGui.GetFontSize() * 1.05f;
+        var packRows = (Inventory.SlotCount - Inventory.RowCount) / Inventory.RowCount;
+        var packHeight = (packRows * pitch) - gap;
+        var machineHeight = (slot * 2.6f) + gap;
+
+        var height =
+            headingSize + (30f * scale)
+            + machineHeight + (30f * scale)
+            + packHeight + (24f * scale)
+            + slot + (26f * scale);
+
+        var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
+        var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
+
+        var cardMinimum = new float2(left - padding, top - padding);
+        var cardMaximum = new float2(left + width + padding, top + height + padding);
+        UiCanvas.Panel(cardMinimum, cardMaximum, PanelCut * scale, scale);
+        UiCanvas.PanelHeading(cardMinimum, cardMaximum.X - cardMinimum.X, "Smelter", scale);
+
+        var named = string.Empty;
+        var machineTop = top + headingSize + (30f * scale);
+
+        DrawFurnace(smelter, smelting, inventory, ref held, new float2(left, machineTop), slot, gap, ref named);
+
+        var ruleY = machineTop + machineHeight + (15f * scale);
+        UiCanvas.Line(new float2(left, ruleY), new float2(left + width, ruleY), UiPalette.Divider);
+
+        var packTop = ruleY + (15f * scale);
+        DrawSlots(
+            inventory.Store,
+            inventory,
+            ref held,
+            Inventory.RowCount,
+            Inventory.SlotCount,
+            Inventory.RowCount,
+            new float2(left, packTop),
+            slot,
+            gap,
+            selected: -1,
+            ref named
+        );
+
+        var rowTop = packTop + packHeight + (24f * scale);
+        DrawSlots(
+            inventory.Store,
+            inventory,
+            ref held,
+            0,
+            Inventory.RowCount,
+            Inventory.RowCount,
+            new float2(left, rowTop),
+            slot,
+            gap,
+            inventory.SelectedIndex,
+            ref named
+        );
+
+        var footSize = ImGui.GetFontSize() * 0.84f;
+        UiCanvas.Text(
+            new float2(left, top + height - footSize),
+            named.Length > 0 ? UiPalette.Text : UiPalette.MutedText,
+            named.Length > 0 ? named : "escape to close",
+            footSize
+        );
+
+        DrawHeld(inventory, held, slot, scale);
+
+        ImGui.End();
+    }
+
+    /// <summary>The machine half of the smelter screen: three slots and two gauges.</summary>
+    private static void DrawFurnace(
+        Smelter smelter,
+        Smelting smelting,
+        Inventory inventory,
+        ref Stack held,
+        float2 origin,
+        float slot,
+        float gap,
+        ref string named
+    )
+    {
+        var scale = ImGui.GetStyle().FontScaleMain;
+        var size = ImGui.GetFontSize() * 0.8f;
+        var column = origin.X;
+
+        // Laid out the way the machine works, left to right: what goes in above what burns it,
+        // then the arrow, then what came out.
+        DrawLabelled(smelter.Input, inventory, ref held, new float2(column, origin.Y), slot, "IN", ref named);
+
+        var fuelTop = origin.Y + (slot * 1.6f);
+        DrawLabelled(smelter.Fuel, inventory, ref held, new float2(column, fuelTop), slot, "FUEL", ref named);
+
+        // The fire gauge climbs rather than falls, because a bar that empties downwards next to a
+        // bar that fills rightwards is two different conventions on one panel.
+        var fireLeft = column + slot + (14f * scale);
+        var fireWidth = 12f * scale;
+        var fireBottom = fuelTop + slot;
+        var fireTop = fuelTop;
+        var burning = smelter.BurnTotalSeconds > 0f
+            ? float.Clamp(smelter.BurnLeftSeconds / smelter.BurnTotalSeconds, 0f, 1f)
+            : 0f;
+
+        UiCanvas.Chamfer(
+            new float2(fireLeft, fireTop),
+            new float2(fireLeft + fireWidth, fireBottom),
+            UiPalette.Recess,
+            3f * scale
+        );
+        if (burning > 0f)
+        {
+            UiCanvas.Chamfer(
+                new float2(fireLeft, float.Lerp(fireBottom, fireTop, burning)),
+                new float2(fireLeft + fireWidth, fireBottom),
+                UiPalette.Accent,
+                3f * scale
+            );
+        }
+
+        UiCanvas.ChamferOutline(
+            new float2(fireLeft, fireTop),
+            new float2(fireLeft + fireWidth, fireBottom),
+            UiPalette.Fade(UiPalette.Edge, 0.6f),
+            3f * scale,
+            scale
+        );
+
+        var workLeft = fireLeft + fireWidth + (18f * scale);
+        var workWidth = slot * 2.2f;
+        var workMiddle = origin.Y + (slot * 1.3f);
+        var workHeight = 14f * scale;
+        var progress = smelter.Progress(smelting);
+
+        UiCanvas.Chamfer(
+            new float2(workLeft, workMiddle - (workHeight * 0.5f)),
+            new float2(workLeft + workWidth, workMiddle + (workHeight * 0.5f)),
+            UiPalette.Recess,
+            4f * scale
+        );
+        if (progress > 0f)
+        {
+            UiCanvas.Chamfer(
+                new float2(workLeft, workMiddle - (workHeight * 0.5f)),
+                new float2(workLeft + (workWidth * progress), workMiddle + (workHeight * 0.5f)),
+                UiPalette.Accent,
+                4f * scale
+            );
+        }
+
+        UiCanvas.ChamferOutline(
+            new float2(workLeft, workMiddle - (workHeight * 0.5f)),
+            new float2(workLeft + workWidth, workMiddle + (workHeight * 0.5f)),
+            UiPalette.Fade(UiPalette.Edge, 0.6f),
+            4f * scale,
+            scale
+        );
+
+        UiCanvas.TrackedText(
+            new float2(workLeft, workMiddle - (workHeight * 0.5f) - size - (6f * scale)),
+            smelter.IsLit ? UiPalette.Accent : UiPalette.MutedText,
+            smelter.IsLit ? "RUNNING" : "IDLE",
+            size,
+            1.6f * scale
+        );
+
+        var outLeft = workLeft + workWidth + (20f * scale);
+        DrawLabelled(
+            smelter.Output,
+            inventory,
+            ref held,
+            new float2(outLeft, origin.Y + (slot * 0.5f)),
+            slot * 1.3f,
+            "OUT",
+            ref named
+        );
+    }
+
+    /// <summary>One machine slot with a word over it.</summary>
+    private static void DrawLabelled(
+        Slots slots,
+        Inventory inventory,
+        ref Stack held,
+        float2 origin,
+        float size,
+        string label,
+        ref string named
+    )
+    {
+        var scale = ImGui.GetStyle().FontScaleMain;
+        var textSize = ImGui.GetFontSize() * 0.74f;
+
+        UiCanvas.TrackedText(
+            new float2(origin.X, origin.Y - textSize - (5f * scale)),
+            UiPalette.MutedText,
+            label,
+            textSize,
+            1.4f * scale
+        );
+
+        DrawSlots(slots, inventory, ref held, 0, 1, 1, origin, size, 0f, selected: -1, ref named);
+    }
+
     /// <summary>Draws one block of slots and acts on a click in it.</summary>
     /// <param name="slots">The slots to draw, which this moves stacks around in.</param>
     /// <param name="lookup">Where a block's name and colour come from.</param>

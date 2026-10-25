@@ -140,6 +140,11 @@ public sealed class ShoreboundGame : IGame
 
     private readonly Recipes _recipes;
     private readonly Bench _bench;
+    private readonly Smelting _smelting;
+    private readonly Machines _machines;
+
+    /// <summary>Where the smelter the player has open stands, or nothing.</summary>
+    private int3? _openMachine;
     private readonly GameUi _ui = new();
     private readonly DayClock _clock;
     private readonly TitleCamera _titleCamera;
@@ -195,6 +200,8 @@ public sealed class ShoreboundGame : IGame
         _inventory = new Inventory(_blocks);
         _recipes = new Recipes(_blocks);
         _bench = new Bench(_recipes);
+        _smelting = new Smelting(_blocks);
+        _machines = new Machines(_smelting);
         _drops = new Drops(options.Seed);
         _grazers = new Grazers(options.Seed);
         _clock = new DayClock(options.StartHour, _settings.DayLengthSeconds);
@@ -312,8 +319,17 @@ public sealed class ShoreboundGame : IGame
             // say what fell out of it.
             var fallen = _world.BlockAt(broken.X, broken.Y, broken.Z);
             if (_world.SetBlock(broken, BlockId.Air))
+            {
                 _drops.Spawn(fallen, broken);
+                EmptyMachine(broken);
+            }
         }
+
+        // Before the drops, so that a smelter which finished this step has its result on the
+        // ground rather than next frame — not that anyone could tell, but because the order
+        // "machines run, then things fall, then the player moves" is one that can be reasoned
+        // about and "whatever order they were written in" is not.
+        _machines.Step(seconds);
 
         _drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _inventory);
         _grazers.Step(_world, _world.Registry, seconds, _player.FeetMeters);
@@ -476,6 +492,11 @@ public sealed class ShoreboundGame : IGame
             case Screen.Inventory:
                 _ui.DrawInventory(_inventory, _bench, _recipes, ref _held);
                 break;
+
+            case Screen.Machine:
+                if (OpenMachine() is { } machine)
+                    _ui.DrawSmelter(machine, _smelting, _inventory, ref _held);
+                break;
         }
     }
 
@@ -570,6 +591,7 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_world.StreamingCount} being generated, {_chunks.PendingCount} waiting to mesh");
         ImGui.Text($"{_world.Edits.Count} blocks changed, {_drops.Count} lying about");
         ImGui.Text($"{_grazers.Count} grazing");
+        ImGui.Text($"{_machines.Count} machines, {_machines.LitCount} alight");
 
         ImGui.SeparatorText("Drawn"u8);
         ImGui.Text($"{_chunks.DrawnChunkCount} chunks, {_chunks.DrawnTriangleCount} triangles");
@@ -647,6 +669,10 @@ public sealed class ShoreboundGame : IGame
             case Screen.Inventory:
                 CloseInventory(context);
                 break;
+
+            case Screen.Machine:
+                CloseMachine(context);
+                break;
         }
     }
 
@@ -702,7 +728,7 @@ public sealed class ShoreboundGame : IGame
             _inventory.Cycle(window.ScrollDelta > 0.0 ? -1 : 1);
 
         if (window.WasMouseButtonPressed(GlfwMouseButton.Right))
-            Place();
+            UseOrPlace(context);
     }
 
     /// <summary>Where the ray marching cube sits relative to the camera, in render space.</summary>
@@ -825,10 +851,23 @@ public sealed class ShoreboundGame : IGame
         );
     }
 
-    private void Place()
+    /// <summary>Opens what the player is aiming at, or puts the block in hand against it.</summary>
+    /// <param name="context">The frame's context, for letting go of the mouse at a machine.</param>
+    private void UseOrPlace(GameContext context)
     {
         if (_aimedAt is not { } hit)
             return;
+
+        // Opening what is already there beats putting something in front of it. A machine is the
+        // one block in this game with an inside, and a player aiming at one and clicking means
+        // the inside every time.
+        if (_machines.At(hit.Block) is not null)
+        {
+            _openMachine = hit.Block;
+            _screen = Screen.Machine;
+            context.Window.SetMouseCaptured(false);
+            return;
+        }
 
         // A block placed where the player is standing would leave them inside it, and no answer
         // to that is a good one; refusing to place it is the only move that cannot go wrong.
@@ -841,8 +880,113 @@ public sealed class ShoreboundGame : IGame
         // Spent only if it went down. A placement refused by the world — because something is
         // already there — must not cost the block, or a player tapping at a wall empties their
         // hand into nothing.
-        if (_world.SetBlock(hit.Before, _inventory.Selected))
-            _inventory.TakeOne();
+        var placing = _inventory.Selected;
+        if (!_world.SetBlock(hit.Before, placing))
+            return;
+
+        _inventory.TakeOne();
+
+        // A smelter is a block plus the machine standing in it. Registering it here rather than
+        // inside the world is what keeps the voxel grid a grid of numbers.
+        if (placing == _blocks.Smelter)
+            _machines.Place(hit.Before);
+    }
+
+    /// <summary>Every machine standing in the world, flattened for a save file.</summary>
+    private List<SavedMachine> SavedMachines()
+    {
+        var saved = new List<SavedMachine>(_machines.Count);
+
+        foreach (var (position, machine) in _machines.All)
+        {
+            saved.Add(
+                new SavedMachine
+                {
+                    Position = position,
+                    BurnLeftSeconds = machine.BurnLeftSeconds,
+                    BurnTotalSeconds = machine.BurnTotalSeconds,
+                    WorkedSeconds = machine.WorkedSeconds,
+                    Input = Named(machine.Input.At(0)),
+                    Fuel = Named(machine.Fuel.At(0)),
+                    Output = Named(machine.Output.At(0)),
+                }
+            );
+        }
+
+        return saved;
+    }
+
+    /// <summary>A stack as a save file writes one: a block's name and how many.</summary>
+    private (string Block, int Count) Named(Stack stack) =>
+        stack.IsNothing ? (string.Empty, 0) : (_blocks.Registry[stack.Block].Name, stack.Count);
+
+    /// <summary>Puts back the machines a save file held.</summary>
+    /// <remarks>
+    /// A machine whose block name this build no longer knows comes back empty rather than
+    /// refusing the world, the same way an unknown edit does. Losing the coal in one smelter is a
+    /// smaller loss than a world that will not open.
+    /// </remarks>
+    private void RestoreMachines(IReadOnlyList<SavedMachine> saved)
+    {
+        _machines.Clear();
+
+        foreach (var entry in saved)
+        {
+            var machine = _machines.Place(entry.Position);
+            machine.Restore(entry.BurnLeftSeconds, entry.BurnTotalSeconds, entry.WorkedSeconds);
+
+            Fill(machine.Input, entry.Input);
+            Fill(machine.Fuel, entry.Fuel);
+            Fill(machine.Output, entry.Output);
+        }
+    }
+
+    /// <summary>Puts one saved stack back into one slot.</summary>
+    private void Fill(Slots slots, (string Block, int Count) saved)
+    {
+        if (saved.Count <= 0 || string.IsNullOrEmpty(saved.Block))
+            return;
+
+        if (_blocks.Registry.Find(saved.Block) is { } block)
+            slots.Add(block, saved.Count);
+    }
+
+    /// <summary>The machine the player has open, or nothing if it has gone away.</summary>
+    /// <remarks>
+    /// Looked up every frame rather than held, because the block can be broken — by the player
+    /// standing at it, or by a save being loaded underneath them — while its screen is open.
+    /// </remarks>
+    private Smelter? OpenMachine() => _openMachine is { } at ? _machines.At(at) : null;
+
+    /// <summary>Puts the machine away, and whatever was on the cursor back into the inventory.</summary>
+    private void CloseMachine(GameContext context)
+    {
+        if (!_held.IsNothing)
+        {
+            _inventory.Add(_held.Block, _held.Count);
+            _held = Stack.Nothing;
+        }
+
+        _openMachine = null;
+        Enter(context);
+    }
+
+    /// <summary>Takes away the machine at a broken block and drops what was inside it.</summary>
+    /// <remarks>
+    /// Everything comes back out, including the half-burnt fuel. A machine that swallowed what
+    /// was in it when it was picked up would make moving a smelter cost more than building a
+    /// second one, which would mean nobody ever moved one.
+    /// </remarks>
+    private void EmptyMachine(int3 position)
+    {
+        if (_machines.Remove(position) is not { } machine)
+            return;
+
+        foreach (var stack in machine.Contents())
+        {
+            for (var one = 0; one < stack.Count; one++)
+                _drops.Spawn(stack.Block, position);
+        }
     }
 
     /// <summary>Acts on what a menu reported.</summary>
@@ -898,6 +1042,7 @@ public sealed class ShoreboundGame : IGame
         _world.Edits.Clear();
         _inventory.Clear();
         _bench.Grid.Clear();
+        _machines.Clear();
         _held = Stack.Nothing;
         _drops.Clear();
         _grazers.Clear();
@@ -926,6 +1071,7 @@ public sealed class ShoreboundGame : IGame
             _controller.AimAt(save.Yaw, save.Pitch);
             _inventory.Select(save.RowIndex);
             _inventory.Restore(save.Carried, _blocks.Registry);
+            RestoreMachines(save.Machines);
             _bench.Grid.Clear();
             _held = Stack.Nothing;
             _drops.Clear();
@@ -959,6 +1105,7 @@ public sealed class ShoreboundGame : IGame
             DayFraction = _clock.DayFraction,
             RowIndex = _inventory.SelectedIndex,
             Carried = _inventory.Carried(_blocks.Registry),
+            Machines = SavedMachines(),
         };
 
         try

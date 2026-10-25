@@ -22,6 +22,11 @@ namespace Shorebound;
 /// generate them. Everything else here is built around that: planks out of a log, bricks out of
 /// stone, and a lantern out of the ore that only turns up at the bottom of a deep shaft.
 /// </para>
+/// <para>
+/// What is deliberately <em>not</em> here is any way to turn ore into metal. That is the
+/// smelter's job, and keeping it out of the grid is what gives a player a reason to build one:
+/// the first seam of copper they find is dead weight until they do.
+/// </para>
 /// </remarks>
 public sealed class Recipes
 {
@@ -52,10 +57,29 @@ public sealed class Recipes
             // wall you build out of it does not look like the hole you dug.
             new Recipe("stone brick", 2, 2, [blocks.Stone, blocks.Stone, blocks.Stone, blocks.Stone], blocks.StoneBrick, 4),
 
-            // Nine ore into one block. Packing, so that a long session underground comes back up
-            // as something that fits in the row rather than filling the pack.
-            new Recipe("copper block", 3, 3, Nine(blocks.CopperOre), blocks.CopperBlock, 1),
-            new Recipe("iron block", 3, 3, Nine(blocks.IronOre), blocks.IronBlock, 1),
+            // The smelter: a ring of brick around nothing, which is what a furnace is. It is the
+            // one recipe here that unlocks the rest of the game rather than a block — ore melts
+            // into metal and nothing else does, so until this is built every seam found is worth
+            // carrying and worth nothing else.
+            new Recipe(
+                "smelter",
+                3,
+                3,
+                [
+                    blocks.StoneBrick, blocks.StoneBrick, blocks.StoneBrick,
+                    blocks.StoneBrick, air, blocks.StoneBrick,
+                    blocks.StoneBrick, blocks.StoneBrick, blocks.StoneBrick,
+                ],
+                blocks.Smelter,
+                1
+            ),
+
+            // Nine ingots into one block. Packing, so that a long session at a smelter comes back
+            // as something that fits in the row rather than filling the pack. Ingots and not ore,
+            // because ore that could be packed straight into a block would make the smelter an
+            // optional convenience rather than the thing the ore is for.
+            new Recipe("copper block", 3, 3, Nine(blocks.CopperIngot), blocks.CopperBlock, 1),
+            new Recipe("iron block", 3, 3, Nine(blocks.IronIngot), blocks.IronBlock, 1),
 
             // The lantern: ember held in a frame of planks. Two of them, because one lantern per
             // deep shaft would make light cost more than the shaft did.

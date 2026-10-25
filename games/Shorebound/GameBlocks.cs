@@ -93,6 +93,40 @@ public sealed class GameBlocks
         StoneBrick = registry.Register(
             new BlockType { Name = "stone brick", Color = byte3.HexColor(0x8C8C92), Pattern = BlockPattern.Mottled, BreakSeconds = 1.6f }
         );
+        CopperIngot = registry.Register(
+            new BlockType { Name = "copper ingot", Color = byte3.HexColor(0xD9873F), Pattern = BlockPattern.Smooth, BreakSeconds = 1.2f }
+        );
+        IronIngot = registry.Register(
+            new BlockType { Name = "iron ingot", Color = byte3.HexColor(0xBDB5AC), Pattern = BlockPattern.Smooth, BreakSeconds = 1.4f }
+        );
+        Glass = registry.Register(
+            new BlockType
+            {
+                Name = "glass",
+                Color = byte3.HexColor(0xBFD8E4),
+                Pattern = BlockPattern.Smooth,
+                BreakSeconds = 0.5f,
+
+                // See-through but not water: it is in the way of a body and it lets nearly all
+                // the light past, which is the whole of what a window is.
+                Opacity = 70,
+                LightOpacity = 1,
+            }
+        );
+        Smelter = registry.Register(
+            new BlockType
+            {
+                Name = "smelter",
+                Color = byte3.HexColor(0x4A4036),
+                Pattern = BlockPattern.Mottled,
+                BreakSeconds = 2f,
+
+                // A little light, so a line of them along a wall is visible from down the tunnel.
+                // Not enough to be a lamp: a player who lit their base with smelters would be
+                // getting light for free out of something built for something else.
+                Emission = 5,
+            }
+        );
         CopperBlock = registry.Register(
             new BlockType { Name = "copper block", Color = byte3.HexColor(0xC87F42), Pattern = BlockPattern.Smooth, BreakSeconds = 2.4f }
         );
@@ -157,10 +191,22 @@ public sealed class GameBlocks
     /// <summary>Stone brick, cut stone, for building with rather than for anything else.</summary>
     public BlockId StoneBrick { get; }
 
-    /// <summary>A block of copper, which is nine ore packed into one.</summary>
+    /// <summary>A copper ingot, which is what a smelter makes out of copper ore.</summary>
+    public BlockId CopperIngot { get; }
+
+    /// <summary>An iron ingot, which is what a smelter makes out of iron ore.</summary>
+    public BlockId IronIngot { get; }
+
+    /// <summary>Glass, melted out of sand, and the only block worth building a window from.</summary>
+    public BlockId Glass { get; }
+
+    /// <summary>A smelter, which burns fuel to turn one block into another.</summary>
+    public BlockId Smelter { get; }
+
+    /// <summary>A block of copper, which is nine ingots packed into one.</summary>
     public BlockId CopperBlock { get; }
 
-    /// <summary>A block of iron, which is nine ore packed into one.</summary>
+    /// <summary>A block of iron, which is nine ingots packed into one.</summary>
     public BlockId IronBlock { get; }
 
     /// <summary>Coal ore, the fuel seam, common and shallow.</summary>

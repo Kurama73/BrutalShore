@@ -25,6 +25,7 @@ public sealed class SaveFileTests
             IsFlying = false,
             DayFraction = 3.6,
             RowIndex = 2,
+            Machines = [],
             Carried = [("stone", 9), (string.Empty, 0)],
         };
 
@@ -38,7 +39,7 @@ public sealed class SaveFileTests
 
             // Compared member by member rather than as a whole, because what is carried is a
             // list and a record compares a list by which list it is, not by what is in it.
-            Assert.Equal(save with { Carried = [] }, read with { Carried = [] });
+            Assert.Equal(save with { Carried = [], Machines = [] }, read with { Carried = [], Machines = [] });
             Assert.Equal(save.Carried, read.Carried);
 
             Assert.Equal(2, report.Applied);
@@ -64,6 +65,7 @@ public sealed class SaveFileTests
             IsFlying = true,
             DayFraction = 0.0,
             RowIndex = 0,
+            Machines = [],
             Carried = [],
         };
 
@@ -76,7 +78,7 @@ public sealed class SaveFileTests
             // it, and that is the whole file.
             var (read, report) = SaveFile.Read(path, new BlockEdits(), blocks.Registry);
 
-            Assert.Equal(save with { Carried = [] }, read with { Carried = [] });
+            Assert.Equal(save with { Carried = [], Machines = [] }, read with { Carried = [], Machines = [] });
             Assert.Equal(save.Carried, read.Carried);
             Assert.Equal(0, report.Applied);
             Assert.True(new FileInfo(path).Length < 128, "an empty world should not need a hundred bytes");
@@ -120,6 +122,7 @@ public sealed class SaveFileTests
             IsFlying = false,
             DayFraction = 0.5,
             RowIndex = 1,
+            Machines = [],
             Carried = [],
         };
 
@@ -131,12 +134,59 @@ public sealed class SaveFileTests
             // Saving twice has to overwrite rather than fail on the file it left behind, which is
             // the thing writing through a temporary file most easily gets wrong.
             var (read, _) = SaveFile.Read(path, new BlockEdits(), blocks.Registry);
-            Assert.Equal(first with { Carried = [] }, read with { Carried = [] });
+            Assert.Equal(first with { Carried = [], Machines = [] }, read with { Carried = [], Machines = [] });
             Assert.Equal(first.Carried, read.Carried);
         }
         finally
         {
             File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void a_machine_comes_back_where_it_was_with_what_was_in_it()
+    {
+        // The claim that makes a machine worth building: it has to survive closing the game. A
+        // smelter that came back empty would cost a player everything they had queued in it.
+        var registry = new BlockRegistry();
+        _ = new GameBlocks(registry);
+        var path = Path.Combine(Path.GetTempPath(), $"shorebound-{Guid.NewGuid():N}.world");
+
+        var save = new SaveFile
+        {
+            Seed = 5,
+            FeetMeters = new double3(0, 80, 0),
+            Yaw = 0f,
+            Pitch = 0f,
+            IsFlying = false,
+            DayFraction = 0.25,
+            RowIndex = 0,
+            Machines =
+            [
+                new SavedMachine
+                {
+                    Position = new int3(3, 70, -4),
+                    BurnLeftSeconds = 12.5f,
+                    BurnTotalSeconds = 32f,
+                    WorkedSeconds = 2.25f,
+                    Input = ("iron ore", 7),
+                    Fuel = ("coal ore", 3),
+                    Output = ("iron ingot", 11),
+                },
+            ],
+            Carried = [],
+        };
+
+        save.Write(path, new BlockEdits(), registry);
+        var (read, _) = SaveFile.Read(path, new BlockEdits(), registry);
+
+        var machine = Assert.Single(read.Machines);
+        Assert.Equal(new int3(3, 70, -4), machine.Position);
+        Assert.Equal(12.5f, machine.BurnLeftSeconds);
+        Assert.Equal(32f, machine.BurnTotalSeconds);
+        Assert.Equal(2.25f, machine.WorkedSeconds);
+        Assert.Equal(("iron ore", 7), machine.Input);
+        Assert.Equal(("coal ore", 3), machine.Fuel);
+        Assert.Equal(("iron ingot", 11), machine.Output);
     }
 }

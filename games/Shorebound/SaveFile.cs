@@ -23,11 +23,13 @@ public sealed record SaveFile
 
     /// <summary>The format's version, bumped whenever the layout below changes.</summary>
     /// <remarks>
-    /// Version 2 added what the player is carrying. A version 1 file still reads, with an empty
-    /// row: the blocks in someone's hand are worth less than their world, and refusing to open a
-    /// world because a list that did not exist is missing from it would be the wrong trade.
+    /// Version 2 added what the player is carrying and version 3 added the machines standing in
+    /// the world. Older files still read, with an empty row and no machines: the blocks in
+    /// someone's hand are worth less than their world, and refusing to open a world because a
+    /// list that did not exist is missing from it would be the wrong trade. A smelter that comes
+    /// back empty is the worst that can happen, and only to a world saved before smelters.
     /// </remarks>
-    private const byte Version = 2;
+    private const byte Version = 3;
 
     /// <summary>The world's seed, which is the world.</summary>
     public required int Seed { get; init; }
@@ -57,6 +59,15 @@ public sealed record SaveFile
     /// one. An empty slot is an empty name.
     /// </remarks>
     public required IReadOnlyList<(string Block, int Count)> Carried { get; init; }
+
+    /// <summary>Every machine standing in the world, and what was inside it.</summary>
+    /// <remarks>
+    /// A machine is not derivable from the seed and is not a block edit either — the block it
+    /// stands in is one, and what is inside it is this. By name, like everything else written
+    /// here, and with its clocks, so that a smelter left running is still running when the world
+    /// is opened again rather than quietly starting over.
+    /// </remarks>
+    public required IReadOnlyList<SavedMachine> Machines { get; init; }
 
     /// <summary>Writes a world to a file, replacing whatever was there.</summary>
     /// <param name="path">Where to write.</param>
@@ -92,6 +103,24 @@ public sealed record SaveFile
             {
                 writer.Write(block);
                 writer.Write(count);
+            }
+
+            writer.Write(Machines.Count);
+            foreach (var machine in Machines)
+            {
+                writer.Write(machine.Position.X);
+                writer.Write(machine.Position.Y);
+                writer.Write(machine.Position.Z);
+                writer.Write(machine.BurnLeftSeconds);
+                writer.Write(machine.BurnTotalSeconds);
+                writer.Write(machine.WorkedSeconds);
+
+                foreach (var (block, count) in (ReadOnlySpan<(string Block, int Count)>)
+                    [machine.Input, machine.Fuel, machine.Output])
+                {
+                    writer.Write(block);
+                    writer.Write(count);
+                }
             }
 
             writer.Flush();
@@ -131,9 +160,45 @@ public sealed record SaveFile
             DayFraction = reader.ReadDouble(),
             RowIndex = reader.ReadInt32(),
             Carried = version >= 2 ? ReadCarried(reader) : [],
+            Machines = version >= 3 ? ReadMachines(reader) : [],
         };
 
         return (save, BlockEditFile.Read(stream, into, registry));
+    }
+
+    private static List<SavedMachine> ReadMachines(BinaryReader reader)
+    {
+        var count = reader.ReadInt32();
+
+        // The same guard as the carried slots, for the same reason: a count read from a file
+        // decides how many times this loop runs. The bound is generous — a player who has built
+        // a hundred thousand smelters has earned the right to load them — and still finite.
+        if (count is < 0 or > 100_000)
+            throw new InvalidDataException($"A world claiming {count} machines is not one.");
+
+        var machines = new List<SavedMachine>(count);
+        for (var index = 0; index < count; index++)
+        {
+            var position = new int3(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32());
+            var burnLeft = reader.ReadSingle();
+            var burnTotal = reader.ReadSingle();
+            var worked = reader.ReadSingle();
+
+            machines.Add(
+                new SavedMachine
+                {
+                    Position = position,
+                    BurnLeftSeconds = burnLeft,
+                    BurnTotalSeconds = burnTotal,
+                    WorkedSeconds = worked,
+                    Input = (reader.ReadString(), reader.ReadInt32()),
+                    Fuel = (reader.ReadString(), reader.ReadInt32()),
+                    Output = (reader.ReadString(), reader.ReadInt32()),
+                }
+            );
+        }
+
+        return machines;
     }
 
     private static List<(string Block, int Count)> ReadCarried(BinaryReader reader)
