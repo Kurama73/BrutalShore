@@ -65,6 +65,9 @@ public readonly record struct SceneFrame
     /// </remarks>
     public float Brightness { get; init; } = 1f;
 
+    /// <summary>The light the player is carrying, if any.</summary>
+    public HeldLight Held { get; init; } = HeldLight.None;
+
     /// <summary>Builds a frame with the settings that are not required at their defaults.</summary>
     public SceneFrame() { }
 }

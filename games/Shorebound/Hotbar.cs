@@ -11,7 +11,7 @@ namespace Shorebound;
 /// </remarks>
 public sealed class Hotbar
 {
-    private readonly (string Name, BlockId Block, float4 Color)[] _slots;
+    private readonly (string Name, BlockId Block, float4 Color, byte Emission)[] _slots;
 
     /// <summary>Builds the row from this game's blocks.</summary>
     /// <param name="blocks">The game's registered block types.</param>
@@ -19,10 +19,11 @@ public sealed class Hotbar
     {
         // The colour is taken once, here, because the interface draws a swatch of it every frame
         // and a block's colour is the one thing about it that never changes.
-        (string, BlockId, float4) Slot(string name, BlockId block)
+        (string, BlockId, float4, byte) Slot(string name, BlockId block)
         {
-            var color = blocks.Registry[block].Color;
-            return (name, block, UiPalette.FromSrgb(color.X, color.Y, color.Z));
+            var type = blocks.Registry[block];
+            var color = type.Color;
+            return (name, block, UiPalette.FromSrgb(color.X, color.Y, color.Z), type.Emission);
         }
 
         // Water is left out on purpose: it is drawn as a solid block, so placing one would make a
@@ -57,6 +58,13 @@ public sealed class Hotbar
     /// <param name="index">Which slot, counting from zero.</param>
     /// <returns>Its block's name.</returns>
     public string NameOf(int index) => _slots[index].Name;
+
+    /// <summary>What light the block in hand gives off, 0 for most of them and up to 15.</summary>
+    /// <remarks>
+    /// Holding a lantern lights the way. Taken from the block type rather than stated here, so a
+    /// second glowing block is lit by the same rule the day it is registered.
+    /// </remarks>
+    public byte SelectedEmission => _slots[SelectedIndex].Emission;
 
     /// <summary>The colour of a slot's block, for the swatch the interface draws.</summary>
     /// <param name="index">Which slot, counting from zero.</param>

@@ -92,6 +92,6 @@ public sealed partial class SceneUniformsTests
     [GeneratedRegex(@"uniform\s+Scene\s*\{(.*?)\}\s*scene\s*;", RegexOptions.Singleline)]
     private static partial Regex BlockPattern();
 
-    [GeneratedRegex(@"(?:mat4|vec4)\s+(\w+)\s*;")]
+    [GeneratedRegex(@"(?:mat4|vec4)\s+(\w+)\s*(?:\[\s*\d+\s*\])?\s*;")]
     private static partial Regex MemberPattern();
 }

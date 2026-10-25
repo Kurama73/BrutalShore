@@ -15,6 +15,8 @@ layout(set = 0, binding = 0, std140) uniform Scene {
     vec4 fog;
     vec4 shadow;
     vec4 submerged;
+    vec4 heldLight;
+    vec4 heldLightColor;
 } scene;
 
 layout(location = 0) in vec3 inColor;
@@ -42,6 +44,11 @@ const float VARIATION = 0.13;
 // What a glowing block's light looks like: a flame, not a window. Warm enough to read as another
 // kind of light than the sky's, so a lit cave does not merely look like a shallow one.
 const vec3 GLOW_COLOR = vec3(1.0, 0.72, 0.42);
+
+// How sharply a carried light falls off. Two is the inverse square the real thing obeys, which
+// over fifteen metres of corridor is almost all darkness; this is gentler on purpose, because a
+// player wants to see the room they are standing in rather than their own boots.
+const float HELD_FALLOFF = 1.9;
 
 // How dark the inside of an unlit cave gets. Not zero: a world where walking into a cave means
 // walking into a black rectangle is a world nobody finds their way out of, and the point of the
@@ -99,6 +106,32 @@ float hash13(vec3 position) {
     return fract((scrambled.x + scrambled.y) * scrambled.z);
 }
 
+// What the light in the player's hand adds here.
+//
+// No shadow term, and it does not need one: the light is a hand's length from the eye, so
+// anything that could block it from a fragment would be blocking the fragment from view. What
+// costs the geometry its flatness is the angle, not an occlusion test.
+vec3 heldLightReaching(vec3 viewOffset, vec3 normal) {
+    if (scene.heldLight.w <= 0.0 || scene.heldLightColor.a <= 0.0) {
+        return vec3(0.0);
+    }
+
+    vec3 toLight = scene.heldLight.xyz - viewOffset;
+    float distance = length(toLight);
+    if (distance >= scene.heldLight.w) {
+        return vec3(0.0);
+    }
+
+    // Smooth to nothing at the range rather than clipping: a lit circle with an edge on it reads
+    // as a spotlight painted on the floor, which is the one thing a carried lamp never looks like.
+    float reach = 1.0 - (distance / scene.heldLight.w);
+    float falloff = pow(clamp(reach, 0.0, 1.0), HELD_FALLOFF);
+
+    float facing = max(dot(normal, toLight / max(distance, 1e-4)), 0.0);
+
+    return scene.heldLightColor.rgb * scene.heldLightColor.a * falloff * facing;
+}
+
 void main() {
     // Two lights, one of which is always off: the sun while it is up, the moon while it is not.
     // Both terms are kept because dawn and dusk have the sun setting while the moon is already
@@ -116,6 +149,8 @@ void main() {
         + daylight * reaching * scene.sunColor.rgb * max(dot(inNormal, scene.sunDirection.xyz), 0.0)
         + daylight * reaching * scene.moonColor.rgb * max(dot(inNormal, scene.moonDirection.xyz), 0.0)
         + GLOW_COLOR * inLight.y * inLight.y;
+
+    light += heldLightReaching(inViewOffset, inNormal);
 
     // The player's own exposure, applied to the light rather than to the finished pixel so that
     // the fog in front of it keeps its strength. sky.frag scales by the same number.

@@ -105,6 +105,27 @@ public sealed class ShoreboundGame : IGame
     /// <summary>How long a message about saving or loading stays on screen, in seconds.</summary>
     private const double NoticeSeconds = 3.0;
 
+    /// <summary>What colour a carried lantern burns.</summary>
+    /// <remarks>
+    /// The same warm colour the shader gives a placed one, so walking a lantern into a room lit
+    /// by another does not change the colour of the room.
+    /// </remarks>
+    private static readonly float3 HeldLightColor = new(1f, 0.72f, 0.42f);
+
+    /// <summary>How far a carried lantern reaches at full emission, in metres.</summary>
+    private const float HeldLightRangeMeters = 15f;
+
+    /// <summary>Where a carried light sits relative to the eye: down, to the right, and ahead.</summary>
+    private static readonly float3 HeldLightOffsetMeters = new(0.38f, -0.34f, 0.25f);
+
+    /// <summary>How much a carried flame wavers, as a fraction of its brightness.</summary>
+    /// <remarks>
+    /// Seven per cent, from two sine waves whose periods do not divide into each other, so the
+    /// pattern does not repeat on any interval anyone notices. Enough to read as a flame; any
+    /// more and a room appears to be breathing.
+    /// </remarks>
+    private const float FlickerAmount = 0.07f;
+
     private readonly Options _options;
     private readonly GameBlocks _blocks;
     private readonly TerrainGenerator _generator;
@@ -136,6 +157,7 @@ public sealed class ShoreboundGame : IGame
     private Screen _screenBehindSettings = Screen.Title;
 
     private int3 _centre;
+    private double _playedSeconds;
     private float4x4 _viewProjection;
     private float4x4 _lightViewProjection;
     private VoxelHit? _aimedAt;
@@ -253,6 +275,7 @@ public sealed class ShoreboundGame : IGame
             return;
         }
 
+        _playedSeconds += seconds;
         _clock.Step(seconds);
         _player.Step(_world, _world.Registry, seconds, _controller.ReadIntent(), _camera.Yaw);
         _camera.Position = _player.EyeMeters;
@@ -325,6 +348,7 @@ public sealed class ShoreboundGame : IGame
                 Submerged = _submerged,
                 ShadowStrength = _settings.Shadows ? _settings.ShadowStrength : 0f,
                 Brightness = _settings.Brightness,
+                Held = CarriedLight(),
             }
         );
 
@@ -559,6 +583,52 @@ public sealed class ShoreboundGame : IGame
 
         if (window.WasMouseButtonPressed(GlfwMouseButton.Right))
             Place();
+    }
+
+    /// <summary>The light the player is carrying, which is whatever is in their hand that glows.</summary>
+    /// <remarks>
+    /// <para>
+    /// No separate torch and no separate key: the block in hand is the light. Selecting the
+    /// lantern lights the way, and putting it down puts the light in the world where the baked
+    /// grid takes it over — which is the same rule for the player as for the world, and one
+    /// fewer thing to explain.
+    /// </para>
+    /// <para>
+    /// Positioned in render space, where the camera is the origin, so the offset from the eye to
+    /// the hand is the whole of it.
+    /// </para>
+    /// </remarks>
+    private HeldLight CarriedLight()
+    {
+        var emission = _hotbar.SelectedEmission;
+        if (_screen != Screen.Playing || emission == 0)
+            return HeldLight.None;
+
+        var flicker =
+            1f
+            - (FlickerAmount * 0.5f)
+            + (FlickerAmount
+                * 0.5f
+                * (float)(double.Sin(_playedSeconds * 11.3) * double.Sin(_playedSeconds * 7.1)));
+
+        var strength = emission / (float)LightVolume.MaxLevel * flicker;
+        var right = _camera.Right;
+        var forward = _camera.Forward;
+
+        // The hand's offset, turned with the camera: up is the world's up, because a lantern
+        // hangs the same way whatever the player is looking at.
+        var offset =
+            (right * HeldLightOffsetMeters.X)
+            + new float3(0f, HeldLightOffsetMeters.Y, 0f)
+            + (forward * HeldLightOffsetMeters.Z);
+
+        return new HeldLight
+        {
+            OffsetMeters = offset,
+            RangeMeters = HeldLightRangeMeters * strength,
+            Color = HeldLightColor,
+            Strength = strength,
+        };
     }
 
     /// <summary>The colour of the liquid the eye is in, and nothing if it is in none.</summary>

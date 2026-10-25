@@ -7,7 +7,7 @@ namespace BrutalShore.Render;
 /// <para>
 /// The order of these fields is the layout. It is duplicated by hand at the top of every shader
 /// that reads it —
-/// <c>voxel.vert</c>, <c>voxel.frag</c> and <c>sky.frag</c>. Shaders are compiled from source at
+/// <c>voxel.vert</c>, <c>voxel.frag</c>, <c>sky.vert</c>, <c>sky.frag</c> and <c>shadow.vert</c>. Shaders are compiled from source at
 /// startup with no include path, so there is nowhere to put one shared declaration; the comment
 /// in each shader names this struct, and <c>SceneUniformsTests</c> reads both and fails if the
 /// two ever stop agreeing — because they did once, and two swapped members produced a picture
@@ -75,6 +75,29 @@ internal readonly struct SceneUniforms
     /// </remarks>
     public readonly float4 Submerged;
 
+    /// <summary>
+    /// xyz: where the light the player is carrying is, in render space. w: how far it reaches, in
+    /// metres, or zero when nothing is being carried.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The one light in this world that moves. Everything else that glows is a block, and a
+    /// block's light is worked out when its chunk is meshed and baked into the vertices — which
+    /// is exact, free per frame, and completely unable to follow a player down a tunnel.
+    /// </para>
+    /// <para>
+    /// It needs no shadows and is not given any, which is not a shortcut but a consequence of
+    /// where it is: a light at the eye can reach everything the eye can see, because anything
+    /// blocking the light would be blocking the view. The offset from the eye to the hand is
+    /// small enough that the few fragments this gets wrong are at grazing angles against a
+    /// corner.
+    /// </para>
+    /// </remarks>
+    public readonly float4 HeldLight;
+
+    /// <summary>rgb: the colour of the carried light. w: how bright it is, 0 for none.</summary>
+    public readonly float4 HeldLightColor;
+
     /// <summary>Packs one frame's view and sky into the block the shaders read.</summary>
     /// <param name="viewProjection">The camera's view-projection, in render space.</param>
     /// <param name="lightViewProjection">Render space to the shadow map's clip space.</param>
@@ -83,6 +106,8 @@ internal readonly struct SceneUniforms
     /// <param name="fogEndMeters">How far away fog is total.</param>
     /// <param name="shadow">The shadow terms, laid out as <see cref="Shadow" /> describes.</param>
     /// <param name="submerged">The liquid the eye is in, laid out as <see cref="Submerged" /> describes.</param>
+    /// <param name="heldLight">Where the carried light is, laid out as <see cref="HeldLight" /> describes.</param>
+    /// <param name="heldLightColor">Its colour, laid out as <see cref="HeldLightColor" /> describes.</param>
     public SceneUniforms(
         in float4x4 viewProjection,
         in float4x4 lightViewProjection,
@@ -90,7 +115,9 @@ internal readonly struct SceneUniforms
         float fogStartMeters,
         float fogEndMeters,
         float4 shadow,
-        float4 submerged
+        float4 submerged,
+        float4 heldLight,
+        float4 heldLightColor
     )
     {
         ViewProjection = viewProjection;
@@ -110,5 +137,7 @@ internal readonly struct SceneUniforms
         Fog = new float4(fogStartMeters, fogEndMeters, 0f, 0f);
         Shadow = shadow;
         Submerged = submerged;
+        HeldLight = heldLight;
+        HeldLightColor = heldLightColor;
     }
 }
