@@ -23,13 +23,21 @@ namespace Shorebound;
 /// </remarks>
 public sealed class ShoreboundGame : IGame
 {
-    /// <summary>How many chunks may be generated in one frame.</summary>
+    /// <summary>How many finished chunks may be taken into the world in one frame.</summary>
     /// <remarks>
-    /// Generation is the expensive half of streaming — four noise fields per column — so this is
-    /// the number that decides whether flying fast stutters. Low enough to hide inside a frame,
-    /// high enough that the loaded radius keeps up with the sprint speed.
+    /// Generation itself happens on worker threads, so what this bounds is only the handover:
+    /// applying the edits and marking neighbours dirty. That is cheap enough that the number can
+    /// be several times what generating them on the frame would have allowed.
     /// </remarks>
-    private const int LoadBudgetPerFrame = 8;
+    private const int LoadBudgetPerFrame = 48;
+
+    /// <summary>How many chunks may be waiting to be generated at once.</summary>
+    /// <remarks>
+    /// Two rings' worth at the default radius. A player sprinting in a straight line can ask for
+    /// chunks faster than they can be made, and a queue that grew without limit would spend the
+    /// workers on ground already behind them.
+    /// </remarks>
+    private const int StreamingQueueCapacity = 256;
 
     /// <summary>How many chunks may be meshed and uploaded in one frame.</summary>
     private const int MeshBudgetPerFrame = 6;
@@ -95,7 +103,17 @@ public sealed class ShoreboundGame : IGame
         _options = options;
         _blocks = new GameBlocks(new BlockRegistry());
         _generator = new TerrainGenerator(_blocks, options.Seed);
-        _world = new VoxelWorld(_blocks.Registry, _generator);
+        // One worker per core but one, so the thread drawing the frame still has somewhere to
+        // run; capped because beyond a handful the workers are waiting on memory, not arithmetic.
+        _world = new VoxelWorld(
+            _blocks.Registry,
+            _generator,
+            new ChunkStreamer(
+                _generator,
+                int.Clamp(Environment.ProcessorCount - 1, 1, 6),
+                StreamingQueueCapacity
+            )
+        );
         _hotbar = new Hotbar(_blocks);
         _clock = new DayClock(options.StartHour, options.DayLengthSeconds);
     }
@@ -265,6 +283,7 @@ public sealed class ShoreboundGame : IGame
         ImGui.SeparatorText("World"u8);
         ImGui.Text($"seed {_generator.Seed}, radius {_options.ViewRadiusChunks} chunks");
         ImGui.Text($"{_world.LoadedChunkCount} loaded, {_chunks.MeshCount} meshed");
+        ImGui.Text($"{_world.StreamingCount} chunks being generated");
         ImGui.Text($"{_chunks.PendingCount} waiting to mesh, {_world.Edits.Count} blocks changed");
 
         ImGui.SeparatorText("Drawn"u8);
@@ -287,6 +306,7 @@ public sealed class ShoreboundGame : IGame
         _pipeline.Dispose();
         _scene.Dispose();
         _shadowMap.Dispose();
+        _world.Dispose();
     }
 
     /// <summary>Reads the keys that change which screen is showing.</summary>

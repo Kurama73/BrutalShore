@@ -24,5 +24,12 @@ public interface IChunkGenerator
     /// Fills <paramref name="into"/> with the chunk at <paramref name="chunkCoordinate"/>, in chunk
     /// units. The chunk arrives all air.
     /// </summary>
+    /// <param name="chunkCoordinate">Which chunk, in chunk units.</param>
+    /// <param name="into">The chunk to fill; it arrives all air and nobody else can see it yet.</param>
+    /// <remarks>
+    /// Called from several threads at once by <see cref="ChunkStreamer" />, each on a chunk of its
+    /// own. An implementation may therefore hold no state that a call writes to — read-only tables
+    /// built in its constructor are fine, a scratch buffer reused between calls is not.
+    /// </remarks>
     void Generate(int3 chunkCoordinate, Chunk into);
 }

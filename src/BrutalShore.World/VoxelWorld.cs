@@ -18,7 +18,7 @@ namespace BrutalShore.World;
 /// its chunk, and this is the class that will have to know the difference.
 /// </para>
 /// </remarks>
-public sealed class VoxelWorld : IVoxelSource
+public sealed class VoxelWorld : IVoxelSource, IDisposable
 {
     /// <summary>How many chunks tall the world is.</summary>
     public const int ChunksTall = 8;
@@ -27,16 +27,38 @@ public sealed class VoxelWorld : IVoxelSource
     public const int HeightBlocks = ChunksTall * Chunk.Size;
 
     private readonly IChunkGenerator _generator;
+    private readonly ChunkStreamer? _streamer;
     private readonly Dictionary<int3, Chunk> _chunks = [];
     private readonly HashSet<int3> _dirty = [];
+
+    // Reused every call: the chunks to unload cannot be removed while the map is being walked,
+    // and allocating the list again each frame is a kilobyte of garbage per loaded chunk.
+    private readonly List<int3> _leaving = [];
 
     /// <summary>Creates a world.</summary>
     /// <param name="registry">The block types its chunks are made of.</param>
     /// <param name="generator">What produces a chunk nobody has stored.</param>
     public VoxelWorld(BlockRegistry registry, IChunkGenerator generator)
+        : this(registry, generator, streamer: null) { }
+
+    /// <summary>Builds a world whose streaming generates chunks on worker threads.</summary>
+    /// <param name="registry">The block types the chunks are made of.</param>
+    /// <param name="generator">What makes a chunk nobody has edited.</param>
+    /// <param name="streamer">
+    /// The workers <see cref="UpdateStreaming" /> hands coordinates to, or <see langword="null" />
+    /// to generate on the calling thread. The world takes ownership and disposes it.
+    /// </param>
+    /// <remarks>
+    /// With a streamer, <see cref="UpdateStreaming" /> no longer makes the chunks it asks for; it
+    /// asks, and hands over whichever arrived since last time. The chunks that exist afterwards
+    /// are the same ones either way, but not in the same call — which is why a test that wants to
+    /// assert what a single call loaded uses the other constructor.
+    /// </remarks>
+    public VoxelWorld(BlockRegistry registry, IChunkGenerator generator, ChunkStreamer? streamer)
     {
         Registry = registry;
         _generator = generator;
+        _streamer = streamer;
     }
 
     /// <summary>The block types this world is made of.</summary>
@@ -51,6 +73,9 @@ public sealed class VoxelWorld : IVoxelSource
 
     /// <summary>How many chunks are resident.</summary>
     public int LoadedChunkCount => _chunks.Count;
+
+    /// <summary>How many chunks have been asked for and have not arrived yet.</summary>
+    public int StreamingCount => _streamer?.OutstandingCount ?? 0;
 
     /// <summary>
     /// The chunks whose geometry no longer matches what is drawn for them, including the neighbours
@@ -204,34 +229,78 @@ public sealed class VoxelWorld : IVoxelSource
     /// <returns>How many chunks were loaded.</returns>
     public int UpdateStreaming(int3 centreChunk, int radiusChunks, int maxLoadsPerCall)
     {
-        var loaded = 0;
+        // Whatever the workers finished since last time, first: a chunk that has arrived should
+        // be in the map before the scan below decides what is still missing.
+        var loaded = _streamer?.Collect(maxLoadsPerCall, Insert) ?? 0;
 
-        // Nearest first, so what fills in first is what the observer is standing in.
-        for (var ring = 0; ring <= radiusChunks && loaded < maxLoadsPerCall; ring++)
+        // Nearest first, so what fills in first is what the observer is standing in. Without a
+        // streamer this is the generation itself and the budget bounds the frame's work; with
+        // one it only queues, and the streamer's own capacity is what stops the queue running
+        // away ahead of the player.
+        var asked = 0;
+        var askLimit = _streamer is null ? maxLoadsPerCall : _streamer.QueueCapacity;
+
+        for (var ring = 0; ring <= radiusChunks && asked < askLimit; ring++)
         {
-            for (var z = -ring; z <= ring && loaded < maxLoadsPerCall; z++)
+            for (var z = -ring; z <= ring && asked < askLimit; z++)
             {
-                for (var x = -ring; x <= ring && loaded < maxLoadsPerCall; x++)
+                for (var x = -ring; x <= ring && asked < askLimit; x++)
                 {
                     // Only the new ring's own cells: the inner ones were handled by earlier rings.
                     if (int.Max(int.Abs(x), int.Abs(z)) != ring)
                         continue;
 
-                    for (var y = 0; y < ChunksTall && loaded < maxLoadsPerCall; y++)
+                    for (var y = 0; y < ChunksTall && asked < askLimit; y++)
                     {
                         var coordinate = new int3(centreChunk.X + x, y, centreChunk.Z + z);
                         if (_chunks.ContainsKey(coordinate))
                             continue;
 
-                        Load(coordinate);
-                        loaded++;
+                        if (_streamer is null)
+                        {
+                            Load(coordinate);
+                            loaded++;
+                            asked++;
+                        }
+                        else if (_streamer.Request(coordinate))
+                        {
+                            asked++;
+                        }
                     }
                 }
             }
         }
 
-        var unloadRadius = radiusChunks + 2;
-        foreach (var coordinate in _chunks.Keys.ToArray())
+        UnloadBeyond(centreChunk, radiusChunks + 2);
+        return loaded;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Stops the worker threads, if this world has any.</remarks>
+    public void Dispose() => _streamer?.Dispose();
+
+    /// <summary>Puts a chunk a worker finished into the map.</summary>
+    /// <remarks>
+    /// A chunk can arrive after the player has walked out of range of it, because a request
+    /// cannot be taken back once a worker has started on it. Taking it anyway and letting the
+    /// next unload pass drop it costs one frame of memory and saves the bookkeeping of a request
+    /// that might be half done.
+    /// </remarks>
+    private void Insert(int3 coordinate, Chunk chunk)
+    {
+        if (!IsWithinBounds(coordinate) || _chunks.ContainsKey(coordinate))
+            return;
+
+        Edits.ApplyTo(coordinate, chunk);
+        _chunks[coordinate] = chunk;
+        MarkDirtyWithNeighbours(coordinate);
+    }
+
+    private void UnloadBeyond(int3 centreChunk, int unloadRadius)
+    {
+        _leaving.Clear();
+
+        foreach (var coordinate in _chunks.Keys)
         {
             var distance = int.Max(
                 int.Abs(coordinate.X - centreChunk.X),
@@ -239,10 +308,11 @@ public sealed class VoxelWorld : IVoxelSource
             );
 
             if (distance > unloadRadius)
-                Unload(coordinate);
+                _leaving.Add(coordinate);
         }
 
-        return loaded;
+        foreach (var coordinate in _leaving)
+            Unload(coordinate);
     }
 
     private void MarkDirtyWithNeighbours(int3 chunkCoordinate)
