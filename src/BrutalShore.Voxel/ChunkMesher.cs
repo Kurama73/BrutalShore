@@ -62,6 +62,7 @@ public sealed class ChunkMesher
     /// </summary>
     /// <param name="Color">The owning block's colour.</param>
     /// <param name="Opacity">The owning block's opacity, which keeps the two passes apart.</param>
+    /// <param name="Pattern">What the owning block's surface looks like closer than a block.</param>
     /// <param name="Corner0">The corner at (i, j).</param>
     /// <param name="Corner1">The corner at (i + 1, j).</param>
     /// <param name="Corner2">The corner at (i + 1, j + 1).</param>
@@ -69,6 +70,7 @@ public sealed class ChunkMesher
     private readonly record struct MaskCell(
         byte3 Color,
         byte Opacity,
+        BlockPattern Pattern,
         CornerShade Corner0,
         CornerShade Corner1,
         CornerShade Corner2,
@@ -229,6 +231,7 @@ public sealed class ChunkMesher
                 _mask[i + Chunk.Size * j] = new MaskCell(
                     ownerType.Color,
                     ownerType.Opacity,
+                    ownerType.Pattern,
                     Shade(source, light, u, v, facingWorldX, facingWorldY, facingWorldZ, -1, -1),
                     Shade(source, light, u, v, facingWorldX, facingWorldY, facingWorldZ, +1, -1),
                     Shade(source, light, u, v, facingWorldX, facingWorldY, facingWorldZ, +1, +1),
@@ -473,7 +476,8 @@ public sealed class ChunkMesher
             shade.SkyLight,
             shade.BlockLight,
             cell.Color,
-            cell.Opacity
+            cell.Opacity,
+            cell.Pattern
         );
     }
 }

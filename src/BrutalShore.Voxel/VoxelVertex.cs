@@ -18,9 +18,15 @@ namespace BrutalShore.Voxel;
 /// shader can derive it from the position: every quad is axis-aligned, so the two position
 /// components that are not along the face's normal already are the coordinate across it, which is
 /// also what makes a merged quad tile per cell instead of stretching. And the block id is not,
-/// because the mesh is geometry: the colour has already been resolved from the registry, and
-/// anything that needs to know which block it is asks the chunk, which is where the answer is
-/// authoritative.
+/// because the mesh is geometry: what the surface looks like has already been resolved from the
+/// registry into a colour and a pattern, and anything that needs to know which block it is asks
+/// the chunk, which is where the answer is authoritative.
+/// </para>
+/// <para>
+/// The opacity is kept in sixteenths rather than in bytes, which is what makes room for the
+/// pattern beside it. Nothing reads it as a byte: the shader divides it to blend with, and the
+/// mesher compares it to keep the two passes apart — and sixteen steps is more than a world with
+/// two kinds of surface, solid and water, will ever need.
 /// </para>
 /// <para>
 /// Layout, little-endian, as the shader unpacks it:
@@ -35,7 +41,8 @@ namespace BrutalShore.Voxel;
 /// Packed1:  bits  0..7   red, sRGB
 ///           bits  8..15  green
 ///           bits 16..23  blue
-///           bits 24..31  opacity, 255 for a solid block
+///           bits 24..27  opacity in sixteenths, 15 for a solid block
+///           bits 28..31  the surface's <see cref="BlockPattern"/>
 /// </code>
 /// </para>
 /// </remarks>
@@ -58,6 +65,7 @@ public readonly struct VoxelVertex
     /// <param name="blockLight">How much light from glowing blocks reaches it, 0 to 15.</param>
     /// <param name="color">The block's colour in sRGB bytes.</param>
     /// <param name="opacity">How much of what is behind the face it hides; 255 is solid.</param>
+    /// <param name="pattern">What the surface looks like closer than a whole block.</param>
     public VoxelVertex(
         int x,
         int y,
@@ -67,7 +75,8 @@ public readonly struct VoxelVertex
         int skyLight,
         int blockLight,
         byte3 color,
-        byte opacity
+        byte opacity,
+        BlockPattern pattern
     )
     {
         Packed0 =
@@ -79,7 +88,12 @@ public readonly struct VoxelVertex
             | ((uint)skyLight << 23)
             | ((uint)blockLight << 27);
 
-        Packed1 = color.X | ((uint)color.Y << 8) | ((uint)color.Z << 16) | ((uint)opacity << 24);
+        Packed1 =
+            color.X
+            | ((uint)color.Y << 8)
+            | ((uint)color.Z << 16)
+            | ((uint)(opacity >> 4) << 24)
+            | ((uint)pattern << 28);
     }
 
     /// <summary>The chunk-local position this corner was packed with.</summary>
@@ -101,6 +115,9 @@ public readonly struct VoxelVertex
     public byte3 Color =>
         new((byte)(Packed1 & 0xFF), (byte)((Packed1 >> 8) & 0xFF), (byte)((Packed1 >> 16) & 0xFF));
 
-    /// <summary>How much of what is behind this face it hides, from 0 to 255.</summary>
-    public byte Opacity => (byte)((Packed1 >> 24) & 0xFF);
+    /// <summary>How much of what is behind this face it hides, in sixteenths; 15 is solid.</summary>
+    public int Opacity => (int)((Packed1 >> 24) & 0xF);
+
+    /// <summary>The pattern this corner was packed with.</summary>
+    public BlockPattern Pattern => (BlockPattern)((Packed1 >> 28) & 0xF);
 }

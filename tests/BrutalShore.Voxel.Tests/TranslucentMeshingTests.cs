@@ -123,8 +123,8 @@ public sealed class TranslucentMeshingTests
 
         // What the shader blends with, so a wrong value here is a sea that is either invisible
         // or a solid wall, and nothing in between would say which.
-        Assert.All(_surface.Translucent.Vertices.ToArray(), vertex => Assert.Equal(170, vertex.Opacity));
-        Assert.All(_surface.Opaque.Vertices.ToArray(), vertex => Assert.Equal(255, vertex.Opacity));
+        Assert.All(_surface.Translucent.Vertices.ToArray(), vertex => Assert.Equal(170 >> 4, vertex.Opacity));
+        Assert.All(_surface.Opaque.Vertices.ToArray(), vertex => Assert.Equal(255 >> 4, vertex.Opacity));
     }
 
     [Fact]
@@ -138,8 +138,8 @@ public sealed class TranslucentMeshingTests
 
         Mesh(chunk);
 
-        Assert.All(_surface.Opaque.Vertices.ToArray(), vertex => Assert.Equal(255, vertex.Opacity));
-        Assert.All(_surface.Translucent.Vertices.ToArray(), vertex => Assert.Equal(170, vertex.Opacity));
+        Assert.All(_surface.Opaque.Vertices.ToArray(), vertex => Assert.Equal(255 >> 4, vertex.Opacity));
+        Assert.All(_surface.Translucent.Vertices.ToArray(), vertex => Assert.Equal(170 >> 4, vertex.Opacity));
     }
 
     private void Mesh(Chunk chunk)

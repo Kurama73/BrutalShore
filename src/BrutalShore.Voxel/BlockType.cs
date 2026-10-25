@@ -50,6 +50,14 @@ public sealed record BlockType
     /// </remarks>
     public bool Collides { get; init; } = true;
 
+    /// <summary>What the block's surface looks like closer than a whole block.</summary>
+    /// <remarks>
+    /// Flat by default, which is what a block looks like with nothing said about it. A pattern is
+    /// appearance in the same sense the colour is, which is why it sits beside it rather than in
+    /// some separate description of materials: there is no behaviour attached to either.
+    /// </remarks>
+    public BlockPattern Pattern { get; init; } = BlockPattern.Smooth;
+
     /// <summary>How much light a block takes out of anything that passes through it, 0 to 15.</summary>
     /// <remarks>
     /// <para>
