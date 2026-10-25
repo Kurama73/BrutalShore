@@ -39,6 +39,13 @@ public sealed class GameWindow : IDisposable
         // surface. On macOS this is also what makes GLFW attach the CAMetalLayer MoltenVK needs.
         Glfw.WindowHint(GlfwWindowHint.ClientApi, 0);
         Handle = Glfw.CreateWindow(new GlfwWindow.CreateInfo { Title = title, Size = size });
+
+        // Sticky input latches a press until it has been read once, so a tap shorter than a frame
+        // is still seen. Without it the shortest press a player can land is a whole frame long,
+        // which on a machine struggling at twenty frames a second is fifty milliseconds — and the
+        // keys that suffer are exactly the tapped ones: jump, the hotbar, the menu.
+        Glfw.PInvoke.SetInputMode(Handle, Glfw.Constants.GLFW_STICKY_KEYS, 1);
+        Glfw.PInvoke.SetInputMode(Handle, Glfw.Constants.GLFW_STICKY_MOUSE_BUTTONS, 1);
     }
 
     /// <summary>The GLFW window, for the surface and for the ImGui platform backend.</summary>
