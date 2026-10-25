@@ -44,14 +44,16 @@ public class ChunkMesherTests
     public void a_solid_chunk_merges_down_to_one_quad_per_side()
     {
         // The headline number for greedy merging. Culling alone leaves 2,048 quads per side; the
-        // merge takes each side to one, which is 12 triangles for 32,768 blocks.
+        // merge takes each side to one, which is 10 triangles for 32,768 blocks. Standing on
+        // ground rather than floating, because the five sides that are then seen are each lit the
+        // same at every corner, and the merge is what is being counted here.
         var chunk = new Chunk();
         chunk.Fill(_stone);
 
-        Mesh(new TestWorld(chunk));
+        Mesh(new TestWorld(chunk).WithSolidNeighbourBelow(_stone));
 
-        Assert.Equal(6, Opaque.QuadCount);
-        Assert.Equal(12, Opaque.TriangleCount);
+        Assert.Equal(5, Opaque.QuadCount);
+        Assert.Equal(10, Opaque.TriangleCount);
     }
 
     [Fact]
@@ -82,16 +84,16 @@ public class ChunkMesherTests
         var chunk = new Chunk();
         chunk.Fill(_stone);
 
-        var sealedAbove = new TestWorld(chunk).WithSolidNeighbourAbove(_stone);
+        var sealedAbove = new TestWorld(chunk).WithSolidNeighbourBelow(_stone).WithSolidNeighbourAbove(_stone);
         Mesh(sealedAbove);
         var withNeighbour = Opaque.QuadCount;
 
-        var openAbove = new TestWorld(chunk);
+        var openAbove = new TestWorld(chunk).WithSolidNeighbourBelow(_stone);
         Mesh(openAbove);
         var withoutNeighbour = Opaque.QuadCount;
 
-        Assert.Equal(5, withNeighbour);
-        Assert.Equal(6, withoutNeighbour);
+        Assert.Equal(4, withNeighbour);
+        Assert.Equal(5, withoutNeighbour);
     }
 
     [Fact]
@@ -221,7 +223,8 @@ public class ChunkMesherTests
         /// <summary>The solid half of the last mesh, which is all these tests build.</summary>
     private VoxelMesh Opaque => _surface.Opaque;
 
-    private void Mesh(TestWorld world) => _mesher.Mesh(world.Chunk, int3.Zero, world, _registry, _surface);
+    private void Mesh(TestWorld world) =>
+        _mesher.Mesh(world.Chunk, int3.Zero, world, _registry, world.Light(_registry), _surface);
 
     private int CountQuads(VoxelFace face)
     {

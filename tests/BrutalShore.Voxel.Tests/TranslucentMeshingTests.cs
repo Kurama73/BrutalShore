@@ -142,6 +142,9 @@ public sealed class TranslucentMeshingTests
         Assert.All(_surface.Translucent.Vertices.ToArray(), vertex => Assert.Equal(170, vertex.Opacity));
     }
 
-    private void Mesh(Chunk chunk) =>
-        _mesher.Mesh(chunk, int3.Zero, new TestWorld(chunk), _registry, _surface);
+    private void Mesh(Chunk chunk)
+    {
+        var world = new TestWorld(chunk);
+        _mesher.Mesh(chunk, int3.Zero, world, _registry, world.Light(_registry), _surface);
+    }
 }

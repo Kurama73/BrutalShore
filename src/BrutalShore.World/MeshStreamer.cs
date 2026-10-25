@@ -17,6 +17,11 @@ namespace BrutalShore.World;
 /// is tens of kilobytes and a world being flown across produces hundreds a second.
 /// </para>
 /// <para>
+/// A worker lights a chunk before it meshes it. The two belong together: light is wanted per
+/// corner of every face and nowhere else, so working it out here and baking it into the vertices
+/// means neither the frame nor a resident chunk ever has to hold it.
+/// </para>
+/// <para>
 /// A surface handed to <see cref="Collect" /> is only the caller's for the duration of the call:
 /// it goes back into the pool afterwards. That is what keeps the pool from needing a return call
 /// a caller can forget, and it costs nothing, because the only thing done with a finished surface
@@ -140,9 +145,10 @@ public sealed class MeshStreamer : IDisposable
 
     private void Work()
     {
-        // One mesher per worker: it keeps a scratch mask between calls, so sharing one would be
-        // two threads writing the same array.
+        // One of each per worker: both keep scratch buffers between calls, so sharing either
+        // would be two threads writing the same array.
         var mesher = new ChunkMesher();
+        var light = new LightVolume();
 
         try
         {
@@ -151,7 +157,8 @@ public sealed class MeshStreamer : IDisposable
                 if (!_spare.TryTake(out var surface))
                     surface = new ChunkSurface();
 
-                mesher.Mesh(neighbourhood.Middle, neighbourhood.Centre, neighbourhood, _registry, surface);
+                light.Illuminate(neighbourhood.Centre, neighbourhood, _registry, neighbourhood);
+                mesher.Mesh(neighbourhood.Middle, neighbourhood.Centre, neighbourhood, _registry, light, surface);
                 _finished.Enqueue(new Finished(neighbourhood.Centre, surface));
             }
         }

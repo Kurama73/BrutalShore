@@ -13,12 +13,25 @@ public class VoxelVertexTests
         foreach (var face in Enum.GetValues<VoxelFace>())
         foreach (var occlusion in new[] { 0, 1, 2, 3 })
         foreach (var opacity in new byte[] { 0, 1, 170, 255 })
+        foreach (var light in new[] { 0, 1, 14, 15 })
         {
-            var vertex = new VoxelVertex(x, 32 - x, 17, face, occlusion, new byte3(200, 7, 255), opacity);
+            var vertex = new VoxelVertex(
+                x,
+                32 - x,
+                17,
+                face,
+                occlusion,
+                light,
+                LightVolume.MaxLevel - light,
+                new byte3(200, 7, 255),
+                opacity
+            );
 
             Assert.Equal(new int3(x, 32 - x, 17), vertex.Position);
             Assert.Equal(face, vertex.Face);
             Assert.Equal(occlusion, vertex.AmbientOcclusion);
+            Assert.Equal(light, vertex.SkyLight);
+            Assert.Equal(LightVolume.MaxLevel - light, vertex.BlockLight);
             Assert.Equal(new byte3(200, 7, 255), vertex.Color);
             Assert.Equal(opacity, vertex.Opacity);
         }

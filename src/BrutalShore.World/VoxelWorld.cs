@@ -200,21 +200,28 @@ public sealed class VoxelWorld : IVoxelSource, IDisposable
     /// building faces against space that is merely unloaded.
     /// </summary>
     /// <remarks>
-    /// The full 3x3x3 neighbourhood, not just the six faces, because ambient occlusion reads the
-    /// blocks diagonal to a face. Neighbours above or below the world are not missing — there is
-    /// genuinely nothing there — so they do not count against this.
+    /// <para>
+    /// The nine columns around and including it, not just the six neighbouring faces. Ambient
+    /// occlusion reads the blocks diagonal to a face, which is why the corners count; light reads
+    /// the skyline, which is why the whole column does. A column that is only half loaded would
+    /// report its sky as lower than it is and light a roofed chunk as though it were open.
+    /// </para>
+    /// <para>
+    /// Whole columns is barely stricter than the twenty-seven were, because streaming asks for a
+    /// column at a time: what is loaded sideways of a chunk is loaded all the way up.
+    /// </para>
     /// </remarks>
     public bool IsMeshable(int3 chunkCoordinate)
     {
         if (!_chunks.ContainsKey(chunkCoordinate))
             return false;
 
-        for (var y = -1; y <= 1; y++)
+        for (var y = 0; y < ChunksTall; y++)
         for (var z = -1; z <= 1; z++)
         for (var x = -1; x <= 1; x++)
         {
-            var neighbour = chunkCoordinate + new int3(x, y, z);
-            if (IsWithinBounds(neighbour) && !_chunks.ContainsKey(neighbour))
+            var neighbour = new int3(chunkCoordinate.X + x, y, chunkCoordinate.Z + z);
+            if (!_chunks.ContainsKey(neighbour))
                 return false;
         }
 
