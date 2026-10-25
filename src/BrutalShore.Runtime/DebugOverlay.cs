@@ -5,6 +5,7 @@ using Brutal.ImGuiApi.Backends;
 using Brutal.VulkanApi;
 using BrutalShore.Core;
 using BrutalShore.Gpu;
+using BrutalShore.Ui;
 
 namespace BrutalShore.Runtime;
 
@@ -28,12 +29,27 @@ public sealed unsafe class DebugOverlay : IDisposable
 
 
     /// <summary>Starts Dear ImGui and attaches it to the window and the render pass.</summary>
-    public DebugOverlay(GameWindow window, GpuContext context, SwapchainTarget target, bool startVisible)
+    /// <param name="window">The window the interface reads its input from.</param>
+    /// <param name="context">The device the interface draws with.</param>
+    /// <param name="target">The swapchain whose render pass the interface is built against.</param>
+    /// <param name="startVisible">Whether the overlay itself starts shown.</param>
+    /// <param name="uiScale">How large every panel is drawn, the overlay's and the game's alike.</param>
+    public DebugOverlay(
+        GameWindow window,
+        GpuContext context,
+        SwapchainTarget target,
+        bool startVisible,
+        float uiScale
+    )
     {
         _window = window;
         IsVisible = startVisible;
 
         ImGui.CreateContext();
+
+        // The context exists exactly once and the style belongs to it, so this is the only place
+        // the look of the whole interface can be set from — the game's menus included.
+        UiTheme.Apply(uiScale);
 
         // ImPlot keeps its own context beside ImGui's and has to be told about it; the frame
         // time graph is the only thing that uses it, and it is worth a graph.

@@ -9,6 +9,7 @@
     <ProjectReference Include="../../src/BrutalShore.Core/BrutalShore.Core.csproj" />
     <ProjectReference Include="../../src/BrutalShore.Voxel/BrutalShore.Voxel.csproj" />
     <ProjectReference Include="../../src/BrutalShore.World/BrutalShore.World.csproj" />
+    <ProjectReference Include="../../src/BrutalShore.Ui/BrutalShore.Ui.csproj" />
     <ProjectReference Include="../../src/BrutalShore.Render/BrutalShore.Render.csproj" />
     <ProjectReference Include="../../src/BrutalShore.Runtime/BrutalShore.Runtime.csproj" />
   </ItemGroup>

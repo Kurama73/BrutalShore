@@ -4,6 +4,7 @@
     <Project Path="src/BrutalShore.Voxel/BrutalShore.Voxel.csproj" />
     <Project Path="src/BrutalShore.World/BrutalShore.World.csproj" />
     <Project Path="src/BrutalShore.Gpu/BrutalShore.Gpu.csproj" />
+    <Project Path="src/BrutalShore.Ui/BrutalShore.Ui.csproj" />
     <Project Path="src/BrutalShore.Render/BrutalShore.Render.csproj" />
     <Project Path="src/BrutalShore.Runtime/BrutalShore.Runtime.csproj" />
   </Folder>

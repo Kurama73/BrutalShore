@@ -40,4 +40,12 @@ public sealed record HostOptions
     /// otherwise — it never gets to a keyboard.
     /// </remarks>
     public bool ShowOverlay { get; init; } = true;
+
+    /// <summary>How large the interface is drawn, 1 being the designed size.</summary>
+    /// <remarks>
+    /// Here rather than in a game because the host is what creates the interface's context, and
+    /// a theme is set on a context rather than passed to a panel. A game that lets a player
+    /// change it calls <see cref="BrutalShore.Ui.UiTheme.Apply" /> again with the new value.
+    /// </remarks>
+    public float UiScale { get; init; } = 1f;
 }

@@ -105,6 +105,7 @@ were deleted.
 | `BrutalShore.Core`    | The frame clock and the f64 world to f32 render-space boundary |
 | `BrutalShore.Voxel`   | Chunks, the block registry, the greedy mesher                 |
 | `BrutalShore.Gpu`     | Window, Vulkan device, swapchain, frames in flight, shaders   |
+| `BrutalShore.Ui`      | What every panel looks like: the palette, the ImGui theme, the shared widgets |
 | `BrutalShore.World`   | Coordinates, gradient noise, streaming, block edits, ray casting and collision, `IChunkGenerator` |
 | `BrutalShore.Render`  | Camera, view frustum, the sun and sky, shadows, the voxel pipeline, chunk meshes |
 | `BrutalShore.Runtime` | The window, the device and the frame loop around an `IGame`   |
