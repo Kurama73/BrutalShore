@@ -24,8 +24,6 @@ public sealed class DayClock
     /// <summary>The hour a new world starts at, by default.</summary>
     private const double DefaultStartHour = 8.0;
 
-    private readonly double _dayLengthSeconds;
-
     /// <summary>Starts the clock.</summary>
     /// <param name="startHour">The hour of the first morning, from 0 to 24.</param>
     /// <param name="dayLengthSeconds">
@@ -34,9 +32,18 @@ public sealed class DayClock
     /// </param>
     public DayClock(double startHour = DefaultStartHour, double dayLengthSeconds = DefaultDayLengthSeconds)
     {
-        _dayLengthSeconds = dayLengthSeconds;
+        DayLengthSeconds = dayLengthSeconds;
         DayFraction = startHour / 24.0;
     }
+
+    /// <summary>
+    /// How long a whole day takes in real seconds. Zero or less stops time where it is.
+    /// </summary>
+    /// <remarks>
+    /// Settable, because it is a setting: a player who moves the slider while standing in a
+    /// sunset expects the sunset to slow down, not the next one to.
+    /// </remarks>
+    public double DayLengthSeconds { get; set; }
 
     /// <summary>How many days have passed, the fraction being the time of day.</summary>
     public double DayFraction { get; private set; }
@@ -55,10 +62,10 @@ public sealed class DayClock
     /// <param name="seconds">How much real time the step covers.</param>
     public void Step(double seconds)
     {
-        if (IsFrozen || _dayLengthSeconds <= 0.0)
+        if (IsFrozen || DayLengthSeconds <= 0.0)
             return;
 
-        DayFraction += seconds / _dayLengthSeconds;
+        DayFraction += seconds / DayLengthSeconds;
     }
 
     /// <summary>The time of day as <c>hh:mm</c>.</summary>

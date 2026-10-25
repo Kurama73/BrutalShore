@@ -14,28 +14,69 @@ public sealed record Options
     public int Seed { get; init; } = 1337;
 
     /// <summary>
-    /// How far chunks are kept loaded, in chunks.
+    /// How far chunks are kept loaded, in chunks, or nothing to leave the player's setting alone.
     /// </summary>
     /// <remarks>
-    /// Memory grows with the square of this: a chunk is 64 KiB of block ids, and a radius of r
-    /// keeps <c>(2r+1)² × 8</c> of them resident.
+    /// Nullable because this is one of the values that is now a setting as well. A command line
+    /// that does not mention it must not quietly put it back to a default — a player who chose a
+    /// view distance chose it — and a command line that does mention it has to win, because that
+    /// is the only way to render a comparable screenshot on a machine with a settings file on it.
     /// </remarks>
-    public int ViewRadiusChunks { get; init; } = 8;
+    public int? ViewRadiusChunks { get; init; }
 
     /// <summary>The hour of the first morning, from 0 to 24.</summary>
     public double StartHour { get; init; } = 8.0;
 
-    /// <summary>How long a whole day takes in real seconds; zero stops the sun.</summary>
-    public double DayLengthSeconds { get; init; } = DayClock.DefaultDayLengthSeconds;
+    /// <summary>
+    /// How long a whole day takes in real seconds, zero stopping the sun, or nothing to leave the
+    /// player's setting alone.
+    /// </summary>
+    public double? DayLengthSeconds { get; init; }
 
     /// <summary>Where the world is saved to and loaded from.</summary>
     public string SavePath { get; init; } = "shorebound.world";
 
+    /// <summary>Where the player's settings are read from and written back to.</summary>
+    /// <remarks>
+    /// An option rather than a constant so that a fixed-frame render can be given an empty path
+    /// and get the defaults: a screenshot that came out different because of whatever was last
+    /// left in a settings file is a screenshot that compares against nothing.
+    /// </remarks>
+    public string SettingsPath { get; init; } = SettingsFile.DefaultPath;
+
     /// <summary>Where the camera starts, or <see langword="null" /> to stand on the ground at the origin.</summary>
     public Viewpoint? Viewpoint { get; init; }
 
-    /// <summary>What the host is told.</summary>
+    /// <summary>What the host is told, before the player's settings are folded into it.</summary>
     public HostOptions Host { get; init; } = new() { Title = "Shorebound" };
+
+    /// <summary>Whether <c>--no-overlay</c> was given, which beats the player's setting.</summary>
+    public bool HideOverlay { get; init; }
+
+    /// <summary>
+    /// The player's settings with whatever this command line said about them written over the top.
+    /// </summary>
+    /// <param name="settings">What was read from the settings file.</param>
+    /// <returns>The settings this run should use.</returns>
+    public Settings Override(Settings settings) =>
+        (
+            settings with
+            {
+                ViewRadiusChunks = ViewRadiusChunks ?? settings.ViewRadiusChunks,
+                DayLengthSeconds = DayLengthSeconds ?? settings.DayLengthSeconds,
+                ShowOverlay = settings.ShowOverlay && !HideOverlay,
+            }
+        ).Clamped();
+
+    /// <summary>What the host is told, once the player's settings are known.</summary>
+    /// <param name="settings">The settings this run is using.</param>
+    /// <returns>The host options, with the interface scale and the overlay taken from them.</returns>
+    public HostOptions HostWith(Settings settings) =>
+        Host with
+        {
+            ShowOverlay = settings.ShowOverlay,
+            UiScale = settings.UiScale,
+        };
 
     /// <summary>Reads the options from a command line.</summary>
     /// <remarks>
@@ -72,12 +113,15 @@ public sealed record Options
                 case "--save":
                     options = options with { SavePath = ReadText(arguments, ++index, "--save") };
                     break;
+                case "--settings":
+                    options = options with { SettingsPath = ReadText(arguments, ++index, "--settings") };
+                    break;
                 case "--camera":
                     options = options with { Viewpoint = ReadViewpoint(arguments, ref index) };
                     break;
 
                 case "--no-overlay":
-                    options = options with { Host = options.Host with { ShowOverlay = false } };
+                    options = options with { HideOverlay = true };
                     break;
                 case "--validation":
                     options = options with { Host = options.Host with { EnableValidation = true } };
