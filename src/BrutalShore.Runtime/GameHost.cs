@@ -29,6 +29,7 @@ public sealed class GameHost : IDisposable
     private readonly ShaderLibrary _shaders;
     private readonly DebugOverlay _overlay;
     private readonly FrameClock _clock = new();
+    private readonly FrameProfile _profile = new();
 
     /// <summary>Opens a window and brings up a device on it.</summary>
     public GameHost(HostOptions options)
@@ -62,31 +63,41 @@ public sealed class GameHost : IDisposable
             _window.PollEvents();
 
             var steps = _clock.BeginFrame();
-            for (var step = 0; step < steps; step++)
-                game.Step(FrameClock.StepSeconds);
+            _profile.Frame.Add((float)(_clock.FrameSeconds * 1000.0));
 
-            game.Update(Context);
+            using (FrameProfile.Measure(_profile.Simulation))
+            {
+                for (var step = 0; step < steps; step++)
+                    game.Step(FrameClock.StepSeconds);
+            }
+
+            using (FrameProfile.Measure(_profile.Streaming))
+                game.Update(Context);
 
             // A minimised window has a zero-sized framebuffer, which no swapchain can be created
             // for. The game keeps running; only drawing waits.
             if (_window.IsMinimised || !_renderer.BeginFrame())
                 continue;
 
-            // Off-screen passes first: once the swapchain's render pass is open, no other can be.
-            game.DrawOffscreen(Context);
-            _renderer.BeginSceneRenderPass();
+            using (FrameProfile.Measure(_profile.Recording))
+            {
+                // Off-screen passes first: once the swapchain's render pass is open, no other can be.
+                game.DrawOffscreen(Context);
+                _renderer.BeginSceneRenderPass();
 
-            game.Draw(Context);
+                game.Draw(Context);
 
-            // One interface frame covers the game's windows and the host's overlay, in that
-            // order, so the overlay lands on top. Both are built after the game has drawn, so
-            // they can report what that draw did.
-            _overlay.BeginFrame();
-            game.DrawUi(Context);
-            _overlay.DrawPanel(_gpu.DeviceName, _clock, game);
-            _overlay.Render(_renderer.Commands);
+                // One interface frame covers the game's windows and the host's overlay, in that
+                // order, so the overlay lands on top. Both are built after the game has drawn, so
+                // they can report what that draw did.
+                _overlay.BeginFrame();
+                game.DrawUi(Context);
+                _overlay.DrawPanel(_gpu.DeviceName, _clock, _profile, game);
+                _overlay.Render(_renderer.Commands);
+            }
 
-            _renderer.EndFrame();
+            using (FrameProfile.Measure(_profile.Presenting))
+                _renderer.EndFrame();
 
             if (_options.FrameLimit > 0 && _clock.FrameCount >= _options.FrameLimit)
                 _window.Close();
