@@ -300,14 +300,21 @@ public sealed class Stalkers
             if (isDay && world.HighestBlock(x, z) <= at.Y)
                 continue;
 
-            if (IsNearALamp(world, registry, at))
-                continue;
-
-            // Room for the whole thing, not just for its feet.
+            // Room for the whole thing, not just for its feet. Before the lamp test because it
+            // is far cheaper and rules out as much.
             if (VoxelBody.Move(world, registry, feet, Size, double3.Zero).FeetMeters != feet)
                 continue;
 
-            return feet;
+            // The last and by far the dearest test, so it is the one the search stops after
+            // whichever way it goes.
+            //
+            // Measured: this reads about two thousand blocks, and a player who has lit the
+            // ground they built on makes every candidate reach it. Running it ten times in one
+            // frame showed up in the overlay as creatures costing ten times their average at the
+            // ninety-ninth percentile — a hitch that appeared exactly as a player made progress.
+            // Stopping after one costs nothing anybody can see: spawning is on a timer of over a
+            // second, and a lit base is meant to refuse most attempts anyway.
+            return IsNearALamp(world, registry, at) ? null : feet;
         }
 
         return null;

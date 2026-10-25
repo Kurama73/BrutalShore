@@ -156,6 +156,14 @@ public sealed class ShoreboundGame : IGame
     private readonly Stalkers _stalkers;
     private readonly Vitality _vitality = new();
     private readonly AudioDevice _audio = new();
+
+    // Opened at load and kept, because the point of a handle is not hashing a name in a loop.
+    private Profiler.Counter _machineCounter;
+    private Profiler.Counter _creatureCounter;
+    private Profiler.Counter _dropCounter;
+    private Profiler.Counter _fieldCounter;
+    private Profiler.Counter _chunkCounter;
+    private Profiler? _counters;
     private GameSounds? _sounds;
 
     /// <summary>How far the player had walked when their last footfall was heard, in metres.</summary>
@@ -296,6 +304,15 @@ public sealed class ShoreboundGame : IGame
         );
         _controller = new PlayerController(context.Window, _camera);
 
+        // In the order the work happens, so that a reader going down the overlay is going
+        // through a frame.
+        _counters = context.Counters;
+        _machineCounter = _counters.Open("machines");
+        _creatureCounter = _counters.Open("creatures");
+        _dropCounter = _counters.Open("drops");
+        _chunkCounter = _counters.Open("chunks");
+        _fieldCounter = _counters.Open("march field");
+
         // Everything that has to be told about a setting rather than read it, told once now that
         // the things to tell exist.
         Apply(_settings);
@@ -363,10 +380,16 @@ public sealed class ShoreboundGame : IGame
         // ground rather than next frame — not that anyone could tell, but because the order
         // "machines run, then things fall, then the player moves" is one that can be reasoned
         // about and "whatever order they were written in" is not.
-        _machines.Step(seconds, _world);
+        using (Time(_machineCounter))
+            _machines.Step(seconds, _world);
 
-        if (_drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _inventory) > 0)
-            _sounds?.PickedUp();
+        using (Time(_dropCounter))
+        {
+            if (_drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _inventory) > 0)
+                _sounds?.PickedUp();
+        }
+        using var creatures = Time(_creatureCounter);
+
         _grazers.Step(_world, _world.Registry, seconds, _player.FeetMeters);
 
         _vitality.Step(seconds);
@@ -424,8 +447,11 @@ public sealed class ShoreboundGame : IGame
         }
 
         _centre = WorldCoordinates.ToChunk(WorldCoordinates.ToBlock(_camera.Position));
-        _world.UpdateStreaming(_centre, _settings.ViewRadiusChunks, LoadBudgetPerFrame);
-        _chunks.Update(_centre, MeshBudgetPerFrame);
+        using (Time(_chunkCounter))
+        {
+            _world.UpdateStreaming(_centre, _settings.ViewRadiusChunks, LoadBudgetPerFrame);
+            _chunks.Update(_centre, MeshBudgetPerFrame);
+        }
     }
 
     /// <inheritdoc />
@@ -477,7 +503,8 @@ public sealed class ShoreboundGame : IGame
 
         // Before the shadow pass, because a transfer cannot be recorded inside a render pass and
         // this is the gap between the command buffer opening and the first one beginning.
-        _field.Update(context.Renderer.Commands, WorldCoordinates.ToBlock(_camera.Position));
+        using (Time(_fieldCounter))
+            _field.Update(context.Renderer.Commands, WorldCoordinates.ToBlock(_camera.Position));
 
         _shadowMap.Begin(context.Renderer.Commands);
         _chunks.DrawShadow(_shadowPipeline, _camera, _lightViewProjection);
@@ -948,6 +975,31 @@ public sealed class ShoreboundGame : IGame
             new double3(forward.X, forward.Y, forward.Z),
             Player.ReachMeters
         );
+    }
+
+    /// <summary>Times a block of work, or does nothing before the host has handed one over.</summary>
+    /// <remarks>
+    /// A game is constructed before it is loaded, and a save can be read in between, so there is
+    /// a window in which there is nothing to time into. Returning a scope over a profiler of its
+    /// own rather than branching at every call site keeps the timing out of the way of the code
+    /// being timed.
+    /// </remarks>
+    private Profiler.Scope Time(Profiler.Counter counter) =>
+        (_counters ?? Nowhere).Measure(counter);
+
+    /// <summary>Somewhere to time into before the host exists; never read.</summary>
+    private static readonly Profiler Nowhere = Spare();
+
+    private static Profiler Spare()
+    {
+        var profiler = new Profiler();
+
+        // Opened enough times that any handle the game holds indexes something, since a handle
+        // from one profiler is only meaningful to that one.
+        for (var slot = 0; slot < 16; slot++)
+            profiler.Open($"unused {slot}");
+
+        return profiler;
     }
 
     /// <summary>Lets every turret look for something and shoot it.</summary>
