@@ -32,6 +32,10 @@ layout(location = 6) in vec3 inWorldPosition;
 // averaged per corner by the mesher; see LightVolume.
 layout(location = 7) in vec2 inLight;
 
+// Which of BlockPattern's surfaces this face is. Flat, because a pattern belongs to a whole quad
+// and interpolating between two of them would mean a surface that is half stone and half wood.
+layout(location = 8) flat in uint inPattern;
+
 // Compares rather than reads: each fetch answers "is this fragment nearer the light than what
 // was stored", and with a linear filter the hardware averages four of those answers for free.
 layout(set = 0, binding = 1) uniform sampler2DShadow shadowMap;
@@ -238,6 +242,114 @@ vec3 reflectionOn(vec3 viewOffset, vec3 normal, out float amount) {
     return mix(lit, sky, 0.25);
 }
 
+// Value noise over the face, smooth between its lattice points. Hashed from the position in the
+// world rather than from the position on the quad, so the detail belongs to the block and does
+// not slide across it when a merged quad changes shape.
+float surfaceNoise(vec3 cell, vec2 across, float scale) {
+    vec2 scaled = across * scale;
+    vec2 whole = floor(scaled);
+    vec2 part = fract(scaled);
+
+    // Smoothstep between the four corners: cheaper than a gradient noise and, at the size of a
+    // speck of stone, indistinguishable from one.
+    vec2 eased = part * part * (3.0 - (2.0 * part));
+
+    float lowLeft = hash13(cell + vec3(whole, 0.0));
+    float lowRight = hash13(cell + vec3(whole + vec2(1.0, 0.0), 0.0));
+    float highLeft = hash13(cell + vec3(whole + vec2(0.0, 1.0), 0.0));
+    float highRight = hash13(cell + vec3(whole + vec2(1.0, 1.0), 0.0));
+
+    return mix(mix(lowLeft, lowRight, eased.x), mix(highLeft, highRight, eased.x), eased.y);
+}
+
+// How much lighter or darker this point on the face is than the block's own colour.
+//
+// Every one of these is a function of where the fragment is and nothing else: no texture, no
+// atlas, no mip levels, and detail as fine as the screen rather than as fine as a texel. What a
+// pattern is allowed to change is brightness, never hue — the colour is the block's, and a
+// pattern that tinted it would make two blocks of the same type look like two different ones.
+float patternShade(uint pattern, vec2 across, vec3 cell) {
+    vec2 within = fract(across);
+
+    // Mottled: broad patches of rock a few per cent apart, with finer grit over them.
+    if (pattern == 1u) {
+        return 1.0
+            + ((surfaceNoise(cell, across, 3.0) - 0.5) * 0.18)
+            + ((surfaceNoise(cell, across, 11.0) - 0.5) * 0.07);
+    }
+
+    // Crumbly: lumps the size of a pebble, with the gaps between them darker than the lumps are
+    // light, because earth is holes rather than bumps.
+    if (pattern == 2u) {
+        float lumps = surfaceNoise(cell, across, 6.0);
+        return 1.0 + ((lumps - 0.55) * 0.34);
+    }
+
+    // Bladed: short strokes in columns, each one starting at its own height. Strokes that ran
+    // the whole way across would read as corduroy, and strokes that wandered would read as
+    // marble; what makes it grass is that they are short, upright, and all different lengths.
+    if (pattern == 3u) {
+        float columns = across.x * 9.0;
+        float column = floor(columns);
+        float sideways = fract(columns);
+
+        float offset = hash13(cell + vec3(column, 0.0, 0.0));
+        float along = fract((across.y * 4.0) + (offset * 4.0));
+
+        float stroke = smoothstep(0.08, 0.3, along) * smoothstep(0.86, 0.6, along);
+        float width = smoothstep(0.12, 0.34, sideways) * smoothstep(0.88, 0.66, sideways);
+
+        return 1.0 + (((stroke * width) - 0.28) * 0.2);
+    }
+
+    // Grained: lines along the face with the odd knot in them. The lines bend slightly, which is
+    // the difference between wood and a barcode.
+    if (pattern == 4u) {
+        float bend = (surfaceNoise(cell, across, 1.5) - 0.5) * 0.6;
+        float rings = fract((within.y + bend) * 5.0);
+        float line = smoothstep(0.0, 0.25, rings) * smoothstep(0.65, 0.4, rings);
+        return 1.0 + ((line - 0.45) * 0.22);
+    }
+
+    // Scattered: clumps of leaf with gaps between them, dark enough to read as depth into the
+    // canopy rather than as dirt on it.
+    if (pattern == 5u) {
+        float clumps = surfaceNoise(cell, across, 5.0);
+        float gaps = smoothstep(0.52, 0.3, clumps);
+        return 1.0 + ((clumps - 0.5) * 0.3) - (gaps * 0.3);
+    }
+
+    // Glinting: almost flat, with the occasional bright speck. Snow is a surface with nothing on
+    // it except the few points where it catches the light.
+    if (pattern == 6u) {
+        float specks = surfaceNoise(cell, across, 14.0);
+        return 1.0 + ((surfaceNoise(cell, across, 4.0) - 0.5) * 0.05) + (smoothstep(0.88, 1.0, specks) * 0.35);
+    }
+
+    // Rippled: two sets of waves at an angle to each other, so the pattern they make together
+    // does not repeat on anything the eye can follow.
+    if (pattern == 7u) {
+        float first = sin((across.x + (across.y * 0.6)) * 9.0);
+        float second = sin(((across.x * -0.5) + across.y) * 13.0);
+        return 1.0 + ((first * second) * 0.045);
+    }
+
+    // Radiant: bright in the middle of each face and banded towards its edges, which is what
+    // makes a lantern read as a thing that is lit rather than a thing that is pale.
+    if (pattern == 8u) {
+        vec2 fromMiddle = abs(within - 0.5) * 2.0;
+        float middle = 1.0 - max(fromMiddle.x, fromMiddle.y);
+        return 0.78 + (smoothstep(0.1, 0.75, middle) * 0.5);
+    }
+
+    // Grainy: even dots at the size of a grain of sand, and nothing else.
+    if (pattern == 9u) {
+        return 1.0 + ((surfaceNoise(cell, across, 16.0) - 0.5) * 0.14);
+    }
+
+    return 1.0;
+}
+
 void main() {
     // Two lights, one of which is always off: the sun while it is up, the moon while it is not.
     // Both terms are kept because dawn and dusk have the sun setting while the moon is already
@@ -269,10 +381,19 @@ void main() {
     // point of using the world frame is that the answer does not change as the camera moves.
     vec3 cell = floor(inWorldPosition - inNormal * 0.5);
 
-    // A few per cent either way, per block. Nothing in this world has a texture, so without it a
-    // field of grass is one flat colour however large it is, and the shape of the ground is
-    // carried entirely by the lighting.
+    // A few per cent either way, per block, on top of whatever the pattern does within one. The
+    // two are different scales of the same job: the pattern says what a surface is made of, and
+    // this says that no two blocks of it are quite the same.
     float shade = 1.0 + (hash13(cell) - 0.5) * VARIATION;
+
+    // Faded out once a block is small on screen. A pattern finer than a pixel is noise that
+    // crawls as the camera moves, and there are no mip levels to fall back on when the detail
+    // is a function rather than an image — so the fade is the whole of the answer. fwidth is how
+    // much the surface coordinate changes between neighbouring pixels, which is exactly how
+    // large a block is on screen.
+    float onScreen = max(fwidth(inSurface).x, fwidth(inSurface).y);
+    float detail = clamp(1.0 - (onScreen * 7.0), 0.0, 1.0);
+    shade *= mix(1.0, patternShade(inPattern, inSurface, cell), detail);
 
     vec3 lit = inColor * light * occlusion * shade;
 

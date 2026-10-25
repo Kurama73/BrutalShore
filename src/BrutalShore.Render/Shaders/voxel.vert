@@ -34,6 +34,7 @@ layout(location = 4) out vec3 outViewOffset;
 layout(location = 5) out float outOpacity;
 layout(location = 6) out vec3 outWorldPosition;
 layout(location = 7) out vec2 outLight;
+layout(location = 8) flat out uint outPattern;
 
 const vec3 NORMALS[6] = vec3[6](
     vec3( 1.0,  0.0,  0.0),
@@ -71,7 +72,10 @@ void main() {
     ) / 255.0;
 
     outColor = srgbToLinear(encoded);
-    outOpacity = float((inPacked1 >> 24) & 0xFFu) / 255.0;
+
+    // Sixteenths rather than bytes, which is what made room for the pattern beside it.
+    outOpacity = float((inPacked1 >> 24) & 0xFu) / 15.0;
+    outPattern = (inPacked1 >> 28) & 0xFu;
     outNormal = NORMALS[face];
     outOcclusion = float(occlusion) / 3.0;
     outLight = vec2(float(skyLight), float(blockLight)) / 15.0;
