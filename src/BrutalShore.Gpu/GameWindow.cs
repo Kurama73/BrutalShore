@@ -10,8 +10,25 @@ namespace BrutalShore.Gpu;
 /// question. The one quantity that genuinely is an event — how far the mouse moved since last frame
 /// — is accumulated here, because there is no way to ask for it.
 /// </remarks>
+/// <remarks>
+/// Every key and button is read once per <see cref="PollEvents" /> into a pair of snapshots, so
+/// that asking twice in a frame gives the same answer and so that "was it just pressed" is a
+/// question that can be asked at all. Without the snapshot every caller that needs an edge keeps
+/// its own copy of the previous state, which is three copies of the same bug waiting to differ.
+/// </remarks>
 public sealed class GameWindow : IDisposable
 {
+    /// <summary>One past the highest key GLFW defines, which is the escape-to-menu hatch's size.</summary>
+    private const int KeyCount = 349;
+
+    /// <summary>One past the highest mouse button GLFW defines.</summary>
+    private const int ButtonCount = 8;
+
+    private readonly bool[] _keysNow = new bool[KeyCount];
+    private readonly bool[] _keysBefore = new bool[KeyCount];
+    private readonly bool[] _buttonsNow = new bool[ButtonCount];
+    private readonly bool[] _buttonsBefore = new bool[ButtonCount];
+
     private double2 _lastCursorPosition;
     private bool _hasCursorPosition;
 
@@ -50,6 +67,14 @@ public sealed class GameWindow : IDisposable
     {
         Glfw.PollEvents();
 
+        Array.Copy(_keysNow, _keysBefore, KeyCount);
+        for (var key = 0; key < KeyCount; key++)
+            _keysNow[key] = Glfw.PInvoke.GetKey(Handle, key) == (int)GlfwKeyAction.Press;
+
+        Array.Copy(_buttonsNow, _buttonsBefore, ButtonCount);
+        for (var button = 0; button < ButtonCount; button++)
+            _buttonsNow[button] = Glfw.PInvoke.GetMouseButton(Handle, button) == (int)GlfwButtonAction.Press;
+
         var position = Handle.CursorPos;
 
         // The first frame after capture has no previous position to subtract, and using the
@@ -60,11 +85,23 @@ public sealed class GameWindow : IDisposable
     }
 
     /// <summary>Whether a key is held down this frame.</summary>
-    public bool IsKeyDown(GlfwKey key) => Glfw.PInvoke.GetKey(Handle, (int)key) == (int)GlfwKeyAction.Press;
+    public bool IsKeyDown(GlfwKey key) => InRange((int)key, KeyCount) && _keysNow[(int)key];
+
+    /// <summary>Whether a key went down between the last two polls.</summary>
+    /// <param name="key">The key to ask about.</param>
+    /// <returns><see langword="true" /> on the one frame the key was pressed.</returns>
+    public bool WasKeyPressed(GlfwKey key) =>
+        InRange((int)key, KeyCount) && _keysNow[(int)key] && !_keysBefore[(int)key];
 
     /// <summary>Whether a mouse button is held down this frame.</summary>
     public bool IsMouseButtonDown(GlfwMouseButton button) =>
-        Glfw.PInvoke.GetMouseButton(Handle, (int)button) == (int)GlfwButtonAction.Press;
+        InRange((int)button, ButtonCount) && _buttonsNow[(int)button];
+
+    /// <summary>Whether a mouse button went down between the last two polls.</summary>
+    /// <param name="button">The button to ask about.</param>
+    /// <returns><see langword="true" /> on the one frame the button was pressed.</returns>
+    public bool WasMouseButtonPressed(GlfwMouseButton button) =>
+        InRange((int)button, ButtonCount) && _buttonsNow[(int)button] && !_buttonsBefore[(int)button];
 
     /// <summary>Hides and locks the cursor, or releases it.</summary>
     public void SetMouseCaptured(bool captured)
@@ -87,6 +124,8 @@ public sealed class GameWindow : IDisposable
 
     /// <summary>Asks for the window to close, which ends the game loop on the next iteration.</summary>
     public void Close() => Handle.ShouldClose = true;
+
+    private static bool InRange(int index, int count) => (uint)index < count;
 
     /// <inheritdoc />
     public void Dispose() => Handle.Dispose();
