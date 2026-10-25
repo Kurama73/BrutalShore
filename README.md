@@ -1,6 +1,6 @@
 # BrutalShore
 
-A voxel game, and the engine under it, in C# on
+An engine, and a voxel game on it, in C# on
 [BRUTAL](https://github.com/ahwootech/BRUTAL) — the open-source framework behind
 Kitten Space Agency.
 
@@ -26,7 +26,7 @@ environment variables have to be set. If either is missing, the game says so and
 names the command above.
 
 ```bash
-dotnet run --project src/BrutalShore.App -c Release
+dotnet run --project games/Shorebound -c Release
 ```
 
 Click to capture the mouse, `WASD` to move, `space` and `ctrl` for up and down,
@@ -48,24 +48,35 @@ fixed camera for a fixed number of frames produce an image that can be compared
 against the one before.
 
 ```bash
-dotnet run --project src/BrutalShore.App -c Release -- \
+dotnet run --project games/Shorebound -c Release -- \
     --frames 400 --camera -140 190 -140 45 -22 --screenshot coastline.png
 ```
 
 ## Layout
 
-| Project            | What is in it                                               |
-| ------------------ | ----------------------------------------------------------- |
-| `BrutalShore.Core`   | The frame clock and the f64 world to f32 render-space boundary |
-| `BrutalShore.Voxel`  | Chunks, the block registry, the greedy mesher                 |
-| `BrutalShore.Gpu`    | Window, Vulkan device, swapchain, frames in flight, shaders   |
-| `BrutalShore.World`  | Coordinates, gradient noise, terrain and caves, streaming     |
-| `BrutalShore.Render` | Camera, view frustum, the voxel pipeline, chunk meshes        |
-| `BrutalShore.App`    | The loop, the controls, the debug overlay                     |
+`src/` is the engine and `games/` is what is built with it. **Nothing in `src/`
+references `games/`** — the engine is what would still make sense if Shorebound
+were deleted.
 
-Dependencies point downwards only. Everything above `Gpu` can be tested without
-a device, and is: `dotnet test` runs the mesher, the noise, the generator, the
-streaming, the camera and the frustum.
+| Engine project        | What is in it                                               |
+| --------------------- | ----------------------------------------------------------- |
+| `BrutalShore.Core`    | The frame clock and the f64 world to f32 render-space boundary |
+| `BrutalShore.Voxel`   | Chunks, the block registry, the greedy mesher                 |
+| `BrutalShore.Gpu`     | Window, Vulkan device, swapchain, frames in flight, shaders   |
+| `BrutalShore.World`   | Coordinates, gradient noise, streaming, `IChunkGenerator`     |
+| `BrutalShore.Render`  | Camera, view frustum, the voxel pipeline, chunk meshes        |
+| `BrutalShore.Runtime` | The window, the device and the frame loop around an `IGame`   |
+
+| Game            | What is in it                                        |
+| --------------- | ---------------------------------------------------- |
+| `Shorebound`    | Its blocks, its terrain and caves, the controls, where the player starts, how much work a frame may spend loading and meshing |
+
+A game is an `IGame` the runtime runs, and an `IChunkGenerator` the world asks
+for blocks. Those two interfaces are the whole of the engine's knowledge of it.
+
+Dependencies point downwards only. Everything that does not need a device is
+tested without one: `dotnet test` runs the mesher, the noise, the streaming, the
+camera, the frustum and Shorebound's own terrain.
 
 ## How the world is drawn
 

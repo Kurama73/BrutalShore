@@ -1,4 +1,4 @@
-namespace BrutalShore.App;
+namespace Shorebound;
 
 /// <summary>A camera placement, as a command line can state it.</summary>
 /// <param name="Position">Where the camera is, in world metres.</param>

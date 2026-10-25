@@ -1,4 +1,7 @@
-namespace BrutalShore.World;
+using BrutalShore.Voxel;
+using BrutalShore.World;
+
+namespace Shorebound;
 
 /// <summary>
 /// Generates terrain: a height field, a surface that depends on altitude, caves, and sea level.

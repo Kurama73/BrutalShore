@@ -5,11 +5,15 @@
     <Project Path="src/BrutalShore.World/BrutalShore.World.csproj" />
     <Project Path="src/BrutalShore.Gpu/BrutalShore.Gpu.csproj" />
     <Project Path="src/BrutalShore.Render/BrutalShore.Render.csproj" />
-    <Project Path="src/BrutalShore.App/BrutalShore.App.csproj" />
+    <Project Path="src/BrutalShore.Runtime/BrutalShore.Runtime.csproj" />
+  </Folder>
+  <Folder Name="/games/">
+    <Project Path="games/Shorebound/Shorebound.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/BrutalShore.Voxel.Tests/BrutalShore.Voxel.Tests.csproj" />
     <Project Path="tests/BrutalShore.World.Tests/BrutalShore.World.Tests.csproj" />
     <Project Path="tests/BrutalShore.Render.Tests/BrutalShore.Render.Tests.csproj" />
+    <Project Path="tests/Shorebound.Tests/Shorebound.Tests.csproj" />
   </Folder>
 </Solution>

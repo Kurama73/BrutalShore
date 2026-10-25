@@ -1,35 +1,33 @@
-namespace BrutalShore.App;
+using BrutalShore.Runtime;
 
-/// <summary>Everything the game can be started differently with.</summary>
-/// <param name="Seed">The world seed; the same seed always generates the same world.</param>
-/// <param name="EnableValidation">
-/// Whether to turn on the Vulkan validation layers, which report API misuse at a large cost in
-/// frame time. Off by default so the default run is representative.
-/// </param>
-/// <param name="ViewRadiusChunks">
-/// How far chunks are kept loaded, in chunks. Memory grows with the square of this: a chunk is
-/// 64 KiB of block ids, and a radius of r keeps <c>(2r+1)² × 8</c> of them resident.
-/// </param>
-/// <param name="FrameLimit">How many frames to run before closing, or zero to run until closed.</param>
-/// <param name="Viewpoint">
-/// Where to put the camera and which way to point it, or <see langword="null" /> to spawn on the
-/// ground at the origin. A screenshot is only worth comparing against another one if the camera
-/// was in the same place, which is what this is for.
-/// </param>
-/// <param name="ScreenshotPath">
-/// Where to save a PNG of the last frame, or <see langword="null" /> for no screenshot. Together
-/// with <paramref name="FrameLimit" /> this is what makes a run self-verifying: it renders a fixed
-/// number of frames of a fixed seed and leaves an image behind.
-/// </param>
-public sealed record GameOptions(
-    int Seed = 1337,
-    bool EnableValidation = false,
-    int ViewRadiusChunks = 8,
-    int FrameLimit = 0,
-    Viewpoint? Viewpoint = null,
-    string? ScreenshotPath = null
-)
+namespace Shorebound;
+
+/// <summary>How this run of Shorebound differs from the default one.</summary>
+/// <remarks>
+/// The game's own settings and the host's are kept apart on purpose: <see cref="Host" /> holds what
+/// would mean something to any game, and everything beside it is particular to this one. The
+/// command line is the only place the two meet.
+/// </remarks>
+public sealed record Options
 {
+    /// <summary>The world seed. The same seed gives the same world, forever.</summary>
+    public int Seed { get; init; } = 1337;
+
+    /// <summary>
+    /// How far chunks are kept loaded, in chunks.
+    /// </summary>
+    /// <remarks>
+    /// Memory grows with the square of this: a chunk is 64 KiB of block ids, and a radius of r
+    /// keeps <c>(2r+1)² × 8</c> of them resident.
+    /// </remarks>
+    public int ViewRadiusChunks { get; init; } = 8;
+
+    /// <summary>Where the camera starts, or <see langword="null" /> to stand on the ground at the origin.</summary>
+    public Viewpoint? Viewpoint { get; init; }
+
+    /// <summary>What the host is told.</summary>
+    public HostOptions Host { get; init; } = new() { Title = "Shorebound" };
+
     /// <summary>Reads the options from a command line.</summary>
     /// <remarks>
     /// Unknown arguments are an error rather than a warning: a mistyped flag that silently did
@@ -37,18 +35,14 @@ public sealed record GameOptions(
     /// learn about it.
     /// </remarks>
     /// <exception cref="ArgumentException">On an unknown or malformed argument.</exception>
-    public static GameOptions Parse(string[] arguments)
+    public static Options Parse(string[] arguments)
     {
-        var options = new GameOptions();
+        var options = new Options();
 
         for (var index = 0; index < arguments.Length; index++)
         {
             switch (arguments[index])
             {
-                case "--validation":
-                    options = options with { EnableValidation = true };
-                    break;
-
                 case "--seed":
                     options = options with { Seed = ReadInteger(arguments, ++index, "--seed") };
                     break;
@@ -57,16 +51,26 @@ public sealed record GameOptions(
                     options = options with { ViewRadiusChunks = ReadInteger(arguments, ++index, "--view-radius") };
                     break;
 
-                case "--frames":
-                    options = options with { FrameLimit = ReadInteger(arguments, ++index, "--frames") };
-                    break;
-
                 case "--camera":
                     options = options with { Viewpoint = ReadViewpoint(arguments, ref index) };
                     break;
 
+                case "--validation":
+                    options = options with { Host = options.Host with { EnableValidation = true } };
+                    break;
+
+                case "--frames":
+                    options = options with
+                    {
+                        Host = options.Host with { FrameLimit = ReadInteger(arguments, ++index, "--frames") },
+                    };
+                    break;
+
                 case "--screenshot":
-                    options = options with { ScreenshotPath = ReadText(arguments, ++index, "--screenshot") };
+                    options = options with
+                    {
+                        Host = options.Host with { ScreenshotPath = ReadText(arguments, ++index, "--screenshot") },
+                    };
                     break;
 
                 default:
@@ -107,7 +111,9 @@ public sealed record GameOptions(
             : throw new ArgumentException($"'{flag}' needs five numbers: x y z yaw pitch.", nameof(arguments));
 
     private static string ReadText(string[] arguments, int index, string flag) =>
-        index < arguments.Length ? arguments[index] : throw new ArgumentException($"'{flag}' needs a value.", nameof(arguments));
+        index < arguments.Length
+            ? arguments[index]
+            : throw new ArgumentException($"'{flag}' needs a value.", nameof(arguments));
 
     private static int ReadInteger(string[] arguments, int index, string flag) =>
         index < arguments.Length && int.TryParse(arguments[index], out var value)

@@ -1,9 +1,10 @@
 using Brutal.ImGuiApi;
 using Brutal.ImGuiApi.Backends;
 using Brutal.VulkanApi;
+using BrutalShore.Core;
 using BrutalShore.Gpu;
 
-namespace BrutalShore.App;
+namespace BrutalShore.Runtime;
 
 /// <summary>The development overlay: what the engine is doing, on screen, while it does it.</summary>
 /// <remarks>
@@ -53,8 +54,10 @@ public sealed class DebugOverlay : IDisposable
     public bool IsVisible { get; private set; } = true;
 
     /// <summary>Starts an overlay frame and draws it.</summary>
-    /// <param name="statistics">What to report.</param>
-    public void Draw(in FrameStatistics statistics)
+    /// <param name="deviceName">The GPU in use.</param>
+    /// <param name="clock">The clock the frame rate is read from.</param>
+    /// <param name="game">The game, which fills in its own rows.</param>
+    public void Draw(string deviceName, FrameClock clock, IGame game)
     {
         UpdateVisibility();
 
@@ -62,8 +65,29 @@ public sealed class DebugOverlay : IDisposable
         _platform.NewFrame();
         ImGui.NewFrame();
 
-        if (IsVisible)
-            DrawWindow(statistics);
+        if (!IsVisible)
+            return;
+
+        ImGui.SetNextWindowPos(new float2(16f, 16f), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new float2(340f, 0f), ImGuiCond.FirstUseEver);
+
+        if (!ImGui.Begin("BrutalShore"u8))
+        {
+            ImGui.End();
+            return;
+        }
+
+        ImGui.Text($"{deviceName}");
+        ImGui.Text($"{clock.FramesPerSecond:F0} fps  ({clock.FrameSeconds * 1000.0:F2} ms)");
+
+        // The host stops here. What else is worth showing is the game's business, and the engine
+        // has no way of guessing it.
+        game.DrawOverlay();
+
+        ImGui.SeparatorText("Overlay"u8);
+        ImGui.Text("F3 hides this"u8);
+
+        ImGui.End();
     }
 
     /// <summary>Records the overlay's geometry into the frame being drawn.</summary>
@@ -92,39 +116,5 @@ public sealed class DebugOverlay : IDisposable
             IsVisible = !IsVisible;
 
         _toggleWasDown = isDown;
-    }
-
-    private static void DrawWindow(in FrameStatistics statistics)
-    {
-        ImGui.SetNextWindowPos(new float2(16f, 16f), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSize(new float2(340f, 0f), ImGuiCond.FirstUseEver);
-
-        if (!ImGui.Begin("BrutalShore"u8))
-        {
-            ImGui.End();
-            return;
-        }
-
-        ImGui.Text($"{statistics.DeviceName}");
-        ImGui.Text($"{statistics.FramesPerSecond:F0} fps  ({statistics.FrameMilliseconds:F2} ms)");
-
-        ImGui.SeparatorText("Position"u8);
-        ImGui.Text($"{statistics.Position.X:F1}, {statistics.Position.Y:F1}, {statistics.Position.Z:F1}");
-        ImGui.Text($"chunk {statistics.Chunk.X}, {statistics.Chunk.Y}, {statistics.Chunk.Z}");
-
-        ImGui.SeparatorText("World"u8);
-        ImGui.Text($"seed {statistics.Seed}, radius {statistics.ViewRadiusChunks} chunks");
-        ImGui.Text($"{statistics.LoadedChunks} loaded, {statistics.MeshedChunks} meshed");
-        ImGui.Text($"{statistics.PendingChunks} waiting to mesh");
-
-        ImGui.SeparatorText("Drawn"u8);
-        ImGui.Text($"{statistics.DrawnChunks} chunks, {statistics.DrawnTriangles} triangles");
-        ImGui.Text($"{statistics.ResidentBytes / (1024.0 * 1024.0):F1} MiB of geometry");
-
-        ImGui.SeparatorText("Controls"u8);
-        ImGui.Text("click to look, WASD, space/ctrl, shift"u8);
-        ImGui.Text("escape releases the mouse, F3 hides this"u8);
-
-        ImGui.End();
     }
 }

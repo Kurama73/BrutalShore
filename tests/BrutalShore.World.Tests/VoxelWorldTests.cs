@@ -2,20 +2,17 @@ namespace BrutalShore.World.Tests;
 
 public class VoxelWorldTests
 {
-    private readonly GameBlocks _blocks;
+    private readonly BlockId _stone;
     private readonly VoxelWorld _world;
-    private readonly VoxelWorld _flat;
 
     public VoxelWorldTests()
     {
+        // Flat ground and one nameless block: a test about residency or dirty marking must not be
+        // able to fail because a real generator happened to put stone where the test wanted to put
+        // stone, and the engine has no business knowing which blocks a game defines.
         var registry = new BlockRegistry();
-        _blocks = new GameBlocks(registry);
-        _world = new VoxelWorld(registry, new TerrainGenerator(_blocks, seed: 7));
-
-        // Residency and editing are tested against flat ground rather than terrain, so that a test
-        // about dirty marking cannot fail because the generator happened to put stone where it
-        // wanted to place stone.
-        _flat = new VoxelWorld(registry, new FlatGenerator(_blocks.Stone, surfaceHeight: 40));
+        _stone = registry.Register(new BlockType { Name = "stone", Color = byte3.HexColor(0x7F7F84) });
+        _world = new VoxelWorld(registry, new FlatGenerator(_stone, surfaceHeight: 40));
     }
 
     [Fact]
@@ -29,12 +26,14 @@ public class VoxelWorldTests
     [Fact]
     public void a_loaded_chunk_reads_back_what_the_generator_wrote()
     {
-        var chunk = _world.Load(new int3(0, 2, 0));
+        // Chunk (0, 1, 0) spans blocks 32 to 63, which straddles the flat surface at 40, so the
+        // column read back has both stone and air in it.
+        var chunk = _world.Load(new int3(0, 1, 0));
 
         Assert.NotNull(chunk);
         for (var local = 0; local < Chunk.Size; local++)
         {
-            var world = 2 * Chunk.Size + local;
+            var world = Chunk.Size + local;
             Assert.Equal(chunk[3, local, 5], _world.BlockAt(3, world, 5));
         }
     }
@@ -47,7 +46,7 @@ public class VoxelWorldTests
     }
 
     [Fact]
-    public void the_generator_gives_the_same_chunk_every_time_it_is_asked()
+    public void a_chunk_unloaded_and_loaded_again_comes_back_identical()
     {
         var coordinate = new int3(5, 2, -3);
 
@@ -59,45 +58,17 @@ public class VoxelWorldTests
     }
 
     [Fact]
-    public void the_bottom_of_the_world_is_bedrock_and_the_top_is_air()
-    {
-        _world.Load(new int3(0, 0, 0));
-        _world.Load(new int3(0, VoxelWorld.ChunksTall - 1, 0));
-
-        Assert.Equal(_blocks.Bedrock, _world.BlockAt(1, 0, 1));
-        Assert.True(_world.BlockAt(1, VoxelWorld.HeightBlocks - 1, 1).IsAir);
-    }
-
-    [Fact]
-    public void the_surface_is_solid_and_the_block_above_it_is_not()
-    {
-        // The contract the whole generator is built to keep: a column has one surface, and a player
-        // dropped at that altitude stands on something.
-        var generator = new TerrainGenerator(_blocks, seed: 7);
-
-        for (var x = -40; x <= 40; x += 7)
-        {
-            var surface = generator.SurfaceHeight(x, x * 3);
-            Assert.InRange(surface, 2, VoxelWorld.HeightBlocks - 2);
-
-            _world.Load(new int3(WorldCoordinates.ToChunk(x), WorldCoordinates.ToChunk(surface), WorldCoordinates.ToChunk(x * 3)));
-
-            Assert.True(_world.BlockAt(x, surface, x * 3).IsSolid, $"nothing solid at the surface of column {x}");
-        }
-    }
-
-    [Fact]
     public void streaming_loads_a_column_of_chunks_around_the_observer_and_drops_the_far_ones()
     {
-        _flat.UpdateStreaming(int3.Zero, radiusChunks: 2, maxLoadsPerCall: 10_000);
+        _world.UpdateStreaming(int3.Zero, radiusChunks: 2, maxLoadsPerCall: 10_000);
 
         // A 5 by 5 footprint, the full height of the world.
-        Assert.Equal(5 * 5 * VoxelWorld.ChunksTall, _flat.LoadedChunkCount);
+        Assert.Equal(5 * 5 * VoxelWorld.ChunksTall, _world.LoadedChunkCount);
 
-        _flat.UpdateStreaming(new int3(40, 0, 0), radiusChunks: 2, maxLoadsPerCall: 10_000);
+        _world.UpdateStreaming(new int3(40, 0, 0), radiusChunks: 2, maxLoadsPerCall: 10_000);
 
-        Assert.DoesNotContain(new int3(0, 0, 0), _flat.LoadedCoordinates);
-        Assert.Contains(new int3(40, 0, 0), _flat.LoadedCoordinates);
+        Assert.DoesNotContain(new int3(0, 0, 0), _world.LoadedCoordinates);
+        Assert.Contains(new int3(40, 0, 0), _world.LoadedCoordinates);
     }
 
     [Fact]
@@ -105,23 +76,23 @@ public class VoxelWorldTests
     {
         // The budget is what stops a frame freezing when the observer turns a corner and brings
         // hundreds of chunks into range at once.
-        var loaded = _flat.UpdateStreaming(int3.Zero, radiusChunks: 8, maxLoadsPerCall: 12);
+        var loaded = _world.UpdateStreaming(int3.Zero, radiusChunks: 8, maxLoadsPerCall: 12);
 
         Assert.Equal(12, loaded);
-        Assert.Equal(12, _flat.LoadedChunkCount);
+        Assert.Equal(12, _world.LoadedChunkCount);
     }
 
     [Fact]
     public void a_chunk_is_only_meshable_once_every_neighbour_it_reads_is_resident()
     {
         var centre = new int3(0, 3, 0);
-        _flat.Load(centre);
+        _world.Load(centre);
 
-        Assert.False(_flat.IsMeshable(centre));
+        Assert.False(_world.IsMeshable(centre));
 
-        _flat.UpdateStreaming(int3.Zero, radiusChunks: 1, maxLoadsPerCall: 10_000);
+        _world.UpdateStreaming(int3.Zero, radiusChunks: 1, maxLoadsPerCall: 10_000);
 
-        Assert.True(_flat.IsMeshable(centre));
+        Assert.True(_world.IsMeshable(centre));
     }
 
     [Fact]
@@ -129,10 +100,10 @@ public class VoxelWorldTests
     {
         // There is genuinely nothing above the world, so a missing neighbour there is not a
         // neighbour that has yet to load. Without this distinction the topmost chunks never mesh.
-        _flat.UpdateStreaming(int3.Zero, radiusChunks: 1, maxLoadsPerCall: 10_000);
+        _world.UpdateStreaming(int3.Zero, radiusChunks: 1, maxLoadsPerCall: 10_000);
 
-        Assert.True(_flat.IsMeshable(new int3(0, VoxelWorld.ChunksTall - 1, 0)));
-        Assert.True(_flat.IsMeshable(new int3(0, 0, 0)));
+        Assert.True(_world.IsMeshable(new int3(0, VoxelWorld.ChunksTall - 1, 0)));
+        Assert.True(_world.IsMeshable(new int3(0, 0, 0)));
     }
 
     [Fact]
@@ -140,29 +111,29 @@ public class VoxelWorldTests
     {
         // Otherwise the neighbour keeps drawing the face that has just been opened, and the hole
         // the player dug is covered by a wall from the next chunk along.
-        _flat.UpdateStreaming(int3.Zero, radiusChunks: 1, maxLoadsPerCall: 10_000);
-        foreach (var coordinate in _flat.LoadedCoordinates.ToArray())
-            _flat.ClearDirty(coordinate);
+        _world.UpdateStreaming(int3.Zero, radiusChunks: 1, maxLoadsPerCall: 10_000);
+        foreach (var coordinate in _world.LoadedCoordinates.ToArray())
+            _world.ClearDirty(coordinate);
 
         // Block (0, 48, 0) is air over flat ground, and sits on the minimum corner of chunk
         // (0, 1, 0), so it touches the two neighbours across those faces.
-        Assert.True(_flat.SetBlock(new int3(0, 48, 0), _blocks.Stone));
+        Assert.True(_world.SetBlock(new int3(0, 48, 0), _stone));
 
-        Assert.Contains(new int3(0, 1, 0), _flat.Dirty);
-        Assert.Contains(new int3(-1, 1, 0), _flat.Dirty);
-        Assert.Contains(new int3(0, 1, -1), _flat.Dirty);
+        Assert.Contains(new int3(0, 1, 0), _world.Dirty);
+        Assert.Contains(new int3(-1, 1, 0), _world.Dirty);
+        Assert.Contains(new int3(0, 1, -1), _world.Dirty);
     }
 
     [Fact]
     public void editing_a_block_in_the_middle_of_a_chunk_marks_only_that_chunk()
     {
-        _flat.UpdateStreaming(int3.Zero, radiusChunks: 1, maxLoadsPerCall: 10_000);
-        foreach (var coordinate in _flat.LoadedCoordinates.ToArray())
-            _flat.ClearDirty(coordinate);
+        _world.UpdateStreaming(int3.Zero, radiusChunks: 1, maxLoadsPerCall: 10_000);
+        foreach (var coordinate in _world.LoadedCoordinates.ToArray())
+            _world.ClearDirty(coordinate);
 
-        Assert.True(_flat.SetBlock(new int3(16, 48, 16), _blocks.Stone));
+        Assert.True(_world.SetBlock(new int3(16, 48, 16), _stone));
 
-        Assert.Single(_flat.Dirty);
-        Assert.Contains(new int3(0, 1, 0), _flat.Dirty);
+        Assert.Single(_world.Dirty);
+        Assert.Contains(new int3(0, 1, 0), _world.Dirty);
     }
 }

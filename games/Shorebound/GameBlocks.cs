@@ -1,4 +1,6 @@
-namespace BrutalShore.World;
+using BrutalShore.Voxel;
+
+namespace Shorebound;
 
 /// <summary>
 /// The block types this game has, and the one place they are registered.

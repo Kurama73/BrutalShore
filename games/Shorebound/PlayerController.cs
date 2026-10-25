@@ -1,7 +1,7 @@
 using BrutalShore.Gpu;
 using BrutalShore.Render;
 
-namespace BrutalShore.App;
+namespace Shorebound;
 
 /// <summary>Turns keyboard and mouse state into camera movement.</summary>
 /// <remarks>

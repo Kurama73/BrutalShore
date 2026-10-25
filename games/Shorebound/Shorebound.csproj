@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <!-- A game references the engine. Nothing under src/ may ever reference back. -->
+  <ItemGroup>
+    <ProjectReference Include="../../src/BrutalShore.Core/BrutalShore.Core.csproj" />
+    <ProjectReference Include="../../src/BrutalShore.Voxel/BrutalShore.Voxel.csproj" />
+    <ProjectReference Include="../../src/BrutalShore.World/BrutalShore.World.csproj" />
+    <ProjectReference Include="../../src/BrutalShore.Render/BrutalShore.Render.csproj" />
+    <ProjectReference Include="../../src/BrutalShore.Runtime/BrutalShore.Runtime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Ahwoo.BRUTAL.ImGui" />
+  </ItemGroup>
+
+</Project>

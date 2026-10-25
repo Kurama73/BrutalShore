@@ -1,6 +1,6 @@
 # BrutalShore — engineering standards
 
-A voxel game, and the engine under it, in C# on
+An engine, and a voxel game on it, in C# on
 [BRUTAL](https://github.com/ahwootech/BRUTAL) — the framework Kitten Space
 Agency is built on. The name is the Forgotten Shore of *Shadow Slave* crossed
 with the framework it stands on. It supersedes an attempt at the same game in
@@ -79,14 +79,40 @@ Projects are organized in layers. **Dependencies point downwards only — never
 upwards, never sideways between projects of the same layer.**
 
 ```
-Layer 0  BrutalShore.Core     frame clock, render space, the f64/f32 boundary
-Layer 1  BrutalShore.Voxel    chunks, block registry, the greedy mesher   (Core)
-         BrutalShore.Gpu      window, device, swapchain, frames, shaders  (Core)
-Layer 2  BrutalShore.World    coordinates, noise, generation, streaming   (Core + Voxel)
-Layer 3  BrutalShore.Render   camera, frustum, voxel pipeline, chunk meshes
-                            (Core + Voxel + World + Gpu)
-Layer 4  BrutalShore.App      the loop, input, the debug overlay
+src/   the engine — BrutalShore.*, knows nothing about any particular game
+  Layer 0  Core      frame clock, render space, the f64/f32 boundary
+  Layer 1  Voxel     chunks, block registry, the greedy mesher        (Core)
+           Gpu       window, device, swapchain, frames, shaders       (Core)
+  Layer 2  World     coordinates, noise, streaming, IChunkGenerator   (Core + Voxel)
+  Layer 3  Render    camera, frustum, voxel pipeline, chunk meshes    (Core + Voxel + World + Gpu)
+           Runtime   the window, the device and the frame loop around an IGame  (Core + Gpu)
+
+games/ the games — each one an executable that composes the engine
+  Shorebound  blocks, terrain, controls, spawn, streaming budgets
 ```
+
+### Where the engine stops and a game starts
+
+**Nothing under `src/` may reference anything under `games/`.** The engine is
+what would still make sense if this game were deleted; a game is everything that
+would have to be invented again for a different one.
+
+The test, applied to a type or a field: *would it mean anything for a different
+game?* A chunk, a mesher, a streaming radius — yes, engine. Stone and grass, a
+sea level of 72, a snow line, how fast the player flies — no, game. The engine
+reaches a game through exactly two seams: `IChunkGenerator`, which is how a
+world gets its blocks, and `IGame`, which is how the host gets something to run.
+
+This is written down because it had already been broken once: `GameBlocks` and
+`TerrainGenerator` — this game's block set and this game's terrain — sat inside
+`BrutalShore.World` for a while, and the engine's own tests had come to depend
+on them. Nothing complains when that happens; it only shows up the day a second
+game has to delete half of a layer to get started.
+
+The same line runs through the tests. `tests/BrutalShore.*.Tests` may not name a
+game's blocks or its generator — they use a registered block and `FlatGenerator`
+— and anything that asserts what *this* world looks like belongs in
+`tests/Shorebound.Tests`.
 
 `Voxel` must not know what a device is: a mesh is an array of vertices, and the
 proof that the boundary holds is that the mesher is unit-tested without a
@@ -158,8 +184,9 @@ does, rename something instead.
 
 ## Testing
 
-- Tests live in `tests/BrutalShore.<Domain>.Tests`, mirroring the project they
-  cover. xUnit v3.
+- Tests live in `tests/<Project>.Tests`, mirroring the project they cover. xUnit
+  v3. The engine's tests and a game's tests are separate projects, for the
+  reason given under the layer rule.
 - Test the **property**, not the implementation. A test should survive a rewrite
   of the method it covers.
 - Every numerical routine gets at least one test pinning down its precision
@@ -221,9 +248,15 @@ Conventional Commits, **one line, no body** unless the maintainer asks for one.
 
 ## Adding a project
 
-1. Create the directory under `src/` and a `.csproj` that declares only its
-   project references and its package references — every setting worth sharing
-   is already in `Directory.Build.props`.
-2. Add it to `BrutalShore.slnx`, in layer order.
-3. Add its row to the layer table in this file and in the README.
-4. If it is testable without a device, create its test project at the same time.
+1. Decide which side of the line it is on first. Engine goes in `src/` as
+   `BrutalShore.<Domain>`; a game goes in `games/<Name>/` and is an executable.
+2. Write a `.csproj` that declares only its project references and its package
+   references — every setting worth sharing is already in
+   `Directory.Build.props`.
+3. Add it to `BrutalShore.slnx`, in layer order.
+4. Add its row to the layer table in this file and in the README.
+5. If it is testable without a device, create its test project at the same time.
+
+A new game adds a directory under `games/` and changes nothing in `src/`. If it
+cannot be written without reaching into the engine, that is the engine's bug,
+not the game's.
