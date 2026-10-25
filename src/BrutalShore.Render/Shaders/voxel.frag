@@ -25,6 +25,10 @@ layout(location = 4) in vec3 inViewOffset;
 layout(location = 5) in float inOpacity;
 layout(location = 6) in vec3 inWorldPosition;
 
+// x: how much of the sky reaches here, y: how much light from glowing blocks does. Both already
+// averaged per corner by the mesher; see LightVolume.
+layout(location = 7) in vec2 inLight;
+
 // Compares rather than reads: each fetch answers "is this fragment nearer the light than what
 // was stored", and with a linear filter the hardware averages four of those answers for free.
 layout(set = 0, binding = 1) uniform sampler2DShadow shadowMap;
@@ -34,6 +38,15 @@ layout(location = 0) out vec4 outColor;
 const float OCCLUSION_FLOOR = 0.42;
 const float EDGE_DARKENING = 0.14;
 const float VARIATION = 0.13;
+
+// What a glowing block's light looks like: a flame, not a window. Warm enough to read as another
+// kind of light than the sky's, so a lit cave does not merely look like a shallow one.
+const vec3 GLOW_COLOR = vec3(1.0, 0.72, 0.42);
+
+// How dark the inside of an unlit cave gets. Not zero: a world where walking into a cave means
+// walking into a black rectangle is a world nobody finds their way out of, and the point of the
+// dark is to make a lamp worth placing rather than to end the game.
+const float CAVE_AMBIENT = 0.035;
 
 // Shared with sky.frag, and it has to stay identical: the far edge of the world fades into the
 // sky it would see in that direction, and any disagreement shows up as a band on the horizon.
@@ -94,9 +107,15 @@ void main() {
     // same factor applies to both terms — the one that is down contributes nothing anyway.
     float reaching = sunlightReaching(inViewOffset, inNormal);
 
-    vec3 light = scene.ambientColor.rgb
-        + reaching * scene.sunColor.rgb * max(dot(inNormal, scene.sunDirection.xyz), 0.0)
-        + reaching * scene.moonColor.rgb * max(dot(inNormal, scene.moonDirection.xyz), 0.0);
+    // How much of the sky gets here at all, which gates both of those lights and the bounce from
+    // the sky as well. Squared because the levels are a count of blocks travelled and brightness
+    // is not: linear, the fifth metre of a tunnel still looks like the open air.
+    float daylight = inLight.x * inLight.x;
+
+    vec3 light = scene.ambientColor.rgb * max(daylight, CAVE_AMBIENT)
+        + daylight * reaching * scene.sunColor.rgb * max(dot(inNormal, scene.sunDirection.xyz), 0.0)
+        + daylight * reaching * scene.moonColor.rgb * max(dot(inNormal, scene.moonDirection.xyz), 0.0)
+        + GLOW_COLOR * inLight.y * inLight.y;
 
     float occlusion = mix(OCCLUSION_FLOOR, 1.0, inOcclusion);
 

@@ -33,6 +33,7 @@ layout(location = 3) out float outOcclusion;
 layout(location = 4) out vec3 outViewOffset;
 layout(location = 5) out float outOpacity;
 layout(location = 6) out vec3 outWorldPosition;
+layout(location = 7) out vec2 outLight;
 
 const vec3 NORMALS[6] = vec3[6](
     vec3( 1.0,  0.0,  0.0),
@@ -58,6 +59,11 @@ void main() {
     uint face = (inPacked0 >> 18) & 0x7u;
     uint occlusion = (inPacked0 >> 21) & 0x3u;
 
+    // Worked out on the CPU while the chunk was meshed, averaged over the cells around this
+    // corner, and interpolated across the quad for free on the way to the fragment shader.
+    uint skyLight = (inPacked0 >> 23) & 0xFu;
+    uint blockLight = (inPacked0 >> 27) & 0xFu;
+
     vec3 encoded = vec3(
         float( inPacked1        & 0xFFu),
         float((inPacked1 >>  8) & 0xFFu),
@@ -68,6 +74,7 @@ void main() {
     outOpacity = float((inPacked1 >> 24) & 0xFFu) / 255.0;
     outNormal = NORMALS[face];
     outOcclusion = float(occlusion) / 3.0;
+    outLight = vec2(float(skyLight), float(blockLight)) / 15.0;
 
     uint axis = face >> 1u;
     outSurface = axis == 0u ? local.zy : (axis == 1u ? local.xz : local.xy);
