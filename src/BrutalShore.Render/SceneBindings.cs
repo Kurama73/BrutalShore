@@ -25,14 +25,17 @@ public sealed unsafe class SceneBindings : IDisposable
     private readonly VkDescriptorSet[] _sets = new VkDescriptorSet[GpuRenderer.MaxFramesInFlight];
     private readonly VkDescriptorPool _pool;
     private readonly DepthTarget _shadowMap;
+    private readonly VoxelField _field;
 
     /// <summary>Creates the layout, the pool and one buffer and set per frame in flight.</summary>
     /// <param name="context">The device everything is allocated from.</param>
     /// <param name="shadowMap">The depth target the fragment shaders sample for shadows.</param>
-    public SceneBindings(GpuContext context, DepthTarget shadowMap)
+    /// <param name="field">The cube of world a fragment shader sends rays through.</param>
+    public SceneBindings(GpuContext context, DepthTarget shadowMap, VoxelField field)
     {
         _context = context;
         _shadowMap = shadowMap;
+        _field = field;
 
         // Both stages read the block: the vertex shader needs the view-projection, the fragment
         // shader needs the lighting. Splitting it in two would cost a second binding to save
@@ -56,6 +59,16 @@ public sealed unsafe class SceneBindings : IDisposable
                 DescriptorCount = 1,
                 StageFlags = VkShaderStageFlags.FragmentBit,
             },
+
+            // The cube of world, for rays that have to find out what they hit. Fragment only,
+            // for the same reason.
+            new()
+            {
+                Binding = 2,
+                DescriptorType = VkDescriptorType.CombinedImageSampler,
+                DescriptorCount = 1,
+                StageFlags = VkShaderStageFlags.FragmentBit,
+            },
         ];
 
         Layout = context.Device.CreateDescriptorSetLayout(
@@ -73,7 +86,7 @@ public sealed unsafe class SceneBindings : IDisposable
             new()
             {
                 Type = VkDescriptorType.CombinedImageSampler,
-                DescriptorCount = GpuRenderer.MaxFramesInFlight,
+                DescriptorCount = GpuRenderer.MaxFramesInFlight * 2,
             },
         ];
 
@@ -124,7 +137,8 @@ public sealed unsafe class SceneBindings : IDisposable
             shadow,
             frame.Submerged,
             frame.Held.Position,
-            frame.Held.Burn
+            frame.Held.Burn,
+            frame.Field
         );
         _buffers[frameIndex].Rewrite(new ReadOnlySpan<SceneUniforms>(in uniforms));
     }
@@ -193,6 +207,13 @@ public sealed unsafe class SceneBindings : IDisposable
             ImageLayout = VkImageLayout.ShaderReadOnlyOptimal,
         };
 
+        var fieldInfo = new VkDescriptorImageInfo
+        {
+            Sampler = _field.Sampler,
+            ImageView = _field.View,
+            ImageLayout = VkImageLayout.ShaderReadOnlyOptimal,
+        };
+
         _context.Device.UpdateDescriptorSets(
             [
                 new VkWriteDescriptorSet
@@ -210,6 +231,14 @@ public sealed unsafe class SceneBindings : IDisposable
                     DescriptorCount = 1,
                     DescriptorType = VkDescriptorType.CombinedImageSampler,
                     ImageInfo = &imageInfo,
+                },
+                new VkWriteDescriptorSet
+                {
+                    DstSet = set,
+                    DstBinding = 2,
+                    DescriptorCount = 1,
+                    DescriptorType = VkDescriptorType.CombinedImageSampler,
+                    ImageInfo = &fieldInfo,
                 },
             ],
             []

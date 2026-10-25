@@ -98,6 +98,17 @@ internal readonly struct SceneUniforms
     /// <summary>rgb: the colour of the carried light. w: how bright it is, 0 for none.</summary>
     public readonly float4 HeldLightColor;
 
+    /// <summary>
+    /// xyz: where the ray marching cube's lowest corner sits, in render space. w: how many blocks
+    /// it is on a side, or zero while it holds nothing yet.
+    /// </summary>
+    /// <remarks>
+    /// In render space rather than world space because that is the frame a fragment already knows
+    /// its own position in, and a ray starts at a fragment. The cube is re-centred on the camera
+    /// every so often, so this moves in steps rather than every frame.
+    /// </remarks>
+    public readonly float4 Field;
+
     /// <summary>Packs one frame's view and sky into the block the shaders read.</summary>
     /// <param name="viewProjection">The camera's view-projection, in render space.</param>
     /// <param name="lightViewProjection">Render space to the shadow map's clip space.</param>
@@ -108,6 +119,7 @@ internal readonly struct SceneUniforms
     /// <param name="submerged">The liquid the eye is in, laid out as <see cref="Submerged" /> describes.</param>
     /// <param name="heldLight">Where the carried light is, laid out as <see cref="HeldLight" /> describes.</param>
     /// <param name="heldLightColor">Its colour, laid out as <see cref="HeldLightColor" /> describes.</param>
+    /// <param name="field">Where the ray marching cube is, laid out as <see cref="Field" /> describes.</param>
     public SceneUniforms(
         in float4x4 viewProjection,
         in float4x4 lightViewProjection,
@@ -117,7 +129,8 @@ internal readonly struct SceneUniforms
         float4 shadow,
         float4 submerged,
         float4 heldLight,
-        float4 heldLightColor
+        float4 heldLightColor,
+        float4 field
     )
     {
         ViewProjection = viewProjection;
@@ -139,5 +152,6 @@ internal readonly struct SceneUniforms
         Submerged = submerged;
         HeldLight = heldLight;
         HeldLightColor = heldLightColor;
+        Field = field;
     }
 }

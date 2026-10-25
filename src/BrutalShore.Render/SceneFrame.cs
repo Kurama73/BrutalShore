@@ -68,6 +68,12 @@ public readonly record struct SceneFrame
     /// <summary>The light the player is carrying, if any.</summary>
     public HeldLight Held { get; init; } = HeldLight.None;
 
+    /// <summary>
+    /// xyz: where the ray marching cube's lowest corner is, in render space. w: how many blocks
+    /// it is on a side, or zero when there is nothing to march through.
+    /// </summary>
+    public float4 Field { get; init; }
+
     /// <summary>Builds a frame with the settings that are not required at their defaults.</summary>
     public SceneFrame() { }
 }
