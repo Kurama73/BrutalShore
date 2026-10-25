@@ -28,6 +28,13 @@ public sealed class PowerGrid
     private readonly List<Network> _networks = [];
     private readonly Dictionary<int3, int> _networkOf = [];
 
+    // Kept between rebuilds rather than allocated in one. A rebuild happens on every placement
+    // while a player lays cable, which is several a second, and a few thousand entries of garbage
+    // each time is work for the collector to do in the middle of them building something.
+    private readonly HashSet<int3> _seen = [];
+    private readonly Queue<int3> _pending = new();
+    private readonly List<Network> _spare = [];
+
     /// <summary>How many separate grids there are, for the overlay.</summary>
     public int NetworkCount => _networks.Count;
 
@@ -39,45 +46,52 @@ public sealed class PowerGrid
 
     /// <summary>Works out which machines are wired together.</summary>
     /// <param name="machines">Everything standing in the world.</param>
+    /// <param name="cables">
+    /// Where the cable is, kept up to date by the caller. Gathering it here instead meant walking
+    /// every machine in the world on every placement, which measured at twelve times the cost of
+    /// an ordinary frame.
+    /// </param>
     /// <remarks>
     /// A flood fill over cable, then one pass collecting whatever touches each run. A machine
     /// touching two runs joins them in practice, because the runs are only separate if no cable
     /// of one is beside a cable of the other — a machine between them is not a conductor, which
     /// is the rule a player can see by looking at where they put cable.
     /// </remarks>
-    public void Rebuild(Machines machines)
+    public void Rebuild(Machines machines, IReadOnlySet<int3> cables)
     {
-        _networks.Clear();
-        _networkOf.Clear();
-
-        var cables = new HashSet<int3>();
-        foreach (var (position, machine) in machines.All)
+        // The networks themselves are pooled too, because a player laying a line rebuilds a
+        // couple of dozen of them several times a second and each one owns three lists.
+        foreach (var network in _networks)
         {
-            if (machine is Cable)
-                cables.Add(position);
+            network.Clear();
+            _spare.Add(network);
         }
 
-        var seen = new HashSet<int3>();
-        var pending = new Queue<int3>();
+        _networks.Clear();
+        _networkOf.Clear();
+        _seen.Clear();
+
+        Span<int3> around = stackalloc int3[6];
 
         foreach (var start in cables)
         {
-            if (!seen.Add(start))
+            if (!_seen.Add(start))
                 continue;
 
-            var network = new Network();
-            pending.Clear();
-            pending.Enqueue(start);
+            var network = Fresh();
+            _pending.Clear();
+            _pending.Enqueue(start);
 
-            while (pending.Count > 0)
+            while (_pending.Count > 0)
             {
-                var at = pending.Dequeue();
+                var at = _pending.Dequeue();
                 network.Cables.Add(at);
+                Around(at, around);
 
-                foreach (var beside in Around(at))
+                foreach (var beside in around)
                 {
-                    if (cables.Contains(beside) && seen.Add(beside))
-                        pending.Enqueue(beside);
+                    if (cables.Contains(beside) && _seen.Add(beside))
+                        _pending.Enqueue(beside);
                 }
             }
 
@@ -91,22 +105,29 @@ public sealed class PowerGrid
             var network = _networks[index];
 
             foreach (var cable in network.Cables)
-            foreach (var beside in Around(cable))
             {
-                if (_networkOf.ContainsKey(beside) || cables.Contains(beside))
-                    continue;
+                Around(cable, around);
 
-                switch (machines.At(beside))
+                foreach (var beside in around)
                 {
-                    case Generator generator:
-                        network.Generators.Add(generator);
-                        _networkOf[beside] = index;
-                        break;
+                    // The machine is looked up first because nearly every neighbour of a cable
+                    // is air or more cable, and that case then costs one lookup instead of three.
+                    var machine = machines.At(beside);
+                    if (machine is null or Cable || _networkOf.ContainsKey(beside))
+                        continue;
 
-                    case IPowered powered:
-                        network.Consumers.Add(powered);
-                        _networkOf[beside] = index;
-                        break;
+                    switch (machine)
+                    {
+                        case Generator generator:
+                            network.Generators.Add(generator);
+                            _networkOf[beside] = index;
+                            break;
+
+                        case IPowered powered:
+                            network.Consumers.Add(powered);
+                            _networkOf[beside] = index;
+                            break;
+                    }
                 }
             }
         }
@@ -162,20 +183,39 @@ public sealed class PowerGrid
     /// <returns><see langword="true" /> if a cable reaches it.</returns>
     public bool IsWired(int3 position) => _networkOf.ContainsKey(position);
 
-    /// <summary>The six blocks around one.</summary>
+    /// <summary>A network to fill, reused if one has been returned.</summary>
+    private Network Fresh()
+    {
+        if (_spare.Count == 0)
+            return new Network();
+
+        var network = _spare[^1];
+        _spare.RemoveAt(_spare.Count - 1);
+        return network;
+    }
+
+    /// <summary>Writes the six blocks around one into a span.</summary>
     /// <remarks>
+    /// <para>
     /// Six and not twenty-six. Cable that joined round a corner diagonally would be cable whose
     /// shape a player cannot predict from looking at it, and the whole appeal of a wire is that
     /// you can see where it goes.
+    /// </para>
+    /// <para>
+    /// A span rather than an iterator, which is not a style preference. Written with
+    /// <c>yield return</c> this is called about thirteen thousand times per rebuild per pass and
+    /// allocates an enumerator every time; measured, that was two thirds of the whole cost of
+    /// rebuilding a grid.
+    /// </para>
     /// </remarks>
-    private static IEnumerable<int3> Around(int3 at)
+    private static void Around(int3 at, Span<int3> into)
     {
-        yield return new int3(at.X + 1, at.Y, at.Z);
-        yield return new int3(at.X - 1, at.Y, at.Z);
-        yield return new int3(at.X, at.Y + 1, at.Z);
-        yield return new int3(at.X, at.Y - 1, at.Z);
-        yield return new int3(at.X, at.Y, at.Z + 1);
-        yield return new int3(at.X, at.Y, at.Z - 1);
+        into[0] = new int3(at.X + 1, at.Y, at.Z);
+        into[1] = new int3(at.X - 1, at.Y, at.Z);
+        into[2] = new int3(at.X, at.Y + 1, at.Z);
+        into[3] = new int3(at.X, at.Y - 1, at.Z);
+        into[4] = new int3(at.X, at.Y, at.Z + 1);
+        into[5] = new int3(at.X, at.Y, at.Z - 1);
     }
 
     /// <summary>One grid: its cable, what feeds it and what draws from it.</summary>
@@ -186,5 +226,12 @@ public sealed class PowerGrid
         public List<Generator> Generators { get; } = [];
 
         public List<IPowered> Consumers { get; } = [];
+
+        public void Clear()
+        {
+            Cables.Clear();
+            Generators.Clear();
+            Consumers.Clear();
+        }
     }
 }

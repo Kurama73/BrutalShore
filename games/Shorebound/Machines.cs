@@ -33,6 +33,31 @@ public sealed class Machines
     /// <summary>Whether the grid has to be worked out again before the next step.</summary>
     private bool _wiringChanged = true;
 
+    /// <summary>
+    /// Where every cable is, kept up to date rather than gathered when the grid is rebuilt.
+    /// </summary>
+    /// <remarks>
+    /// Measured: rebuilding gathered this by walking every machine in the world and allocating a
+    /// fresh set, and a frame that rebuilt cost twelve times one that did not. Keeping it is two
+    /// lines in the two places a machine is placed or removed.
+    /// </remarks>
+    private readonly HashSet<int3> _cables = [];
+
+    /// <summary>How long it has been since the grid was last worked out, in seconds.</summary>
+    private double _sinceRebuildSeconds = RebuildEverySeconds;
+
+    /// <summary>The shortest gap between two rebuilds, in seconds.</summary>
+    /// <remarks>
+    /// A tenth of a second. Laying a line of cable invalidates the grid on every single block,
+    /// and a player laying one places several a second; without this, each of those pays for a
+    /// whole rebuild. With it, a burst of placements costs one. An occasional placement is still
+    /// instant, because the gap since the last rebuild is already longer than this.
+    ///
+    /// What it costs is that a cable just laid may take up to a tenth of a second to start
+    /// carrying power, which is below what anyone can see.
+    /// </remarks>
+    private const double RebuildEverySeconds = 0.1;
+
     /// <summary>Builds an empty set of machines.</summary>
     /// <param name="smelting">The tables each smelter is run against.</param>
     public Machines(Smelting smelting) => _smelting = smelting;
@@ -68,6 +93,12 @@ public sealed class Machines
             _order.Add(position);
 
         _machines[position] = machine;
+
+        if (machine is Cable)
+            _cables.Add(position);
+        else
+            _cables.Remove(position);
+
         _wiringChanged = true;
         return machine;
     }
@@ -81,6 +112,7 @@ public sealed class Machines
             return null;
 
         _order.Remove(position);
+        _cables.Remove(position);
         _wiringChanged = true;
         return machine;
     }
@@ -90,6 +122,7 @@ public sealed class Machines
     {
         _machines.Clear();
         _order.Clear();
+        _cables.Clear();
         _wiringChanged = true;
     }
 
@@ -111,10 +144,13 @@ public sealed class Machines
         // rebuild is skipped on nearly every frame: the answer only changes when something is
         // placed or broken, and walking every cable sixty times a second would be the most
         // expensive thing in this program.
-        if (_wiringChanged)
+        _sinceRebuildSeconds += seconds;
+
+        if (_wiringChanged && _sinceRebuildSeconds >= RebuildEverySeconds)
         {
-            Power.Rebuild(this);
+            Power.Rebuild(this, _cables);
             _wiringChanged = false;
+            _sinceRebuildSeconds = 0.0;
         }
 
         Power.Step(seconds);

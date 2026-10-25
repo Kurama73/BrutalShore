@@ -260,4 +260,41 @@ public sealed class PowerTests
         for (var elapsed = 0.0; elapsed < seconds; elapsed += Step)
             _machines.Step(Step, _world);
     }
+
+    [Fact]
+    public void a_cable_laid_on_its_own_carries_power_at_once()
+    {
+        // Rebuilding the grid is the expensive part of a built-up world, so a burst of
+        // placements is coalesced into one rebuild. The cost of that must not be a wire a player
+        // laid deliberately sitting dead: an occasional placement has to work on the next step.
+        var smelter = Smelter(new int3(2, 21, 1));
+        var generator = Generator(new int3(0, 21, 1));
+
+        generator.Fuel.Add(_blocks.CoalOre, 4);
+        smelter.Input.Add(_blocks.Sand, 4);
+
+        // A while with no wiring at all, then one cable joining the two.
+        Run(1.0);
+        _machines.Place(new int3(1, 21, 1), new Cable());
+        Run(1.0 / 60.0);
+
+        Assert.Equal(1, _machines.Power.NetworkCount);
+        Assert.True(_machines.Power.DeliveredWatts > 0.0, "the new cable carried nothing");
+    }
+
+    [Fact]
+    public void laying_a_line_still_ends_up_as_one_grid()
+    {
+        // The other half of coalescing: whatever is skipped on the way, the answer when the dust
+        // settles has to be the same as if every placement had been worked out.
+        for (var x = 0; x < 40; x++)
+        {
+            _machines.Place(new int3(x, 21, 1), new Cable());
+            Run(1.0 / 60.0);
+        }
+
+        Run(0.5);
+
+        Assert.Equal(1, _machines.Power.NetworkCount);
+    }
 }
