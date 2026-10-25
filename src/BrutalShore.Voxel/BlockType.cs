@@ -50,6 +50,29 @@ public sealed record BlockType
     /// </remarks>
     public bool Collides { get; init; } = true;
 
+    /// <summary>How much light a block takes out of anything that passes through it, 0 to 15.</summary>
+    /// <remarks>
+    /// <para>
+    /// Separate from <see cref="Opacity" />, which is how much of the world behind a face the face
+    /// hides. This is how much of a <em>light level</em> a block costs, and the two are not the
+    /// same question: water hides very little and dims a lot, and a pane of glass would hide
+    /// nothing and dim nothing.
+    /// </para>
+    /// <para>
+    /// 15, the default, is opaque — the whole range, so no light crosses it at all. 0 means light
+    /// crosses untouched, which only air does: everything else costs at least one level per block
+    /// whatever this says, because a light that spread without ever weakening would fill the world.
+    /// </para>
+    /// </remarks>
+    public byte LightOpacity { get; init; } = 15;
+
+    /// <summary>What light level this block gives off, 0 for most of them and up to 15.</summary>
+    /// <remarks>
+    /// The level <em>at</em> the block. What reaches a neighbour is one less, and so on, so a
+    /// block at 14 lights fourteen blocks of open air around it and nothing further.
+    /// </remarks>
+    public byte Emission { get; init; }
+
     /// <summary>Whether a body inside this block is swimming rather than falling.</summary>
     /// <remarks>
     /// Separate from <see cref="Collides" /> because they are different questions: tall grass

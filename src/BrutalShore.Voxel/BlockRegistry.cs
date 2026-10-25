@@ -30,6 +30,7 @@ public sealed class BlockRegistry
             Color = new byte3(0, 0, 0),
             Opacity = 0,
             Collides = false,
+            LightOpacity = 0,
         },
     ];
 
