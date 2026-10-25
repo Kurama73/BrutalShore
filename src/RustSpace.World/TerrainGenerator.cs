@@ -27,7 +27,19 @@ public sealed class TerrainGenerator : IChunkGenerator
     private const int HeightVariation = 56;
 
     /// <summary>Blocks per cycle of the terrain field's first octave.</summary>
-    private const float TerrainScale = 320.0f;
+    private const float TerrainScale = 280.0f;
+
+    /// <summary>
+    /// How much the terrain field is amplified before it is used as a height.
+    /// </summary>
+    /// <remarks>
+    /// Fractal noise averaged over its octaves is a much tamer signal than its [-1, 1] range
+    /// suggests: the octaves rarely peak together, so a five-octave field spends nearly all its
+    /// time within about a fifth of that. Left alone it produces a world that is flat to within a
+    /// few blocks everywhere. Amplifying and clipping restores the relief and costs only that the
+    /// highest peaks and deepest basins are flattened, which reads as plateaus and valley floors.
+    /// </remarks>
+    private const float TerrainGain = 2.6f;
 
     /// <summary>Blocks per cycle of the field that decides how rough the terrain is.</summary>
     private const float RoughnessScale = 900.0f;
@@ -85,9 +97,11 @@ public sealed class TerrainGenerator : IChunkGenerator
         // are the exception, which is the opposite of what a linear mix gives.
         roughness *= roughness;
 
-        var shape = _terrain.Fractal(blockX / TerrainScale, blockZ / TerrainScale, octaves: 5);
+        var shape = float.Clamp(_terrain.Fractal(blockX / TerrainScale, blockZ / TerrainScale, octaves: 5) * TerrainGain, -1f, 1f);
 
-        return BaseHeight + (int)(shape * HeightVariation * (0.25f + 0.75f * roughness));
+        // The floor of 0.3 is what keeps the flat regions from being perfectly flat: a plain with
+        // no relief at all looks like a bug rather than a plain.
+        return BaseHeight + (int)(shape * HeightVariation * (0.3f + 0.7f * roughness));
     }
 
     /// <inheritdoc />
