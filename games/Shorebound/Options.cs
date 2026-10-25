@@ -76,6 +76,9 @@ public sealed record Options
                     options = options with { Viewpoint = ReadViewpoint(arguments, ref index) };
                     break;
 
+                case "--no-overlay":
+                    options = options with { Host = options.Host with { ShowOverlay = false } };
+                    break;
                 case "--validation":
                     options = options with { Host = options.Host with { EnableValidation = true } };
                     break;

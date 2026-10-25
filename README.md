@@ -4,13 +4,16 @@ An engine, and a voxel game on it, in C# on
 [BRUTAL](https://github.com/ahwootech/BRUTAL) — the open-source framework behind
 Kitten Space Agency.
 
-![A coastline seen from above: ocean, a beach, rolling grassland](docs/coastline.png)
+![A wooded coastline under a low sun, the seabed showing through the water](docs/coastline.png)
 
 An unbounded world of 32³ chunks, generated from a seed rather than stored,
-streamed around the player, greedy-meshed with ambient occlusion, and drawn
-through a Vulkan renderer written here.
+streamed around the player on worker threads, greedy-meshed with ambient
+occlusion, and drawn through a Vulkan renderer written here: a sky with a sun
+and a moon crossing it, shadows cast from whichever is up, water you can see
+through and swim in, and forests that span chunk boundaries without anything
+being saved.
 
-![The same world at eye level, with the debug overlay open](docs/overlay.png)
+![The same coast with the debug overlay open, showing the frame time graph](docs/overlay.png)
 
 ## Running it
 
@@ -31,9 +34,9 @@ dotnet run --project games/Shorebound -c Release
 
 Click `Play`, then `WASD` to move, `space` to jump, `shift` to sprint, `F` to
 switch between walking and flying — `space` and `ctrl` go up and down while
-flying. Left click breaks a block, right click places one, `1` to `6` or `Q` and
-`E` pick which. `Escape` opens the menu, where the world can be saved; `F3`
-hides the overlay.
+flying, and `space` swims up in water. Left click breaks a block, right click
+places one, the number keys or `Q` and `E` pick which. `Escape` opens the menu,
+where the world can be saved; `F3` hides the overlay.
 
 A world is its seed plus the blocks you have changed, so a save holds nothing
 else: an untouched world is about a hundred bytes however far you have walked.
@@ -47,6 +50,7 @@ else: an untouched world is about a hundred bytes however far you have walked.
 | `--time <hour>`                    | The hour the world starts at. Default 8.         |
 | `--day-length <seconds>`           | Real seconds per in-game day; 0 stops the sun.   |
 | `--save <path>`                    | Where the world is kept. Default `shorebound.world`. |
+| `--no-overlay`                     | Start with the debug overlay hidden.             |
 | `--validation`                     | Turn on the Vulkan validation layers.            |
 | `--frames <n>`                     | Close after this many frames.                    |
 | `--camera <x> <y> <z> <yaw> <pitch>` | Start the camera here, angles in degrees.      |
@@ -118,21 +122,48 @@ arc, the shadow box, and Shorebound's own terrain, player and save file.
 
 ## How the world is drawn
 
-A chunk is 32³ block ids. Meshing it is three reductions, in order: faces
-between two solid blocks are never built; faces on a chunk boundary are culled
-against the neighbouring chunk, which is why a chunk is only meshed once its
-whole 3×3×3 neighbourhood is loaded; and the faces that survive are merged
-greedily into the largest rectangles that share a colour **and** an ambient
-occlusion pattern. A solid chunk goes from 196,608 triangles to 12.
+A chunk is 32³ block ids. Meshing it is three reductions, in order: a face is
+only built if what is in front of it does not hide it — air hides nothing, an
+opaque block hides everything, and water hides only more water, which is what
+makes a sea a surface rather than a lattice; faces on a chunk boundary are
+culled against the neighbouring chunk, which is why a chunk is only meshed once
+its whole 3×3×3 neighbourhood is loaded; and the faces that survive are merged
+greedily into the largest rectangles that share a colour, an opacity **and** an
+ambient occlusion pattern. A solid chunk goes from 196,608 triangles to 12.
 
 Each corner is eight bytes: position on a 33-point lattice, one of six face
-directions, two bits of ambient occlusion, and a colour. There is no texture
-coordinate, because the shader derives one from the position — which is also what
-makes a merged quad tile per block instead of stretching.
+directions, two bits of ambient occlusion, a colour and an opacity. There is no
+texture coordinate, because the shader derives one from the position — which is
+also what makes a merged quad tile per block instead of stretching. Nothing has
+a texture at all; what breaks up a field of grass is a few per cent of shade per
+block, hashed from where that block is in the world.
+
+A frame is three passes. The sun's shadow map first, off-screen, with the solid
+half of every chunk the light can see — snapped to a texel grid so the shadows
+do not crawl as the camera moves. Then the sky, a single triangle with the sun,
+the moon and the stars on it. Then the world: the solid half of each chunk with
+the depth buffer sorting it, and the see-through half blended over the top, far
+to near.
 
 Everything is drawn camera-relative. The camera's position is the origin of
 render space, and each chunk's offset from it is subtracted in f64 before being
 narrowed to f32, so there is no distance at which vertices start to shimmer.
+
+## Where the work happens
+
+Generating a chunk and meshing it are both pure functions of a coordinate and a
+seed, so both run on worker threads and neither is on the frame. What is left on
+the frame is the handover — applying the player's edits to a chunk that has just
+arrived, and copying a finished mesh into a GPU buffer — which the overlay's
+breakdown puts at a couple of milliseconds against a view of half a million
+triangles.
+
+Trees are the reason the generator's contract is worth reading. A trunk at one
+coordinate puts leaves in chunks the trunk is not in, and no chunk may ask
+another what it contains. So every chunk works out from the seed alone which
+trees could reach it, builds each of them in full, and keeps the part that falls
+inside itself. Both sides of a boundary agree because both did the same
+arithmetic.
 
 ## BRUTAL
 

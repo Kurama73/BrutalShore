@@ -43,7 +43,7 @@ public sealed class GameHost : IDisposable
         _target = new SwapchainTarget(_gpu, _window);
         _renderer = new GpuRenderer(_gpu, _target);
         _shaders = new ShaderLibrary(_gpu, Path.Combine(AppContext.BaseDirectory, "Shaders"));
-        _overlay = new DebugOverlay(_window, _gpu, _target);
+        _overlay = new DebugOverlay(_window, _gpu, _target, options.ShowOverlay);
 
         Context = new GameContext(_window, _gpu, _target, _renderer, _shaders, _clock);
     }

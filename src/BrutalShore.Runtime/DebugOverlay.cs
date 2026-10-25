@@ -28,9 +28,10 @@ public sealed unsafe class DebugOverlay : IDisposable
 
 
     /// <summary>Starts Dear ImGui and attaches it to the window and the render pass.</summary>
-    public DebugOverlay(GameWindow window, GpuContext context, SwapchainTarget target)
+    public DebugOverlay(GameWindow window, GpuContext context, SwapchainTarget target, bool startVisible)
     {
         _window = window;
+        IsVisible = startVisible;
 
         ImGui.CreateContext();
 
@@ -57,7 +58,7 @@ public sealed unsafe class DebugOverlay : IDisposable
     }
 
     /// <summary>Whether the overlay is being drawn.</summary>
-    public bool IsVisible { get; private set; } = true;
+    public bool IsVisible { get; private set; }
 
     /// <summary>Opens the interface's frame and handles the key that hides the overlay.</summary>
     /// <remarks>

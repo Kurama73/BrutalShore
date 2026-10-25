@@ -32,4 +32,12 @@ public sealed record HostOptions
     /// the one before the change.
     /// </remarks>
     public string? ScreenshotPath { get; init; }
+
+    /// <summary>Whether the debug overlay starts visible.</summary>
+    /// <remarks>
+    /// F3 still toggles it either way. Starting hidden is for making a picture of the world
+    /// rather than of the numbers over it, which a fixed-frame run has no way to ask for
+    /// otherwise — it never gets to a keyboard.
+    /// </remarks>
+    public bool ShowOverlay { get; init; } = true;
 }
