@@ -29,8 +29,14 @@ names the command above.
 dotnet run --project games/Shorebound -c Release
 ```
 
-Click to capture the mouse, `WASD` to move, `space` and `ctrl` for up and down,
-`shift` to sprint, `escape` to release the mouse, `F3` to hide the overlay.
+Click `Play`, then `WASD` to move, `space` to jump, `shift` to sprint, `F` to
+switch between walking and flying — `space` and `ctrl` go up and down while
+flying. Left click breaks a block, right click places one, `1` to `6` or `Q` and
+`E` pick which. `Escape` opens the menu, where the world can be saved; `F3`
+hides the overlay.
+
+A world is its seed plus the blocks you have changed, so a save holds nothing
+else: an untouched world is about a hundred bytes however far you have walked.
 
 ### Options
 
@@ -40,10 +46,15 @@ Click to capture the mouse, `WASD` to move, `space` and `ctrl` for up and down,
 | `--view-radius <chunks>`           | How far chunks stay loaded. Default 8.           |
 | `--time <hour>`                    | The hour the world starts at. Default 8.         |
 | `--day-length <seconds>`           | Real seconds per in-game day; 0 stops the sun.   |
+| `--save <path>`                    | Where the world is kept. Default `shorebound.world`. |
 | `--validation`                     | Turn on the Vulkan validation layers.            |
 | `--frames <n>`                     | Close after this many frames.                    |
 | `--camera <x> <y> <z> <yaw> <pitch>` | Start the camera here, angles in degrees.      |
 | `--screenshot <path>`              | Save the last frame as a PNG.                    |
+
+Passing `--frames` or `--camera` goes straight into the world rather than
+stopping at the title screen: a run with a fixed frame count is a render check,
+and there is nobody there to click past a menu.
 
 The last three together are how graphics changes are checked: a fixed seed and a
 fixed camera for a fixed number of frames produce an image that can be compared
@@ -89,20 +100,21 @@ were deleted.
 | `BrutalShore.Core`    | The frame clock and the f64 world to f32 render-space boundary |
 | `BrutalShore.Voxel`   | Chunks, the block registry, the greedy mesher                 |
 | `BrutalShore.Gpu`     | Window, Vulkan device, swapchain, frames in flight, shaders   |
-| `BrutalShore.World`   | Coordinates, gradient noise, streaming, `IChunkGenerator`     |
-| `BrutalShore.Render`  | Camera, view frustum, the voxel pipeline, chunk meshes        |
+| `BrutalShore.World`   | Coordinates, gradient noise, streaming, block edits, ray casting and collision, `IChunkGenerator` |
+| `BrutalShore.Render`  | Camera, view frustum, the sun and sky, shadows, the voxel pipeline, chunk meshes |
 | `BrutalShore.Runtime` | The window, the device and the frame loop around an `IGame`   |
 
 | Game            | What is in it                                        |
 | --------------- | ---------------------------------------------------- |
-| `Shorebound`    | Its blocks, its terrain and caves, the controls, where the player starts, how much work a frame may spend loading and meshing |
+| `Shorebound`    | Its blocks, its terrain and caves, the player and how they move, the controls, the hotbar, the menus, the save file, how long a day lasts, how much work a frame may spend loading and meshing |
 
 A game is an `IGame` the runtime runs, and an `IChunkGenerator` the world asks
 for blocks. Those two interfaces are the whole of the engine's knowledge of it.
 
 Dependencies point downwards only. Everything that does not need a device is
 tested without one: `dotnet test` runs the mesher, the noise, the streaming, the
-camera, the frustum and Shorebound's own terrain.
+block edits, the ray cast and the collision, the camera, the frustum, the sun's
+arc, the shadow box, and Shorebound's own terrain, player and save file.
 
 ## How the world is drawn
 

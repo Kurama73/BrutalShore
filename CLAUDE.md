@@ -82,13 +82,14 @@ upwards, never sideways between projects of the same layer.**
 src/   the engine — BrutalShore.*, knows nothing about any particular game
   Layer 0  Core      frame clock, render space, the f64/f32 boundary
   Layer 1  Voxel     chunks, block registry, the greedy mesher        (Core)
-           Gpu       window, device, swapchain, frames, shaders       (Core)
-  Layer 2  World     coordinates, noise, streaming, IChunkGenerator   (Core + Voxel)
-  Layer 3  Render    camera, frustum, voxel pipeline, chunk meshes    (Core + Voxel + World + Gpu)
+           Gpu       window, input, device, swapchain, frames, shaders, depth targets  (Core)
+  Layer 2  World     coordinates, noise, streaming, edits, rays, collision, IChunkGenerator  (Core + Voxel)
+  Layer 3  Render    camera, frustum, sun and sky, shadows, voxel pipeline, chunk meshes  (Core + Voxel + World + Gpu)
            Runtime   the window, the device and the frame loop around an IGame  (Core + Gpu)
 
 games/ the games — each one an executable that composes the engine
-  Shorebound  blocks, terrain, controls, spawn, streaming budgets
+  Shorebound  blocks, terrain, the player, controls, the hotbar, menus, saving,
+              the length of a day, streaming budgets
 ```
 
 ### Where the engine stops and a game starts
