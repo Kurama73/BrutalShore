@@ -4,10 +4,12 @@
     <Project Path="src/RustSpace.Voxel/RustSpace.Voxel.csproj" />
     <Project Path="src/RustSpace.World/RustSpace.World.csproj" />
     <Project Path="src/RustSpace.Gpu/RustSpace.Gpu.csproj" />
+    <Project Path="src/RustSpace.Render/RustSpace.Render.csproj" />
     <Project Path="src/RustSpace.App/RustSpace.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RustSpace.Voxel.Tests/RustSpace.Voxel.Tests.csproj" />
     <Project Path="tests/RustSpace.World.Tests/RustSpace.World.Tests.csproj" />
+    <Project Path="tests/RustSpace.Render.Tests/RustSpace.Render.Tests.csproj" />
   </Folder>
 </Solution>

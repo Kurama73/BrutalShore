@@ -3,3 +3,6 @@ obj/
 artifacts/
 *.user
 .DS_Store
+
+# Dear ImGui writes its window layout next to the executable.
+imgui.ini

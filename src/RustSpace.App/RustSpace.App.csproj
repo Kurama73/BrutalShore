@@ -6,8 +6,15 @@
 
   <ItemGroup>
     <ProjectReference Include="../RustSpace.Core/RustSpace.Core.csproj" />
-    <ProjectReference Include="../RustSpace.Orbital/RustSpace.Orbital.csproj" />
+    <ProjectReference Include="../RustSpace.Voxel/RustSpace.Voxel.csproj" />
+    <ProjectReference Include="../RustSpace.World/RustSpace.World.csproj" />
+    <ProjectReference Include="../RustSpace.Gpu/RustSpace.Gpu.csproj" />
     <ProjectReference Include="../RustSpace.Render/RustSpace.Render.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Ahwoo.BRUTAL.ImGui" />
+    <PackageReference Include="Ahwoo.BRUTAL.ImGui.Backends" />
   </ItemGroup>
 
 </Project>

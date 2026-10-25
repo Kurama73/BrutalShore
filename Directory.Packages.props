@@ -18,6 +18,7 @@
     <PackageVersion Include="Ahwoo.BRUTAL.ImGui" Version="2026.10.3" />
     <PackageVersion Include="Ahwoo.BRUTAL.ImGui.Backends" Version="2026.10.3" />
     <PackageVersion Include="Ahwoo.BRUTAL.ImPlot" Version="2026.10.3" />
+    <PackageVersion Include="Ahwoo.BRUTAL.Stb" Version="2026.10.3" />
     <PackageVersion Include="Ahwoo.BRUTAL.ShaderC" Version="2026.10.3" />
   </ItemGroup>
 
