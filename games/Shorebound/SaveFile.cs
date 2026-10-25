@@ -28,8 +28,10 @@ public sealed record SaveFile
     /// someone's hand are worth less than their world, and refusing to open a world because a
     /// list that did not exist is missing from it would be the wrong trade. A smelter that comes
     /// back empty is the worst that can happen, and only to a world saved before smelters.
+    /// Version 4 added how far along the milestones the player is; an older world starts the line
+    /// again, which costs them the handing-in and nothing they built.
     /// </remarks>
-    private const byte Version = 3;
+    private const byte Version = 4;
 
     /// <summary>The world's seed, which is the world.</summary>
     public required int Seed { get; init; }
@@ -69,6 +71,13 @@ public sealed record SaveFile
     /// </remarks>
     public required IReadOnlyList<SavedMachine> Machines { get; init; }
 
+    /// <summary>How many milestones have been paid for.</summary>
+    /// <remarks>
+    /// One number, because the progression is a line and everything else about it — what is
+    /// open, what is next, what it costs — is read off a table in the build rather than stored.
+    /// </remarks>
+    public required int MilestonesReached { get; init; }
+
     /// <summary>Writes a world to a file, replacing whatever was there.</summary>
     /// <param name="path">Where to write.</param>
     /// <param name="edits">The blocks the player has changed.</param>
@@ -104,6 +113,8 @@ public sealed record SaveFile
                 writer.Write(block);
                 writer.Write(count);
             }
+
+            writer.Write(MilestonesReached);
 
             writer.Write(Machines.Count);
             foreach (var machine in Machines)
@@ -160,6 +171,7 @@ public sealed record SaveFile
             DayFraction = reader.ReadDouble(),
             RowIndex = reader.ReadInt32(),
             Carried = version >= 2 ? ReadCarried(reader) : [],
+            MilestonesReached = version >= 4 ? reader.ReadInt32() : 0,
             Machines = version >= 3 ? ReadMachines(reader) : [],
         };
 

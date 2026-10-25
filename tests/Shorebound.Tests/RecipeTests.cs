@@ -15,12 +15,20 @@ public sealed class RecipeTests
     private readonly GameBlocks _blocks = new(new BlockRegistry());
     private readonly Recipes _recipes;
 
-    public RecipeTests() => _recipes = new Recipes(_blocks);
+    /// <summary>Everything unlocked, so these tests are about matching and not about gating.</summary>
+    private readonly Progression _open;
+
+    public RecipeTests()
+    {
+        _recipes = new Recipes(_blocks);
+        _open = new Progression(_blocks);
+        _open.Restore(_open.All.Count);
+    }
 
     [Fact]
     public void an_empty_grid_makes_nothing()
     {
-        Assert.True(_recipes.Match(Grid()).IsNothing);
+        Assert.True(_recipes.Match(Grid(), _open).IsNothing);
     }
 
     [Fact]
@@ -33,7 +41,7 @@ public sealed class RecipeTests
             var grid = Grid();
             grid.Put(slot, new Stack(_blocks.Log, 1));
 
-            var made = _recipes.Match(grid);
+            var made = _recipes.Match(grid, _open);
 
             Assert.Equal(_blocks.Planks, made.Block);
             Assert.Equal(4, made.Count);
@@ -49,7 +57,7 @@ public sealed class RecipeTests
             foreach (var offset in (ReadOnlySpan<int>)[0, 1, 3, 4])
                 grid.Put(corner + offset, new Stack(_blocks.Stone, 1));
 
-            Assert.Equal(_blocks.StoneBrick, _recipes.Match(grid).Block);
+            Assert.Equal(_blocks.StoneBrick, _recipes.Match(grid, _open).Block);
         }
     }
 
@@ -62,7 +70,7 @@ public sealed class RecipeTests
 
         grid.Put(8, new Stack(_blocks.Dirt, 1));
 
-        Assert.True(_recipes.Match(grid).IsNothing);
+        Assert.True(_recipes.Match(grid, _open).IsNothing);
     }
 
     [Fact]
@@ -73,13 +81,13 @@ public sealed class RecipeTests
         var grid = Lantern();
         grid.Put(0, new Stack(_blocks.Planks, 1));
 
-        Assert.True(_recipes.Match(grid).IsNothing);
+        Assert.True(_recipes.Match(grid, _open).IsNothing);
     }
 
     [Fact]
     public void the_lantern_is_made_of_ember_in_a_frame_of_planks()
     {
-        var made = _recipes.Match(Lantern());
+        var made = _recipes.Match(Lantern(), _open);
 
         Assert.Equal(_blocks.Lantern, made.Block);
         Assert.Equal(2, made.Count);
@@ -100,7 +108,7 @@ public sealed class RecipeTests
         foreach (var slot in (ReadOnlySpan<int>)[0, 1, 3, 4])
             grid.Put(slot, new Stack(_blocks.Dirt, 1));
 
-        Assert.True(_recipes.Match(grid).IsNothing);
+        Assert.True(_recipes.Match(grid, _open).IsNothing);
     }
 
     [Fact]
@@ -117,7 +125,7 @@ public sealed class RecipeTests
 
         // And the same arrangement still makes the same thing, which is what makes a grid left
         // set up worth leaving set up.
-        Assert.Equal(_blocks.StoneBrick, _recipes.Match(grid).Block);
+        Assert.Equal(_blocks.StoneBrick, _recipes.Match(grid, _open).Block);
     }
 
     [Fact]
@@ -129,7 +137,7 @@ public sealed class RecipeTests
         Recipes.Spend(grid);
 
         Assert.True(grid.At(4).IsNothing);
-        Assert.True(_recipes.Match(grid).IsNothing);
+        Assert.True(_recipes.Match(grid, _open).IsNothing);
     }
 
     [Fact]
@@ -139,7 +147,7 @@ public sealed class RecipeTests
         for (var slot = 0; slot < Recipes.GridSize; slot++)
             grid.Put(slot, new Stack(_blocks.IronIngot, 1));
 
-        var made = _recipes.Match(grid);
+        var made = _recipes.Match(grid, _open);
 
         Assert.Equal(_blocks.IronBlock, made.Block);
         Assert.Equal(1, made.Count);

@@ -26,6 +26,7 @@ public sealed class SaveFileTests
             DayFraction = 3.6,
             RowIndex = 2,
             Machines = [],
+            MilestonesReached = 0,
             Carried = [("stone", 9), (string.Empty, 0)],
         };
 
@@ -66,6 +67,7 @@ public sealed class SaveFileTests
             DayFraction = 0.0,
             RowIndex = 0,
             Machines = [],
+            MilestonesReached = 0,
             Carried = [],
         };
 
@@ -123,6 +125,7 @@ public sealed class SaveFileTests
             DayFraction = 0.5,
             RowIndex = 1,
             Machines = [],
+            MilestonesReached = 0,
             Carried = [],
         };
 
@@ -161,6 +164,7 @@ public sealed class SaveFileTests
             IsFlying = false,
             DayFraction = 0.25,
             RowIndex = 0,
+            MilestonesReached = 2,
             Machines =
             [
                 new SavedMachine

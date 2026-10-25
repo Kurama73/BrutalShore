@@ -139,6 +139,7 @@ public sealed class ShoreboundGame : IGame
     private Stack _held;
 
     private readonly Recipes _recipes;
+    private readonly Progression _progression;
     private readonly Bench _bench;
     private readonly Smelting _smelting;
     private readonly Machines _machines;
@@ -199,7 +200,8 @@ public sealed class ShoreboundGame : IGame
         );
         _inventory = new Inventory(_blocks);
         _recipes = new Recipes(_blocks);
-        _bench = new Bench(_recipes);
+        _progression = new Progression(_blocks);
+        _bench = new Bench(_recipes, _progression);
         _smelting = new Smelting(_blocks);
         _machines = new Machines(_smelting);
         _drops = new Drops(options.Seed);
@@ -495,12 +497,17 @@ public sealed class ShoreboundGame : IGame
                 break;
 
             case Screen.Inventory:
-                _ui.DrawInventory(_inventory, _bench, _recipes, ref _held);
+                _ui.DrawInventory(_inventory, _bench, _recipes, _progression, ref _held);
                 break;
 
             case Screen.Machine:
                 if (OpenMachine() is { } machine)
                     _ui.DrawSmelter(machine, _smelting, _inventory, ref _held);
+                break;
+
+            case Screen.Milestones:
+                if (_ui.DrawMilestones(_progression, _inventory))
+                    Say(_progression.All[_progression.Reached - 1].Name);
                 break;
         }
     }
@@ -653,7 +660,9 @@ public sealed class ShoreboundGame : IGame
             _screen == Screen.Inventory
             && (context.Window.WasKeyPressed(GlfwKey.I) || context.Window.WasKeyPressed(GlfwKey.Tab));
 
-        if (!context.Window.WasKeyPressed(GlfwKey.Escape) && !closesInventory)
+        var closesMilestones = _screen == Screen.Milestones && context.Window.WasKeyPressed(GlfwKey.M);
+
+        if (!context.Window.WasKeyPressed(GlfwKey.Escape) && !closesInventory && !closesMilestones)
             return;
 
         switch (_screen)
@@ -677,6 +686,10 @@ public sealed class ShoreboundGame : IGame
 
             case Screen.Machine:
                 CloseMachine(context);
+                break;
+
+            case Screen.Milestones:
+                Enter(context);
                 break;
         }
     }
@@ -724,6 +737,12 @@ public sealed class ShoreboundGame : IGame
         if (window.WasKeyPressed(GlfwKey.I) || window.WasKeyPressed(GlfwKey.Tab))
         {
             _screen = Screen.Inventory;
+            window.SetMouseCaptured(false);
+        }
+
+        if (window.WasKeyPressed(GlfwKey.M))
+        {
+            _screen = Screen.Milestones;
             window.SetMouseCaptured(false);
         }
 
@@ -1048,6 +1067,7 @@ public sealed class ShoreboundGame : IGame
         _inventory.Clear();
         _bench.Grid.Clear();
         _machines.Clear();
+        _progression.Restore(0);
         _held = Stack.Nothing;
         _drops.Clear();
         _grazers.Clear();
@@ -1077,6 +1097,7 @@ public sealed class ShoreboundGame : IGame
             _inventory.Select(save.RowIndex);
             _inventory.Restore(save.Carried, _blocks.Registry);
             RestoreMachines(save.Machines);
+            _progression.Restore(save.MilestonesReached);
             _bench.Grid.Clear();
             _held = Stack.Nothing;
             _drops.Clear();
@@ -1111,6 +1132,7 @@ public sealed class ShoreboundGame : IGame
             RowIndex = _inventory.SelectedIndex,
             Carried = _inventory.Carried(_blocks.Registry),
             Machines = SavedMachines(),
+            MilestonesReached = _progression.Reached,
         };
 
         try

@@ -34,6 +34,9 @@ public enum Screen
     /// escape key has somewhere different to go from each.
     /// </remarks>
     Machine,
+
+    /// <summary>In the world, mouse free, reading what the shore still asks for.</summary>
+    Milestones,
 }
 
 /// <summary>Which screens are a menu and which are a panel over a running game.</summary>
@@ -56,7 +59,7 @@ public static class Screens
     /// <param name="screen">The screen showing.</param>
     /// <returns><see langword="true" /> for the ones drawn over a running game.</returns>
     public static bool RunsTheWorld(this Screen screen) =>
-        screen is Screen.Playing or Screen.Inventory or Screen.Machine;
+        screen is Screen.Playing or Screen.Inventory or Screen.Machine or Screen.Milestones;
 
     /// <summary>Whether the player's own keys and mouse reach the world.</summary>
     /// <param name="screen">The screen showing.</param>

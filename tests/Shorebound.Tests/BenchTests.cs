@@ -18,7 +18,11 @@ public sealed class BenchTests
     public BenchTests()
     {
         _recipes = new Recipes(_blocks);
-        _bench = new Bench(_recipes);
+
+        // Everything unlocked: these are claims about the grid, not about the progression.
+        var progression = new Progression(_blocks);
+        progression.Restore(progression.All.Count);
+        _bench = new Bench(_recipes, progression);
     }
 
     [Fact]

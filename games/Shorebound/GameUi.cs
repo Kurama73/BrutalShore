@@ -399,6 +399,7 @@ public sealed class GameUi
     /// <param name="inventory">What the player is carrying, which this moves around in place.</param>
     /// <param name="bench">The crafting grid, which this lays blocks out on and takes from.</param>
     /// <param name="recipes">The table the recipe list is read from.</param>
+    /// <param name="progression">How far the player has got, which decides what the list offers.</param>
     /// <param name="held">
     /// What the cursor is carrying between two slots, which this reads and writes. It lives
     /// outside the inventory because a stack on the cursor is in no slot at all, and lives
@@ -420,7 +421,13 @@ public sealed class GameUi
     /// method's: it reports which slot was clicked and with which button, and nothing else.
     /// </para>
     /// </remarks>
-    public void DrawInventory(Inventory inventory, Bench bench, Recipes recipes, ref Stack held)
+    public void DrawInventory(
+        Inventory inventory,
+        Bench bench,
+        Recipes recipes,
+        Progression progression,
+        ref Stack held
+    )
     {
         var viewport = ImGui.GetMainViewport();
         var scale = ImGui.GetStyle().FontScaleMain;
@@ -458,7 +465,7 @@ public sealed class GameUi
         var named = string.Empty;
         var benchTop = top + headingSize + (30f * scale);
 
-        DrawBench(inventory, bench, recipes, ref held, new float2(left, benchTop), slot, gap, ref named);
+        DrawBench(inventory, bench, recipes, progression, ref held, new float2(left, benchTop), slot, gap, ref named);
 
         var ruleY = benchTop + benchHeight + (15f * scale);
         UiCanvas.Line(new float2(left, ruleY), new float2(left + width, ruleY), UiPalette.Divider);
@@ -526,6 +533,7 @@ public sealed class GameUi
     /// <param name="inventory">What the player is carrying, for colours, names and ingredients.</param>
     /// <param name="bench">The grid, which this draws and acts on.</param>
     /// <param name="recipes">The table the list is read from.</param>
+    /// <param name="progression">How far the player has got.</param>
     /// <param name="held">What the cursor is carrying, which this reads and writes.</param>
     /// <param name="origin">The top-left corner of the grid, in screen pixels.</param>
     /// <param name="slot">How wide and tall one slot is, in screen pixels.</param>
@@ -535,6 +543,7 @@ public sealed class GameUi
         Inventory inventory,
         Bench bench,
         Recipes recipes,
+        Progression progression,
         ref Stack held,
         float2 origin,
         float slot,
@@ -619,6 +628,7 @@ public sealed class GameUi
             inventory,
             bench,
             recipes,
+            progression,
             new float2(resultMaximum.X + (22f * scale), origin.Y),
             origin.X + ((SlotSize * scale) + gap) * Inventory.RowCount - gap - resultMaximum.X - (22f * scale),
             gridHeight,
@@ -630,6 +640,7 @@ public sealed class GameUi
     /// <param name="inventory">What the player is carrying, for colours and ingredients.</param>
     /// <param name="bench">The grid a clicked recipe is laid out on.</param>
     /// <param name="recipes">The table to list.</param>
+    /// <param name="progression">How far the player has got, which decides what is listed.</param>
     /// <param name="origin">The top-left corner of the list, in screen pixels.</param>
     /// <param name="width">How wide the list is, in pixels.</param>
     /// <param name="height">How tall it is, in pixels.</param>
@@ -638,6 +649,7 @@ public sealed class GameUi
         Inventory inventory,
         Bench bench,
         Recipes recipes,
+        Progression progression,
         float2 origin,
         float width,
         float height,
@@ -645,17 +657,22 @@ public sealed class GameUi
     )
     {
         var size = ImGui.GetFontSize() * 0.82f;
-        var rowHeight = height / recipes.All.Count;
+
+        // Locked recipes are listed, not hidden. What is coming is half of why the next milestone
+        // is worth paying for, and a list that grew without warning would never do that job.
+        var listed = recipes.All;
+        var rowHeight = height / listed.Count;
         var swatch = float.Min(rowHeight - (5f * scale), 18f * scale);
         var mouse = ImGui.GetMousePos();
 
-        for (var index = 0; index < recipes.All.Count; index++)
+        for (var index = 0; index < listed.Count; index++)
         {
-            var recipe = recipes.All[index];
+            var recipe = listed[index];
+            var unlocked = progression.IsUnlocked(recipe.Name);
             var minimum = new float2(origin.X, origin.Y + (index * rowHeight));
             var maximum = new float2(origin.X + width, minimum.Y + rowHeight - (3f * scale));
 
-            var affordable = CanMake(recipe, inventory);
+            var affordable = unlocked && CanMake(recipe, inventory);
             var over =
                 mouse.X >= minimum.X && mouse.X < maximum.X && mouse.Y >= minimum.Y && mouse.Y < maximum.Y;
 
@@ -676,8 +693,8 @@ public sealed class GameUi
 
             UiCanvas.Text(
                 new float2(minimum.X + inset + swatch + (8f * scale), minimum.Y + ((rowHeight - size) * 0.5f) - (2f * scale)),
-                affordable ? UiPalette.Text : UiPalette.Fade(UiPalette.MutedText, 0.55f),
-                recipe.Name,
+                affordable ? UiPalette.Text : UiPalette.Fade(UiPalette.MutedText, unlocked ? 0.55f : 0.32f),
+                unlocked ? recipe.Name : "locked",
                 size
             );
 
@@ -706,6 +723,181 @@ public sealed class GameUi
         }
 
         return true;
+    }
+
+    /// <summary>Draws the line of milestones, and the one that can be paid for now.</summary>
+    /// <param name="progression">How far the player has got, which this hands in against.</param>
+    /// <param name="inventory">What they are carrying, for whether the next step is affordable.</param>
+    /// <returns>Whether the player paid for a step this frame.</returns>
+    /// <remarks>
+    /// <para>
+    /// The whole line at once, with what is done behind and what is coming ahead. A progression
+    /// shown one step at a time is a progression a player cannot plan against, and planning two
+    /// steps ahead — mining copper knowing what the iron is for — is most of what makes the
+    /// middle of this game worth playing.
+    /// </para>
+    /// <para>
+    /// The story line of a step is shown whether it is done or not. Reading it before is a reason
+    /// to go and do it; reading it after is the only reward a milestone gives that is not an
+    /// unlock.
+    /// </para>
+    /// </remarks>
+    public bool DrawMilestones(Progression progression, Inventory inventory)
+    {
+        var viewport = ImGui.GetMainViewport();
+        var scale = ImGui.GetStyle().FontScaleMain;
+        var handedIn = false;
+
+        FullScreen("milestones"u8);
+        UiCanvas.Scrim(1f);
+
+        var width = float.Min(680f * scale, viewport.Size.X - (80f * scale));
+        var rowHeight = 96f * scale;
+        var headingSize = ImGui.GetFontSize() * 1.05f;
+        var height = headingSize + (26f * scale) + (progression.All.Count * rowHeight) + (76f * scale);
+
+        var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
+        var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
+
+        UiCanvas.Panel(new float2(left, top), new float2(left + width, top + height), PanelCut * scale, scale);
+        var listTop = UiCanvas.PanelHeading(new float2(left, top), width, "The shore asks", scale) + (16f * scale);
+
+        var inset = 22f * scale;
+        var size = ImGui.GetFontSize() * 0.86f;
+        var smallSize = ImGui.GetFontSize() * 0.78f;
+
+        for (var index = 0; index < progression.All.Count; index++)
+        {
+            var milestone = progression.All[index];
+            var done = index < progression.Reached;
+            var current = index == progression.Reached;
+
+            var rowTop = listTop + (index * rowHeight);
+            var minimum = new float2(left + inset, rowTop);
+            var maximum = new float2(left + width - inset, rowTop + rowHeight - (10f * scale));
+
+            UiCanvas.Chamfer(
+                minimum,
+                maximum,
+                current ? UiPalette.Control : UiPalette.Fade(UiPalette.Recess, done ? 0.75f : 0.5f),
+                7f * scale
+            );
+
+            // The marker down the left edge says which of the three states this row is in without
+            // a word: filled for done, accent for the one in hand, dark for what is still ahead.
+            UiCanvas.Chamfer(
+                minimum,
+                new float2(minimum.X + (5f * scale), maximum.Y),
+                done ? UiPalette.Fade(UiPalette.Accent, 0.5f) : current ? UiPalette.Accent : UiPalette.Divider,
+                3f * scale
+            );
+
+            if (current)
+                UiCanvas.ChamferOutline(minimum, maximum, UiPalette.Fade(UiPalette.Accent, 0.7f), 7f * scale, scale);
+
+            var textLeft = minimum.X + (20f * scale);
+            UiCanvas.TrackedText(
+                new float2(textLeft, rowTop + (12f * scale)),
+                done ? UiPalette.Fade(UiPalette.Text, 0.6f) : current ? UiPalette.Accent : UiPalette.MutedText,
+                milestone.Name.ToUpperInvariant(),
+                size,
+                2f * scale
+            );
+
+            UiCanvas.Text(
+                new float2(textLeft, rowTop + (12f * scale) + size + (8f * scale)),
+                UiPalette.Fade(UiPalette.MutedText, done ? 0.7f : 1f),
+                Wrapped(milestone.Story, width - (inset * 2f) - (40f * scale), smallSize),
+                smallSize
+            );
+
+            var costText = done
+                ? "done"
+                : string.Join("   ", milestone.Cost.Select(part => $"{inventory.NameOf(part.Block)} ×{part.Count}"));
+
+            UiCanvas.Text(
+                new float2(textLeft, maximum.Y - smallSize - (10f * scale)),
+                done ? UiPalette.Fade(UiPalette.Accent, 0.6f) : UiPalette.Text,
+                costText,
+                smallSize
+            );
+        }
+
+        var buttonTop = listTop + (progression.All.Count * rowHeight) + (8f * scale);
+        var buttonWidth = 240f * scale;
+
+        if (progression.IsFinished)
+        {
+            UiCanvas.Text(
+                new float2(left + inset, buttonTop + (12f * scale)),
+                UiPalette.Accent,
+                "The shore has nothing else to ask of you.",
+                size
+            );
+        }
+        else if (progression.CanAfford(inventory))
+        {
+            UiControls.BeginColumn(
+                "handin",
+                new float2(left + inset, buttonTop),
+                new float2(buttonWidth, UiControls.EntryHeight * scale * 1.2f)
+            );
+
+            if (_controls.Entry("Hand it in", buttonWidth, emphasis: true))
+                handedIn = progression.HandIn(inventory) is not null;
+
+            UiControls.EndColumn();
+        }
+        else
+        {
+            UiCanvas.Text(
+                new float2(left + inset, buttonTop + (12f * scale)),
+                UiPalette.MutedText,
+                "Not enough yet.",
+                size
+            );
+        }
+
+        var footSize = ImGui.GetFontSize() * 0.82f;
+        UiCanvas.Text(
+            new float2(left + width - inset - UiCanvas.Measure("M or escape to close", footSize).X, top + height - footSize - (16f * scale)),
+            UiPalette.MutedText,
+            "M or escape to close",
+            footSize
+        );
+
+        ImGui.End();
+        return handedIn;
+    }
+
+    /// <summary>Breaks a line of prose onto as many lines as it needs.</summary>
+    /// <remarks>
+    /// Measured word by word rather than counted by characters, because the font is proportional
+    /// and a column counted in characters is a column that is ragged on one side and overflowing
+    /// on the other.
+    /// </remarks>
+    private static string Wrapped(string text, float width, float size)
+    {
+        var lines = new List<string>();
+        var line = string.Empty;
+
+        foreach (var word in text.Split(' '))
+        {
+            var candidate = line.Length == 0 ? word : $"{line} {word}";
+            if (line.Length > 0 && UiCanvas.Measure(candidate, size).X > width)
+            {
+                lines.Add(line);
+                line = word;
+                continue;
+            }
+
+            line = candidate;
+        }
+
+        if (line.Length > 0)
+            lines.Add(line);
+
+        return string.Join('\n', lines);
     }
 
     /// <summary>Draws a smelter: what goes in, what it burns, and what has come out.</summary>

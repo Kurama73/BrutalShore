@@ -17,16 +17,22 @@ namespace Shorebound;
 public sealed class Bench
 {
     private readonly Recipes _recipes;
+    private readonly Progression _progression;
 
     /// <summary>Builds an empty grid.</summary>
     /// <param name="recipes">The table that says what an arrangement makes.</param>
-    public Bench(Recipes recipes) => _recipes = recipes;
+    /// <param name="progression">How far the player has got, which decides what is allowed.</param>
+    public Bench(Recipes recipes, Progression progression)
+    {
+        _recipes = recipes;
+        _progression = progression;
+    }
 
     /// <summary>The slots the player lays blocks out in.</summary>
     public Slots Grid { get; } = new(Recipes.GridSize);
 
     /// <summary>What the grid currently makes, or nothing.</summary>
-    public Stack Result => _recipes.Match(Grid);
+    public Stack Result => _recipes.Match(Grid, _progression);
 
     /// <summary>Makes one of whatever the grid makes, spending what it took.</summary>
     /// <returns>What was made, or <see cref="Stack.Nothing" /> if the grid makes nothing.</returns>

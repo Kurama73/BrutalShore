@@ -103,9 +103,15 @@ public sealed class Recipes
 
     /// <summary>What a grid of blocks currently makes.</summary>
     /// <param name="grid">The crafting slots, row by row from the top left.</param>
+    /// <param name="progression">
+    /// How far the player has got, which decides what they are allowed to make. A locked recipe
+    /// is refused here and not merely hidden from the list: hiding it alone would mean a player
+    /// who laid the pattern out by guessing got the thing anyway, which makes the whole
+    /// progression an inconvenience rather than a gate.
+    /// </param>
     /// <returns>What would come out, or <see cref="Stack.Nothing" />.</returns>
     /// <exception cref="ArgumentException">If the grid is not <see cref="GridSize" /> slots.</exception>
-    public Stack Match(Slots grid)
+    public Stack Match(Slots grid, Progression progression)
     {
         if (grid.Count != GridSize)
             throw new ArgumentException($"the grid is {GridSize} slots", nameof(grid));
@@ -119,7 +125,7 @@ public sealed class Recipes
                 continue;
 
             if (Fits(grid, recipe, left, top))
-                return new Stack(recipe.Result, recipe.Count);
+                return progression.IsUnlocked(recipe.Name) ? new Stack(recipe.Result, recipe.Count) : Stack.Nothing;
         }
 
         return Stack.Nothing;
