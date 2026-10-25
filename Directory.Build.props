@@ -1,0 +1,30 @@
+<Project>
+
+  <!--
+    Settings every project in the repository inherits. A member project declares what it is
+    (library, executable, test) and nothing else; anything written here twice is a setting that
+    has started to drift.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- BRUTAL hands C# raw pointers to native APIs; every project that touches it needs this. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- The engineering gate: a warning is a defect, including the ones BRUTAL's own analyzers raise. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Public API without a doc comment is a build error, the way missing_docs was in the Rust crates. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- A simulation that formats numbers differently depending on the machine's locale is a bug. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <RootNamespace>$(MSBuildProjectName)</RootNamespace>
+  </PropertyGroup>
+
+</Project>

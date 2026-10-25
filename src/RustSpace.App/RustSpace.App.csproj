@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../RustSpace.Core/RustSpace.Core.csproj" />
+    <ProjectReference Include="../RustSpace.Orbital/RustSpace.Orbital.csproj" />
+    <ProjectReference Include="../RustSpace.Render/RustSpace.Render.csproj" />
+  </ItemGroup>
+
+</Project>

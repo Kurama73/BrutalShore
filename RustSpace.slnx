@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RustSpace.Core/RustSpace.Core.csproj" />
+    <Project Path="src/RustSpace.Orbital/RustSpace.Orbital.csproj" />
+    <Project Path="src/RustSpace.Render/RustSpace.Render.csproj" />
+    <Project Path="src/RustSpace.App/RustSpace.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RustSpace.Orbital.Tests/RustSpace.Orbital.Tests.csproj" />
+  </Folder>
+</Solution>

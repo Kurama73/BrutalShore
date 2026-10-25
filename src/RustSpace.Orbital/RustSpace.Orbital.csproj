@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../RustSpace.Core/RustSpace.Core.csproj" />
+  </ItemGroup>
+
+</Project>
