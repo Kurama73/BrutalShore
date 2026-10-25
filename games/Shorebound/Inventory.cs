@@ -17,7 +17,7 @@ namespace Shorebound;
 /// reason is never "a game like this one has them".
 /// </para>
 /// </remarks>
-public sealed class Hotbar
+public sealed class Inventory
 {
     /// <summary>How many slots there are.</summary>
     public const int SlotCount = 9;
@@ -35,7 +35,7 @@ public sealed class Hotbar
 
     /// <summary>Builds an empty row.</summary>
     /// <param name="blocks">The game's registered block types, for names and colours.</param>
-    public Hotbar(GameBlocks blocks) => _blocks = blocks;
+    public Inventory(GameBlocks blocks) => _blocks = blocks;
 
     /// <summary>How many slots there are.</summary>
     public int Count => SlotCount;

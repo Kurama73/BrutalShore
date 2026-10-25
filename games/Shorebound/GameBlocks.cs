@@ -110,7 +110,7 @@ public sealed class GameBlocks
     /// <remarks>
     /// See-through, walked into rather than onto, swum in, and drawn in the pass after everything
     /// solid. What it is not is a fluid: a placed block of it would be a cube of sea, which is why
-    /// the hotbar leaves it out.
+    /// the inventory leaves it out.
     /// </remarks>
     public BlockId Water { get; }
 

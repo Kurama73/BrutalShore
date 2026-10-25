@@ -37,26 +37,26 @@ public sealed class DropsTests
     public void a_block_that_broke_is_picked_up_by_a_player_standing_over_it()
     {
         var drops = new Drops(seed: 1);
-        var hotbar = new Hotbar(_blocks);
+        var inventory = new Inventory(_blocks);
         drops.Spawn(_blocks.Dirt, new int3(4, 11, 4));
 
-        Run(drops, seconds: 3.0, playerAt: new double3(4.5, 11.0, 4.5), hotbar);
+        Run(drops, seconds: 3.0, playerAt: new double3(4.5, 11.0, 4.5), inventory);
 
         Assert.Equal(0, drops.Count);
-        Assert.Equal((_blocks.Dirt, 1), hotbar.At(0));
+        Assert.Equal((_blocks.Dirt, 1), inventory.At(0));
     }
 
     [Fact]
     public void a_block_that_broke_far_away_is_left_where_it_fell()
     {
         var drops = new Drops(seed: 1);
-        var hotbar = new Hotbar(_blocks);
+        var inventory = new Inventory(_blocks);
         drops.Spawn(_blocks.Dirt, new int3(4, 11, 4));
 
-        Run(drops, seconds: 3.0, playerAt: Far, hotbar);
+        Run(drops, seconds: 3.0, playerAt: Far, inventory);
 
         Assert.Equal(1, drops.Count);
-        Assert.False(hotbar.HasSelection);
+        Assert.False(inventory.HasSelection);
     }
 
     [Fact]
@@ -65,25 +65,25 @@ public sealed class DropsTests
         // Otherwise breaking a block is indistinguishable from it vanishing into the row, and
         // the whole point of a drop is that something visibly happened.
         var drops = new Drops(seed: 1);
-        var hotbar = new Hotbar(_blocks);
+        var inventory = new Inventory(_blocks);
         drops.Spawn(_blocks.Dirt, new int3(4, 11, 4));
 
-        drops.Step(_world, _blocks.Registry, Step, new double3(4.5, 11.0, 4.5), hotbar);
+        drops.Step(_world, _blocks.Registry, Step, new double3(4.5, 11.0, 4.5), inventory);
 
         Assert.Equal(1, drops.Count);
-        Assert.False(hotbar.HasSelection);
+        Assert.False(inventory.HasSelection);
     }
 
     [Fact]
     public void a_drop_a_full_row_cannot_take_stays_on_the_ground()
     {
         var drops = new Drops(seed: 1);
-        var hotbar = new Hotbar(_blocks);
-        for (var slot = 0; slot < Hotbar.SlotCount; slot++)
-            hotbar.Add(_blocks.Stone, Hotbar.StackSize);
+        var inventory = new Inventory(_blocks);
+        for (var slot = 0; slot < Inventory.SlotCount; slot++)
+            inventory.Add(_blocks.Stone, Inventory.StackSize);
 
         drops.Spawn(_blocks.Dirt, new int3(4, 11, 4));
-        Run(drops, seconds: 3.0, playerAt: new double3(4.5, 11.0, 4.5), hotbar);
+        Run(drops, seconds: 3.0, playerAt: new double3(4.5, 11.0, 4.5), inventory);
 
         Assert.Equal(1, drops.Count);
     }
@@ -125,9 +125,9 @@ public sealed class DropsTests
     /// <summary>Somewhere no drop could ever be picked up from.</summary>
     private static double3 Far => new(500.0, 11.0, 500.0);
 
-    private void Run(Drops drops, double seconds, double3 playerAt, Hotbar? hotbar = null)
+    private void Run(Drops drops, double seconds, double3 playerAt, Inventory? inventory = null)
     {
-        var row = hotbar ?? new Hotbar(_blocks);
+        var row = inventory ?? new Inventory(_blocks);
         for (var tick = 0; tick < seconds / Step; tick++)
             drops.Step(_world, _blocks.Registry, Step, playerAt, row);
     }

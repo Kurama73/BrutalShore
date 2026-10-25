@@ -47,8 +47,8 @@ public sealed record SaveFile
     /// <summary>How many days have passed, the fraction being the time of day.</summary>
     public required double DayFraction { get; init; }
 
-    /// <summary>Which hotbar slot was in hand.</summary>
-    public required int HotbarIndex { get; init; }
+    /// <summary>Which slot of the row was in hand.</summary>
+    public required int RowIndex { get; init; }
 
     /// <summary>What was in each slot: a block's name and how many of it, in slot order.</summary>
     /// <remarks>
@@ -85,7 +85,7 @@ public sealed record SaveFile
             writer.Write(Pitch);
             writer.Write(IsFlying);
             writer.Write(DayFraction);
-            writer.Write(HotbarIndex);
+            writer.Write(RowIndex);
 
             writer.Write(Carried.Count);
             foreach (var (block, count) in Carried)
@@ -129,7 +129,7 @@ public sealed record SaveFile
             Pitch = reader.ReadSingle(),
             IsFlying = reader.ReadBoolean(),
             DayFraction = reader.ReadDouble(),
-            HotbarIndex = reader.ReadInt32(),
+            RowIndex = reader.ReadInt32(),
             Carried = version >= 2 ? ReadCarried(reader) : [],
         };
 

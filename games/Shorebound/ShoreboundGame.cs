@@ -13,7 +13,7 @@ namespace Shorebound;
 /// <remarks>
 /// <para>
 /// This is the whole of what the engine does not know. It owns the block set, the terrain, the
-/// player's body, the clock, the hotbar, the menus and the save file; the engine owns chunks,
+/// player's body, the clock, the inventory, the menus and the save file; the engine owns chunks,
 /// meshing, streaming, pipelines and the frame. The two meet at
 /// <see cref="IChunkGenerator" /> and at <see cref="IGame" />, and nowhere else.
 /// </para>
@@ -133,7 +133,7 @@ public sealed class ShoreboundGame : IGame
     private readonly VoxelWorld _world;
     private readonly Camera _camera = new();
     private readonly Player _player = new();
-    private readonly Hotbar _hotbar;
+    private readonly Inventory _inventory;
     private readonly GameUi _ui = new();
     private readonly DayClock _clock;
     private readonly TitleCamera _titleCamera;
@@ -186,7 +186,7 @@ public sealed class ShoreboundGame : IGame
             _generator,
             new ChunkStreamer(_generator, WorkerCount, StreamingQueueCapacity)
         );
-        _hotbar = new Hotbar(_blocks);
+        _inventory = new Inventory(_blocks);
         _drops = new Drops(options.Seed);
         _grazers = new Grazers(options.Seed);
         _clock = new DayClock(options.StartHour, _settings.DayLengthSeconds);
@@ -307,7 +307,7 @@ public sealed class ShoreboundGame : IGame
                 _drops.Spawn(fallen, broken);
         }
 
-        _drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _hotbar);
+        _drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _inventory);
         _grazers.Step(_world, _world.Registry, seconds, _player.FeetMeters);
         _player.Step(_world, _world.Registry, seconds, _controller.ReadIntent(), _camera.Yaw);
         _camera.Position = _player.EyeMeters;
@@ -453,11 +453,11 @@ public sealed class ShoreboundGame : IGame
 
             case Screen.Playing:
                 _ui.DrawCrosshair(_aimedAt is not null);
-                _ui.DrawHotbar(_hotbar);
+                _ui.DrawRow(_inventory);
                 break;
 
             case Screen.Paused:
-                _ui.DrawHotbar(_hotbar);
+                _ui.DrawRow(_inventory);
                 Choose(context, _ui.DrawPause(_options.SavePath));
                 break;
 
@@ -636,22 +636,22 @@ public sealed class ShoreboundGame : IGame
         if (window.WasKeyPressed(GlfwKey.F))
             _player.IsFlying = !_player.IsFlying;
 
-        for (var slot = 0; slot < _hotbar.Count; slot++)
+        for (var slot = 0; slot < _inventory.Count; slot++)
         {
             if (window.WasKeyPressed(GlfwKey.Number1 + slot))
-                _hotbar.Select(slot);
+                _inventory.Select(slot);
         }
 
         if (window.WasKeyPressed(GlfwKey.Q))
-            _hotbar.Cycle(-1);
+            _inventory.Cycle(-1);
 
         if (window.WasKeyPressed(GlfwKey.E))
-            _hotbar.Cycle(1);
+            _inventory.Cycle(1);
 
         // The wheel, the way every game of this kind does it: away from the hand moves left along
         // the row, which is the direction the numbers count down in.
         if (window.ScrollDelta != 0.0)
-            _hotbar.Cycle(window.ScrollDelta > 0.0 ? -1 : 1);
+            _inventory.Cycle(window.ScrollDelta > 0.0 ? -1 : 1);
 
         if (window.WasMouseButtonPressed(GlfwMouseButton.Right))
             Place();
@@ -701,7 +701,7 @@ public sealed class ShoreboundGame : IGame
     /// </remarks>
     private HeldLight CarriedLight()
     {
-        var emission = _hotbar.SelectedEmission;
+        var emission = _inventory.SelectedEmission;
         if (_screen != Screen.Playing || emission == 0)
             return HeldLight.None;
 
@@ -787,14 +787,14 @@ public sealed class ShoreboundGame : IGame
         if (_player.WouldBeInsideMe(hit.Before))
             return;
 
-        if (!_hotbar.HasSelection)
+        if (!_inventory.HasSelection)
             return;
 
         // Spent only if it went down. A placement refused by the world — because something is
         // already there — must not cost the block, or a player tapping at a wall empties their
         // hand into nothing.
-        if (_world.SetBlock(hit.Before, _hotbar.Selected))
-            _hotbar.TakeOne();
+        if (_world.SetBlock(hit.Before, _inventory.Selected))
+            _inventory.TakeOne();
     }
 
     /// <summary>Acts on what a menu reported.</summary>
@@ -848,7 +848,7 @@ public sealed class ShoreboundGame : IGame
     private void StartFreshWorld()
     {
         _world.Edits.Clear();
-        _hotbar.Clear();
+        _inventory.Clear();
         _drops.Clear();
         _grazers.Clear();
 
@@ -874,8 +874,8 @@ public sealed class ShoreboundGame : IGame
             _player.TeleportTo(save.FeetMeters);
             _player.IsFlying = save.IsFlying;
             _controller.AimAt(save.Yaw, save.Pitch);
-            _hotbar.Select(save.HotbarIndex);
-            _hotbar.Restore(save.Carried, _blocks.Registry);
+            _inventory.Select(save.RowIndex);
+            _inventory.Restore(save.Carried, _blocks.Registry);
             _drops.Clear();
             _grazers.Clear();
             _clock.SetDayFraction(save.DayFraction);
@@ -905,8 +905,8 @@ public sealed class ShoreboundGame : IGame
             Pitch = _camera.Pitch,
             IsFlying = _player.IsFlying,
             DayFraction = _clock.DayFraction,
-            HotbarIndex = _hotbar.SelectedIndex,
-            Carried = _hotbar.Carried(_blocks.Registry),
+            RowIndex = _inventory.SelectedIndex,
+            Carried = _inventory.Carried(_blocks.Registry),
         };
 
         try

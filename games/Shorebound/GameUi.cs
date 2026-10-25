@@ -3,7 +3,7 @@ using BrutalShore.Ui;
 
 namespace Shorebound;
 
-/// <summary>What the player sees over the world: the crosshair, the hotbar, and the menus.</summary>
+/// <summary>What the player sees over the world: the crosshair, the row it carries, and the menus.</summary>
 /// <remarks>
 /// <para>
 /// Drawn rather than laid out. Every panel here is an ImGui window with no decoration and no
@@ -100,29 +100,29 @@ public sealed class GameUi
     }
 
     /// <summary>Draws the row of blocks along the bottom of the screen.</summary>
-    /// <param name="hotbar">The row to draw.</param>
+    /// <param name="inventory">The row to draw.</param>
     /// <remarks>
     /// A row of swatches rather than a row of words. The thing a player is choosing between is
     /// blocks, and a block is a colour in this game — so the colour is the label, the count is
     /// in the corner where every game of this kind puts it, and the name appears once, over
     /// whichever one is in hand.
     /// </remarks>
-    public void DrawHotbar(Hotbar hotbar)
+    public void DrawRow(Inventory inventory)
     {
         var viewport = ImGui.GetMainViewport();
         var scale = ImGui.GetStyle().FontScaleMain;
 
         var slot = 46f * scale;
         var gap = 6f * scale;
-        var totalWidth = (slot * hotbar.Count) + (gap * (hotbar.Count - 1));
+        var totalWidth = (slot * inventory.Count) + (gap * (inventory.Count - 1));
         var left = viewport.Pos.X + ((viewport.Size.X - totalWidth) * 0.5f);
         var bottom = viewport.Pos.Y + viewport.Size.Y - (34f * scale);
         var top = bottom - slot;
 
-        FullScreen("hotbar"u8, takesInput: false);
+        FullScreen("row"u8, takesInput: false);
 
         var size = ImGui.GetFontSize();
-        var name = hotbar.SelectedName;
+        var name = inventory.SelectedName;
         var nameWidth = UiCanvas.Measure(name, size).X;
         UiCanvas.Text(
             new float2(viewport.Pos.X + ((viewport.Size.X - nameWidth) * 0.5f), top - size - (10f * scale)),
@@ -131,10 +131,10 @@ public sealed class GameUi
             size
         );
 
-        for (var index = 0; index < hotbar.Count; index++)
+        for (var index = 0; index < inventory.Count; index++)
         {
-            var chosen = index == hotbar.SelectedIndex;
-            var count = hotbar.At(index).Count;
+            var chosen = index == inventory.SelectedIndex;
+            var count = inventory.At(index).Count;
             var x = left + (index * (slot + gap));
             var lift = chosen ? 4f * scale : 0f;
             var minimum = new float2(x, top - lift);
@@ -148,7 +148,7 @@ public sealed class GameUi
                 UiCanvas.Rect(
                     minimum + new float2(inset, inset),
                     maximum - new float2(inset, inset),
-                    UiPalette.Fade(hotbar.ColorOf(index), chosen ? 1f : 0.85f),
+                    UiPalette.Fade(inventory.ColorOf(index), chosen ? 1f : 0.85f),
                     3f * scale
                 );
             }

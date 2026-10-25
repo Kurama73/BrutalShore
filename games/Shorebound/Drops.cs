@@ -109,14 +109,14 @@ public sealed class Drops
     /// <param name="registry">Where a block id is resolved to whether it stops a body.</param>
     /// <param name="seconds">How long this step is.</param>
     /// <param name="playerFeetMeters">Where the player's feet are.</param>
-    /// <param name="hotbar">Where a collected block goes.</param>
+    /// <param name="inventory">Where a collected block goes.</param>
     /// <returns>How many were picked up.</returns>
     public int Step(
         IVoxelSource world,
         BlockRegistry registry,
         double seconds,
         double3 playerFeetMeters,
-        Hotbar hotbar
+        Inventory inventory
     )
     {
         // Measured to the player's middle rather than their feet, so a block beside them on flat
@@ -135,7 +135,7 @@ public sealed class Drops
                 continue;
             }
 
-            if (drop.AgeSeconds >= SettleSeconds && Near(drop, middle) && hotbar.Add(drop.Block, 1) > 0)
+            if (drop.AgeSeconds >= SettleSeconds && Near(drop, middle) && inventory.Add(drop.Block, 1) > 0)
             {
                 _drops.RemoveAt(index);
                 collected++;

@@ -24,7 +24,7 @@ public sealed class SaveFileTests
             Pitch = -0.4f,
             IsFlying = false,
             DayFraction = 3.6,
-            HotbarIndex = 2,
+            RowIndex = 2,
             Carried = [("stone", 9), (string.Empty, 0)],
         };
 
@@ -63,7 +63,7 @@ public sealed class SaveFileTests
             Pitch = 0f,
             IsFlying = true,
             DayFraction = 0.0,
-            HotbarIndex = 0,
+            RowIndex = 0,
             Carried = [],
         };
 
@@ -119,7 +119,7 @@ public sealed class SaveFileTests
             Pitch = 0f,
             IsFlying = false,
             DayFraction = 0.5,
-            HotbarIndex = 1,
+            RowIndex = 1,
             Carried = [],
         };
 
