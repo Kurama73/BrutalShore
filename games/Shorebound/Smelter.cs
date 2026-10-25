@@ -16,8 +16,10 @@ namespace Shorebound;
 /// can be tested by stepping it rather than by building a world around it.
 /// </para>
 /// </remarks>
-public sealed class Smelter
+public sealed class Smelter : IMachine
 {
+    private Smelting? _smelting;
+
     /// <summary>What is waiting to be melted.</summary>
     public Slots Input { get; } = new(1);
 
@@ -66,6 +68,11 @@ public sealed class Smelter
     /// </remarks>
     public void Step(Smelting smelting, double seconds)
     {
+        // Kept so that a belt can hand this machine a block without knowing what melts. The
+        // alternative is passing the tables into Offer, which would put them in the interface
+        // every machine shares for the sake of the one that needs them.
+        _smelting = smelting;
+
         var job = Job(smelting);
 
         if (job is null)
@@ -91,6 +98,41 @@ public sealed class Smelter
         Input.TakeOne(0);
         Output.Add(job.Value.Result, 1);
         WorkedSeconds = 0f;
+    }
+
+    /// <inheritdoc />
+    public void Step(in MachineStep step) => Step(step.Smelting, step.Seconds);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The routing is the machine's own, not the belt's. A belt pointed at a smelter carries
+    /// whatever it carries and would otherwise need to know which of the two slots a lump of
+    /// coal belongs in; asking the smelter means one belt can feed it both its ore and its fuel,
+    /// which is exactly how a player wants to lay a line out.
+    /// </remarks>
+    public bool Offer(BlockId block)
+    {
+        if (block.IsAir || _smelting is null)
+            return false;
+
+        // Work before fuel. Coal is the one block that is both — it melts into nothing, so it is
+        // only ever fuel — but a block that was both would be more use being made into something
+        // than being burnt.
+        if (_smelting.Melts(block) is not null && Input.Add(block, 1) > 0)
+            return true;
+
+        return _smelting.BurnSeconds(block) > 0f && Fuel.Add(block, 1) > 0;
+    }
+
+    /// <inheritdoc />
+    public BlockId? TakeOut()
+    {
+        var made = Output.At(0);
+        if (made.IsNothing)
+            return null;
+
+        Output.TakeOne(0);
+        return made.Block;
     }
 
     /// <summary>Everything in it, for when the block is broken and has to give it all back.</summary>

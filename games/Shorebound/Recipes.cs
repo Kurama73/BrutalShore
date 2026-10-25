@@ -74,6 +74,36 @@ public sealed class Recipes
                 1
             ),
 
+            // A belt: three planks under three copper. Cheap on purpose — a factory is made of
+            // hundreds of these and a player who has to think about the cost of one is a player
+            // laying out a line one block at a time.
+            new Recipe(
+                "conveyor",
+                3,
+                2,
+                [
+                    blocks.CopperIngot, blocks.CopperIngot, blocks.CopperIngot,
+                    blocks.Planks, blocks.Planks, blocks.Planks,
+                ],
+                blocks.Conveyor,
+                6
+            ),
+
+            // A drill: iron over a smelter's worth of brick, with copper at the shoulders. The
+            // expensive one, because one of these replaces the player at the rock face.
+            new Recipe(
+                "miner",
+                3,
+                3,
+                [
+                    blocks.IronIngot, blocks.IronIngot, blocks.IronIngot,
+                    blocks.CopperIngot, blocks.StoneBrick, blocks.CopperIngot,
+                    blocks.StoneBrick, blocks.StoneBrick, blocks.StoneBrick,
+                ],
+                blocks.Miner,
+                1
+            ),
+
             // Nine ingots into one block. Packing, so that a long session at a smelter comes back
             // as something that fits in the row rather than filling the pack. Ingots and not ore,
             // because ore that could be packed straight into a block would make the smelter an

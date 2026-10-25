@@ -53,11 +53,25 @@ public sealed class Progression
                 ["lantern"]
             ),
             new Milestone(
+                "The line",
+                "Carrying it yourself is the part that does not scale. Lay something down that "
+                    + "carries it for you, and the shore stops being a walk and starts being a works.",
+                [(blocks.CopperIngot, 24), (blocks.Planks, 24)],
+                ["conveyor"]
+            ),
+            new Milestone(
                 "Ironworks",
                 "Iron is at the bottom, under the copper and under the coal. Reaching it is the "
                     + "last thing this shore asks of you that it has not already asked twice.",
                 [(blocks.IronIngot, 24)],
                 ["iron block"]
+            ),
+            new Milestone(
+                "Hands off",
+                "A drill does not get tired and does not need to see. Put one on a seam, run a "
+                    + "belt to a fire, and the shore will work itself while you sleep.",
+                [(blocks.IronIngot, 40), (blocks.StoneBrick, 32)],
+                ["miner"]
             ),
         ];
     }

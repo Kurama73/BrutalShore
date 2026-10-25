@@ -3,7 +3,7 @@ using BrutalShore.World;
 
 namespace Shorebound;
 
-/// <summary>Every smelter standing in the world, and where each of them is.</summary>
+/// <summary>Every machine standing in the world, and where each of them is.</summary>
 /// <remarks>
 /// <para>
 /// A map from a block coordinate to the machine at it, kept beside the world rather than inside
@@ -26,60 +26,123 @@ namespace Shorebound;
 /// </remarks>
 public sealed class Machines
 {
-    private readonly Dictionary<int3, Smelter> _smelters = [];
+    private readonly Dictionary<int3, IMachine> _machines = [];
     private readonly Smelting _smelting;
+    private readonly List<int3> _order = [];
 
     /// <summary>Builds an empty set of machines.</summary>
     /// <param name="smelting">The tables each smelter is run against.</param>
     public Machines(Smelting smelting) => _smelting = smelting;
 
     /// <summary>How many machines there are, for the overlay.</summary>
-    public int Count => _smelters.Count;
+    public int Count => _machines.Count;
 
     /// <summary>Every machine and where it stands, for a save file.</summary>
-    public IEnumerable<KeyValuePair<int3, Smelter>> All => _smelters;
+    public IEnumerable<KeyValuePair<int3, IMachine>> All => _machines;
 
     /// <summary>The machine at a block coordinate, or nothing.</summary>
     /// <param name="position">Where to look.</param>
-    /// <returns>The smelter there, or <see langword="null" />.</returns>
-    public Smelter? At(int3 position) => _smelters.GetValueOrDefault(position);
+    /// <returns>What is there, or <see langword="null" />.</returns>
+    public IMachine? At(int3 position) => _machines.GetValueOrDefault(position);
 
-    /// <summary>Puts an empty machine at a coordinate, replacing whatever was there.</summary>
+    /// <summary>The smelter at a block coordinate, or nothing if it is something else.</summary>
+    /// <param name="position">Where to look.</param>
+    /// <returns>The smelter there, or <see langword="null" />.</returns>
+    /// <remarks>
+    /// Asked for separately because one caller genuinely needs the type back: the screen that
+    /// shows a smelter's three slots and two gauges is a smelter's screen, and a belt has nothing
+    /// to show it.
+    /// </remarks>
+    public Smelter? SmelterAt(int3 position) => _machines.GetValueOrDefault(position) as Smelter;
+
+    /// <summary>Puts a machine at a coordinate, replacing whatever was there.</summary>
     /// <param name="position">Where it goes.</param>
+    /// <param name="machine">What goes there.</param>
     /// <returns>The machine, so that a save file can fill it in.</returns>
-    public Smelter Place(int3 position) => _smelters[position] = new Smelter();
+    public IMachine Place(int3 position, IMachine machine)
+    {
+        if (!_machines.ContainsKey(position))
+            _order.Add(position);
+
+        _machines[position] = machine;
+        return machine;
+    }
 
     /// <summary>Takes the machine at a coordinate away.</summary>
     /// <param name="position">Where it was.</param>
     /// <returns>It, so that what was inside can be dropped, or <see langword="null" />.</returns>
-    public Smelter? Remove(int3 position)
+    public IMachine? Remove(int3 position)
     {
-        if (!_smelters.Remove(position, out var machine))
+        if (!_machines.Remove(position, out var machine))
             return null;
 
+        _order.Remove(position);
         return machine;
     }
 
     /// <summary>Forgets every machine, as starting a fresh world does.</summary>
-    public void Clear() => _smelters.Clear();
+    public void Clear()
+    {
+        _machines.Clear();
+        _order.Clear();
+    }
 
     /// <summary>Runs every machine for a slice of time.</summary>
     /// <param name="seconds">How long has passed.</param>
-    public void Step(double seconds)
+    /// <param name="world">The blocks, for a machine that reads what it stands on.</param>
+    /// <remarks>
+    /// Walked in the order they were built rather than in whatever order the dictionary happens
+    /// to hold them. A belt handing on to the belt in front of it gives a different throughput
+    /// depending on which of the two steps first, and a factory whose speed changed when a world
+    /// was reloaded would be a factory nobody could tune.
+    /// </remarks>
+    public void Step(double seconds, VoxelWorld world)
     {
-        foreach (var machine in _smelters.Values)
-            machine.Step(_smelting, seconds);
+        // Copied because a machine's step can remove another one — a belt carrying the last item
+        // out of a smelter does not, but the next machine written might.
+        foreach (var position in _order.ToArray())
+        {
+            if (!_machines.TryGetValue(position, out var machine))
+                continue;
+
+            machine.Step(
+                new MachineStep
+                {
+                    Seconds = seconds,
+                    Position = position,
+                    Machines = this,
+                    World = world,
+                    Smelting = _smelting,
+                }
+            );
+        }
     }
 
-    /// <summary>How many of them are alight, for the overlay.</summary>
+    /// <summary>How many things are riding on belts, for the overlay.</summary>
+    public int CarriedCount
+    {
+        get
+        {
+            var riding = 0;
+            foreach (var machine in _machines.Values)
+            {
+                if (machine is Conveyor belt)
+                    riding += belt.Count;
+            }
+
+            return riding;
+        }
+    }
+
+    /// <summary>How many of them are alight, for the overlay and for what the dark hears.</summary>
     public int LitCount
     {
         get
         {
             var lit = 0;
-            foreach (var machine in _smelters.Values)
+            foreach (var machine in _machines.Values)
             {
-                if (machine.IsLit)
+                if (machine is Smelter { IsLit: true })
                     lit++;
             }
 

@@ -97,7 +97,8 @@ src/   the engine — BrutalShore.*, knows nothing about any particular game
 
 games/ the games — each one an executable that composes the engine
   Shorebound  blocks, terrain, biomes, trees, ore seams, the player, controls,
-              breaking, dropping, carrying and crafting, smelters, milestones,
+              breaking, dropping, carrying and crafting, machines and belts,
+              milestones,
               animals and the horde, its own sounds, the title and settings
               screens, saving, the player's settings, the length of a day,
               budgets

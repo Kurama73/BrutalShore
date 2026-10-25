@@ -363,7 +363,7 @@ public sealed class ShoreboundGame : IGame
         // ground rather than next frame — not that anyone could tell, but because the order
         // "machines run, then things fall, then the player moves" is one that can be reasoned
         // about and "whatever order they were written in" is not.
-        _machines.Step(seconds);
+        _machines.Step(seconds, _world);
 
         if (_drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _inventory) > 0)
             _sounds?.PickedUp();
@@ -489,9 +489,11 @@ public sealed class ShoreboundGame : IGame
         _sky.Draw();
         _chunks.Draw(_camera, _viewProjection);
 
-        if (_drops.Count > 0 || _grazers.Count > 0 || _stalkers.Count > 0)
+        if (_drops.Count > 0 || _grazers.Count > 0 || _stalkers.Count > 0 || _machines.Count > 0)
         {
             _cubes.Begin();
+
+            DrawCarried();
 
             Span<GrazerShape.Part> parts = stackalloc GrazerShape.Part[GrazerShape.PartCount];
             foreach (var grazer in _grazers.All)
@@ -668,7 +670,7 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_world.StreamingCount} being generated, {_chunks.PendingCount} waiting to mesh");
         ImGui.Text($"{_world.Edits.Count} blocks changed, {_drops.Count} lying about");
         ImGui.Text($"{_grazers.Count} grazing");
-        ImGui.Text($"{_machines.Count} machines, {_machines.LitCount} alight");
+        ImGui.Text($"{_machines.Count} machines, {_machines.LitCount} alight, {_machines.CarriedCount} on belts");
         ImGui.Text($"{_stalkers.Count} stalking of {Stalkers.Allowed(_machines.LitCount)} allowed");
 
         ImGui.SeparatorText("Drawn"u8);
@@ -942,6 +944,55 @@ public sealed class ShoreboundGame : IGame
         );
     }
 
+    /// <summary>Draws what is riding on every belt near enough to see.</summary>
+    /// <remarks>
+    /// <para>
+    /// Small boxes sliding along, which is the whole of why anyone builds one of these. A belt
+    /// that moved things invisibly would be a number in a panel; a belt with copper visibly
+    /// travelling down it is the thing people stand and watch.
+    /// </para>
+    /// <para>
+    /// Only the ones near the player, because a mature factory has thousands of items on belts
+    /// and nearly all of them are behind a hill. The cut-off is generous enough that a line is
+    /// never seen to start moving as it is walked towards.
+    /// </para>
+    /// </remarks>
+    private void DrawCarried()
+    {
+        const double SeenWithinMeters = 72.0;
+        var size = new float3(0.22f, 0.22f, 0.22f);
+
+        foreach (var (position, machine) in _machines.All)
+        {
+            if (machine is not Conveyor belt || belt.Count == 0)
+                continue;
+
+            // On top of the belt's block rather than inside it. A belt is a whole block in the
+            // voxel grid — it has to be, that is what the grid holds — so the only place an item
+            // riding on one can be seen is its upper face.
+            var middle = new double3(position.X + 0.5, position.Y + 1.13, position.Z + 0.5);
+            if (Walking.Away(middle, _player.FeetMeters) > SeenWithinMeters)
+                continue;
+
+            // From the back of the block to the front of it, along whichever way it points, so
+            // that an item's drawn position is the same number its queue is ordered by.
+            var along = Facings.Along(belt.Facing);
+            var back = middle - (along * 0.5);
+
+            foreach (var item in belt.Items)
+            {
+                var color = _world.Registry[item.Block].Color;
+                _cubes.Draw(
+                    back + (along * item.Along),
+                    size,
+                    new float3(Channel(color.X), Channel(color.Y), Channel(color.Z)),
+                    0f,
+                    _camera.Position
+                );
+            }
+        }
+    }
+
     /// <summary>Everything heard rather than shown: footfalls, bites, machines, the dark.</summary>
     /// <remarks>
     /// Gathered in one place rather than spread through whatever caused each one, because all of
@@ -1111,7 +1162,7 @@ public sealed class ShoreboundGame : IGame
         // Opening what is already there beats putting something in front of it. A machine is the
         // one block in this game with an inside, and a player aiming at one and clicking means
         // the inside every time.
-        if (_machines.At(hit.Block) is not null)
+        if (_machines.SmelterAt(hit.Block) is not null)
         {
             _openMachine = hit.Block;
             _screen = Screen.Machine;
@@ -1137,10 +1188,14 @@ public sealed class ShoreboundGame : IGame
         _inventory.TakeOne();
         _sounds?.Placed(placing, Nearby(hit.Before));
 
-        // A smelter is a block plus the machine standing in it. Registering it here rather than
+        // A machine is a block plus the thing standing in it. Registering it here rather than
         // inside the world is what keeps the voxel grid a grid of numbers.
         if (placing == _blocks.Smelter)
-            _machines.Place(hit.Before);
+            _machines.Place(hit.Before, new Smelter());
+        else if (placing == _blocks.Conveyor)
+            _machines.Place(hit.Before, new Conveyor(Facings.FromYaw(_camera.Yaw)));
+        else if (placing == _blocks.Miner)
+            _machines.Place(hit.Before, new Miner());
     }
 
     /// <summary>Every machine standing in the world, flattened for a save file.</summary>
@@ -1151,15 +1206,46 @@ public sealed class ShoreboundGame : IGame
         foreach (var (position, machine) in _machines.All)
         {
             saved.Add(
-                new SavedMachine
+                machine switch
                 {
-                    Position = position,
-                    BurnLeftSeconds = machine.BurnLeftSeconds,
-                    BurnTotalSeconds = machine.BurnTotalSeconds,
-                    WorkedSeconds = machine.WorkedSeconds,
-                    Input = Named(machine.Input.At(0)),
-                    Fuel = Named(machine.Fuel.At(0)),
-                    Output = Named(machine.Output.At(0)),
+                    Smelter smelter => new SavedMachine
+                    {
+                        Kind = SavedMachine.Smelter,
+                        Position = position,
+                        BurnLeftSeconds = smelter.BurnLeftSeconds,
+                        BurnTotalSeconds = smelter.BurnTotalSeconds,
+                        WorkedSeconds = smelter.WorkedSeconds,
+                        Input = Named(smelter.Input.At(0)),
+                        Fuel = Named(smelter.Fuel.At(0)),
+                        Output = Named(smelter.Output.At(0)),
+                        Carrying = [],
+                    },
+                    Conveyor belt => new SavedMachine
+                    {
+                        Kind = SavedMachine.Conveyor,
+                        Position = position,
+                        Facing = belt.Facing,
+                        BurnLeftSeconds = 0f,
+                        BurnTotalSeconds = 0f,
+                        WorkedSeconds = 0f,
+                        Input = (string.Empty, 0),
+                        Fuel = (string.Empty, 0),
+                        Output = (string.Empty, 0),
+                        Carrying = [.. belt.Items.Select(item => (_blocks.Registry[item.Block].Name, item.Along))],
+                    },
+                    Miner miner => new SavedMachine
+                    {
+                        Kind = SavedMachine.Miner,
+                        Position = position,
+                        BurnLeftSeconds = miner.BurnLeftSeconds,
+                        BurnTotalSeconds = miner.BurnTotalSeconds,
+                        WorkedSeconds = miner.WorkedSeconds,
+                        Input = (string.Empty, 0),
+                        Fuel = Named(miner.Fuel.At(0)),
+                        Output = Named(miner.Output.At(0)),
+                        Carrying = [],
+                    },
+                    _ => throw new InvalidOperationException($"no save shape for {machine.GetType().Name}"),
                 }
             );
         }
@@ -1183,12 +1269,36 @@ public sealed class ShoreboundGame : IGame
 
         foreach (var entry in saved)
         {
-            var machine = _machines.Place(entry.Position);
+            if (entry.Kind == SavedMachine.Conveyor)
+            {
+                var belt = new Conveyor(entry.Facing);
+                foreach (var (name, along) in entry.Carrying)
+                {
+                    if (_blocks.Registry.Find(name) is { } carried)
+                        belt.Restore(carried, along);
+                }
+
+                _machines.Place(entry.Position, belt);
+                continue;
+            }
+
+            if (entry.Kind == SavedMachine.Miner)
+            {
+                var miner = new Miner();
+                miner.Restore(entry.BurnLeftSeconds, entry.BurnTotalSeconds, entry.WorkedSeconds);
+                Fill(miner.Fuel, entry.Fuel);
+                Fill(miner.Output, entry.Output);
+                _machines.Place(entry.Position, miner);
+                continue;
+            }
+
+            var machine = new Smelter();
             machine.Restore(entry.BurnLeftSeconds, entry.BurnTotalSeconds, entry.WorkedSeconds);
 
             Fill(machine.Input, entry.Input);
             Fill(machine.Fuel, entry.Fuel);
             Fill(machine.Output, entry.Output);
+            _machines.Place(entry.Position, machine);
         }
     }
 
@@ -1207,7 +1317,7 @@ public sealed class ShoreboundGame : IGame
     /// Looked up every frame rather than held, because the block can be broken — by the player
     /// standing at it, or by a save being loaded underneath them — while its screen is open.
     /// </remarks>
-    private Smelter? OpenMachine() => _openMachine is { } at ? _machines.At(at) : null;
+    private Smelter? OpenMachine() => _openMachine is { } at ? _machines.SmelterAt(at) : null;
 
     /// <summary>Puts the machine away, and whatever was on the cursor back into the inventory.</summary>
     private void CloseMachine(GameContext context)
@@ -1296,6 +1406,8 @@ public sealed class ShoreboundGame : IGame
         _machines.Clear();
         _progression.Restore(0);
         _held = Stack.Nothing;
+
+
         _drops.Clear();
         _grazers.Clear();
         _stalkers.Clear();

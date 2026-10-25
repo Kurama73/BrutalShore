@@ -113,6 +113,29 @@ public sealed class GameBlocks
                 LightOpacity = 1,
             }
         );
+        Miner = registry.Register(
+            new BlockType
+            {
+                Name = "miner",
+                Color = byte3.HexColor(0x5A5F66),
+                Pattern = BlockPattern.Smooth,
+                BreakSeconds = 2.4f,
+                Emission = 4,
+            }
+        );
+        Conveyor = registry.Register(
+            new BlockType
+            {
+                Name = "conveyor",
+                Color = byte3.HexColor(0x6E6A62),
+                Pattern = BlockPattern.Grained,
+                BreakSeconds = 0.6f,
+
+                // Walked over rather than climbed. A belt that was a full block in the way would
+                // make a factory floor a maze, and nobody builds a line they have to jump along.
+                Collides = false,
+            }
+        );
         Smelter = registry.Register(
             new BlockType
             {
@@ -199,6 +222,12 @@ public sealed class GameBlocks
 
     /// <summary>Glass, melted out of sand, and the only block worth building a window from.</summary>
     public BlockId Glass { get; }
+
+    /// <summary>A miner, which stands on a seam and keeps bringing it up.</summary>
+    public BlockId Miner { get; }
+
+    /// <summary>A conveyor, which carries what is put on it to the block in front.</summary>
+    public BlockId Conveyor { get; }
 
     /// <summary>A smelter, which burns fuel to turn one block into another.</summary>
     public BlockId Smelter { get; }

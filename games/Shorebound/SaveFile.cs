@@ -29,9 +29,10 @@ public sealed record SaveFile
     /// list that did not exist is missing from it would be the wrong trade. A smelter that comes
     /// back empty is the worst that can happen, and only to a world saved before smelters.
     /// Version 4 added how far along the milestones the player is; an older world starts the line
-    /// again, which costs them the handing-in and nothing they built.
+    /// again, which costs them the handing-in and nothing they built. Version 5 gave each machine
+    /// a kind, because there is now more than one of them.
     /// </remarks>
-    private const byte Version = 4;
+    private const byte Version = 5;
 
     /// <summary>The world's seed, which is the world.</summary>
     public required int Seed { get; init; }
@@ -119,9 +120,11 @@ public sealed record SaveFile
             writer.Write(Machines.Count);
             foreach (var machine in Machines)
             {
+                writer.Write(machine.Kind);
                 writer.Write(machine.Position.X);
                 writer.Write(machine.Position.Y);
                 writer.Write(machine.Position.Z);
+                writer.Write((byte)machine.Facing);
                 writer.Write(machine.BurnLeftSeconds);
                 writer.Write(machine.BurnTotalSeconds);
                 writer.Write(machine.WorkedSeconds);
@@ -131,6 +134,13 @@ public sealed record SaveFile
                 {
                     writer.Write(block);
                     writer.Write(count);
+                }
+
+                writer.Write(machine.Carrying.Count);
+                foreach (var (block, along) in machine.Carrying)
+                {
+                    writer.Write(block);
+                    writer.Write(along);
                 }
             }
 
@@ -172,13 +182,13 @@ public sealed record SaveFile
             RowIndex = reader.ReadInt32(),
             Carried = version >= 2 ? ReadCarried(reader) : [],
             MilestonesReached = version >= 4 ? reader.ReadInt32() : 0,
-            Machines = version >= 3 ? ReadMachines(reader) : [],
+            Machines = version >= 3 ? ReadMachines(reader, version) : [],
         };
 
         return (save, BlockEditFile.Read(stream, into, registry));
     }
 
-    private static List<SavedMachine> ReadMachines(BinaryReader reader)
+    private static List<SavedMachine> ReadMachines(BinaryReader reader, byte version)
     {
         var count = reader.ReadInt32();
 
@@ -191,7 +201,10 @@ public sealed record SaveFile
         var machines = new List<SavedMachine>(count);
         for (var index = 0; index < count; index++)
         {
+            // Before version 5 every machine was a smelter and none of them had a direction.
+            var kind = version >= 5 ? reader.ReadString() : SavedMachine.Smelter;
             var position = new int3(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32());
+            var facing = version >= 5 ? (Facing)reader.ReadByte() : Facing.North;
             var burnLeft = reader.ReadSingle();
             var burnTotal = reader.ReadSingle();
             var worked = reader.ReadSingle();
@@ -199,18 +212,37 @@ public sealed record SaveFile
             machines.Add(
                 new SavedMachine
                 {
+                    Kind = kind,
                     Position = position,
+                    Facing = facing,
                     BurnLeftSeconds = burnLeft,
                     BurnTotalSeconds = burnTotal,
                     WorkedSeconds = worked,
                     Input = (reader.ReadString(), reader.ReadInt32()),
                     Fuel = (reader.ReadString(), reader.ReadInt32()),
                     Output = (reader.ReadString(), reader.ReadInt32()),
+                    Carrying = version >= 5 ? ReadCarrying(reader) : [],
                 }
             );
         }
 
         return machines;
+    }
+
+    private static List<(string Block, double Along)> ReadCarrying(BinaryReader reader)
+    {
+        var count = reader.ReadInt32();
+
+        // A belt holds a handful of items, so anything beyond a small number is a corrupt file
+        // rather than an ambitious one.
+        if (count is < 0 or > 64)
+            throw new InvalidDataException($"A belt claiming {count} items is not one.");
+
+        var carrying = new List<(string, double)>(count);
+        for (var index = 0; index < count; index++)
+            carrying.Add((reader.ReadString(), reader.ReadDouble()));
+
+        return carrying;
     }
 
     private static List<(string Block, int Count)> ReadCarried(BinaryReader reader)

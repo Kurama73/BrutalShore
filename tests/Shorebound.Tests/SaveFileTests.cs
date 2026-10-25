@@ -169,6 +169,8 @@ public sealed class SaveFileTests
             [
                 new SavedMachine
                 {
+                    Kind = SavedMachine.Smelter,
+                    Carrying = [],
                     Position = new int3(3, 70, -4),
                     BurnLeftSeconds = 12.5f,
                     BurnTotalSeconds = 32f,
@@ -185,6 +187,7 @@ public sealed class SaveFileTests
         var (read, _) = SaveFile.Read(path, new BlockEdits(), registry);
 
         var machine = Assert.Single(read.Machines);
+        Assert.Equal(SavedMachine.Smelter, machine.Kind);
         Assert.Equal(new int3(3, 70, -4), machine.Position);
         Assert.Equal(12.5f, machine.BurnLeftSeconds);
         Assert.Equal(32f, machine.BurnTotalSeconds);
@@ -192,5 +195,55 @@ public sealed class SaveFileTests
         Assert.Equal(("iron ore", 7), machine.Input);
         Assert.Equal(("coal ore", 3), machine.Fuel);
         Assert.Equal(("iron ingot", 11), machine.Output);
+    }
+
+    [Fact]
+    public void a_belt_comes_back_with_what_was_on_it_where_it_was()
+    {
+        // A line of belts is most of what a built-up world is, and an item halfway along one is
+        // state that cannot be derived from anything. Losing it on every reload would make a
+        // factory stutter every time the game was opened.
+        var registry = new BlockRegistry();
+        _ = new GameBlocks(registry);
+        var path = Path.Combine(Path.GetTempPath(), $"shorebound-{Guid.NewGuid():N}.world");
+
+        var save = new SaveFile
+        {
+            Seed = 6,
+            FeetMeters = new double3(0, 80, 0),
+            Yaw = 0f,
+            Pitch = 0f,
+            IsFlying = false,
+            DayFraction = 0.5,
+            RowIndex = 0,
+            MilestonesReached = 4,
+            Machines =
+            [
+                new SavedMachine
+                {
+                    Kind = SavedMachine.Conveyor,
+                    Position = new int3(-7, 40, 2),
+                    Facing = Facing.West,
+                    BurnLeftSeconds = 0f,
+                    BurnTotalSeconds = 0f,
+                    WorkedSeconds = 0f,
+                    Input = (string.Empty, 0),
+                    Fuel = (string.Empty, 0),
+                    Output = (string.Empty, 0),
+                    Carrying = [("iron ore", 0.75), ("coal ore", 0.25)],
+                },
+            ],
+            Carried = [],
+        };
+
+        save.Write(path, new BlockEdits(), registry);
+        var (read, _) = SaveFile.Read(path, new BlockEdits(), registry);
+
+        var belt = Assert.Single(read.Machines);
+        Assert.Equal(SavedMachine.Conveyor, belt.Kind);
+        Assert.Equal(Facing.West, belt.Facing);
+        Assert.Equal(2, belt.Carrying.Count);
+        Assert.Equal(("iron ore", 0.75), belt.Carrying[0]);
+        Assert.Equal(("coal ore", 0.25), belt.Carrying[1]);
     }
 }

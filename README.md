@@ -63,6 +63,24 @@ something that burns, and it works whether you are watching or not. Coal burns
 longest, wood will do until you find some. A smelter left running is still
 running when you open the world again.
 
+### Hands off
+
+A smelter you feed by hand is a slower way of crafting. Two more machines change
+that:
+
+A **conveyor** carries what is put on it to the block in front, in whichever
+direction you were facing when you laid it. It takes the output of the machine
+behind it and gives it to whatever is ahead — another belt, or a smelter, which
+sorts the ore from the fuel itself, so one line can feed both.
+
+A **miner** stands on a seam and keeps bringing it up for as long as it has
+something to burn. It never consumes the seam: the cost of a vein is the walk
+out to it and the fuel, not how much is left in it.
+
+A drill, a few belts and a fire is a line that runs while you are a hundred
+metres down a shaft. That is the whole point, and it is also the problem — see
+below.
+
 ### What the shore asks
 
 `M` opens the milestones. Each one takes a quantity of what you have just
@@ -181,7 +199,7 @@ were deleted.
 
 | Game            | What is in it                                        |
 | --------------- | ---------------------------------------------------- |
-| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, breaking and dropping, the controls, what they carry and craft, ore seams, smelters, milestones, its own sounds, the animals and the horde, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
+| `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, breaking and dropping, the controls, what they carry and craft, ore seams, smelters, belts and drills, milestones, its own sounds, the animals and the horde, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
 
 A game is an `IGame` the runtime runs, and an `IChunkGenerator` the world asks
 for blocks. Those two interfaces are the whole of the engine's knowledge of it.
