@@ -23,7 +23,6 @@ public sealed class DebugOverlay : IDisposable
     private readonly GlfwBackend _platform;
     private readonly VulkanBackend _renderer;
 
-    private bool _toggleWasDown;
 
     /// <summary>Starts Dear ImGui and attaches it to the window and the render pass.</summary>
     public DebugOverlay(GameWindow window, GpuContext context, SwapchainTarget target)
@@ -53,18 +52,31 @@ public sealed class DebugOverlay : IDisposable
     /// <summary>Whether the overlay is being drawn.</summary>
     public bool IsVisible { get; private set; } = true;
 
-    /// <summary>Starts an overlay frame and draws it.</summary>
-    /// <param name="deviceName">The GPU in use.</param>
-    /// <param name="clock">The clock the frame rate is read from.</param>
-    /// <param name="game">The game, which fills in its own rows.</param>
-    public void Draw(string deviceName, FrameClock clock, IGame game)
+    /// <summary>Opens the interface's frame and handles the key that hides the overlay.</summary>
+    /// <remarks>
+    /// Separate from <see cref="DrawPanel" /> because everything drawn through ImGui this frame —
+    /// the game's interface as much as this overlay — has to be recorded between one
+    /// <c>NewFrame</c> and one <c>Render</c>, and the game draws in between the two.
+    /// </remarks>
+    public void BeginFrame()
     {
-        UpdateVisibility();
+        if (_window.WasKeyPressed(GlfwKey.F3))
+            IsVisible = !IsVisible;
 
         _renderer.NewFrame();
         _platform.NewFrame();
         ImGui.NewFrame();
+    }
 
+    /// <summary>Draws the overlay's own window, if it is showing.</summary>
+    /// <param name="deviceName">The GPU's name, which the host knows and the game does not.</param>
+    /// <param name="clock">The frame clock, for the frame rate.</param>
+    /// <param name="game">The game, which fills in the middle of the window.</param>
+    /// <remarks>
+    /// Called after the game has drawn its own interface, so that the overlay lands on top of it.
+    /// </remarks>
+    public void DrawPanel(string deviceName, FrameClock clock, IGame game)
+    {
         if (!IsVisible)
             return;
 
@@ -109,12 +121,4 @@ public sealed class DebugOverlay : IDisposable
         ImGui.DestroyContext();
     }
 
-    private void UpdateVisibility()
-    {
-        var isDown = _window.IsKeyDown(GlfwKey.F3);
-        if (isDown && !_toggleWasDown)
-            IsVisible = !IsVisible;
-
-        _toggleWasDown = isDown;
-    }
 }

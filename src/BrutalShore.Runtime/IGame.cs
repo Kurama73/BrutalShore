@@ -54,6 +54,15 @@ public interface IGame : IDisposable
     /// <param name="context">The window, the device and the frame being recorded.</param>
     void Draw(GameContext context);
 
+    /// <summary>Draws the game's own interface: a crosshair, a hotbar, a menu.</summary>
+    /// <param name="context">The window, the device and the frame being recorded.</param>
+    /// <remarks>
+    /// Called inside the interface's frame, before the debug overlay, so the overlay lands on top.
+    /// This is where a game's windows go; <see cref="DrawOverlay" /> is only for rows inside the
+    /// host's own panel.
+    /// </remarks>
+    void DrawUi(GameContext context);
+
     /// <summary>Adds the game's own rows to the debug overlay.</summary>
     /// <remarks>
     /// Called inside the overlay's window, between the host's rows and its end. The host reports

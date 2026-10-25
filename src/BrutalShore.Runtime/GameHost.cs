@@ -78,9 +78,12 @@ public sealed class GameHost : IDisposable
 
             game.Draw(Context);
 
-            // The overlay is built after the game has drawn, so it can report what that draw did,
-            // and recorded after it so it ends up on top.
-            _overlay.Draw(_gpu.DeviceName, _clock, game);
+            // One interface frame covers the game's windows and the host's overlay, in that
+            // order, so the overlay lands on top. Both are built after the game has drawn, so
+            // they can report what that draw did.
+            _overlay.BeginFrame();
+            game.DrawUi(Context);
+            _overlay.DrawPanel(_gpu.DeviceName, _clock, game);
             _overlay.Render(_renderer.Commands);
 
             _renderer.EndFrame();
