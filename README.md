@@ -38,9 +38,11 @@ to crouch — crouching is slower, lower, and will not walk off an edge. A ledge
 one block high is walked up rather than jumped. `F` switches between walking and
 flying, where `space` and `ctrl` go up and down; `space` swims up in water.
 
-Whichever block is in reach of the crosshair is outlined: left click breaks it,
-right click places against the face being looked at, and the number keys, `Q`
-and `E`, or the mouse wheel pick which block that is. Holding the lantern lights the way, so a cave
+Whichever block is in reach of the crosshair is outlined. **Hold** left click to
+break it — each block takes its own time and cracks while it goes, and looking
+away gives up whatever was done. Right click places against the face being
+looked at, and the number keys, `Q` and `E`, or the mouse wheel pick which block
+that is. Holding the lantern lights the way, so a cave
 is worth going into with it in hand and not worth going into without.
 
 `Escape` opens the menu, which has the settings and saves the world; `F3` shows

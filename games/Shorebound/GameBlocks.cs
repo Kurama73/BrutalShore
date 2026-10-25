@@ -17,19 +17,19 @@ public sealed class GameBlocks
     {
         Registry = registry;
         Stone = registry.Register(
-            new BlockType { Name = "stone", Color = byte3.HexColor(0x7F7F84), Pattern = BlockPattern.Mottled }
+            new BlockType { Name = "stone", Color = byte3.HexColor(0x7F7F84), Pattern = BlockPattern.Mottled, BreakSeconds = 1.5f }
         );
         Dirt = registry.Register(
-            new BlockType { Name = "dirt", Color = byte3.HexColor(0x6B4A2F), Pattern = BlockPattern.Crumbly }
+            new BlockType { Name = "dirt", Color = byte3.HexColor(0x6B4A2F), Pattern = BlockPattern.Crumbly, BreakSeconds = 0.5f }
         );
         Grass = registry.Register(
-            new BlockType { Name = "grass", Color = byte3.HexColor(0x5A8F3C), Pattern = BlockPattern.Bladed }
+            new BlockType { Name = "grass", Color = byte3.HexColor(0x5A8F3C), Pattern = BlockPattern.Bladed, BreakSeconds = 0.6f }
         );
         Sand = registry.Register(
-            new BlockType { Name = "sand", Color = byte3.HexColor(0xD8CB94), Pattern = BlockPattern.Grainy }
+            new BlockType { Name = "sand", Color = byte3.HexColor(0xD8CB94), Pattern = BlockPattern.Grainy, BreakSeconds = 0.4f }
         );
         Snow = registry.Register(
-            new BlockType { Name = "snow", Color = byte3.HexColor(0xEDF2F7), Pattern = BlockPattern.Glinting }
+            new BlockType { Name = "snow", Color = byte3.HexColor(0xEDF2F7), Pattern = BlockPattern.Glinting, BreakSeconds = 0.3f }
         );
         Water = registry.Register(
             new BlockType
@@ -52,13 +52,22 @@ public sealed class GameBlocks
             }
         );
         Bedrock = registry.Register(
-            new BlockType { Name = "bedrock", Color = byte3.HexColor(0x2B2B30), Pattern = BlockPattern.Mottled }
+            new BlockType
+            {
+                Name = "bedrock",
+                Color = byte3.HexColor(0x2B2B30),
+                Pattern = BlockPattern.Mottled,
+
+                // The floor of the world, and the one block that never comes up. Without it a
+                // player who digs long enough falls out of the bottom of everything.
+                BreakSeconds = float.PositiveInfinity,
+            }
         );
         Log = registry.Register(
-            new BlockType { Name = "log", Color = byte3.HexColor(0x5A4228), Pattern = BlockPattern.Grained }
+            new BlockType { Name = "log", Color = byte3.HexColor(0x5A4228), Pattern = BlockPattern.Grained, BreakSeconds = 1.1f }
         );
         Leaves = registry.Register(
-            new BlockType { Name = "leaves", Color = byte3.HexColor(0x3E6B2A), Pattern = BlockPattern.Scattered }
+            new BlockType { Name = "leaves", Color = byte3.HexColor(0x3E6B2A), Pattern = BlockPattern.Scattered, BreakSeconds = 0.2f }
         );
         Lantern = registry.Register(
             new BlockType
@@ -66,6 +75,7 @@ public sealed class GameBlocks
                 Name = "lantern",
                 Color = byte3.HexColor(0xFFE2A8),
                 Pattern = BlockPattern.Radiant,
+                BreakSeconds = 0.4f,
 
                 // One below the brightest there is, so a lantern lights fourteen blocks around
                 // itself and a corridor still needs a second one. Full brightness would make a

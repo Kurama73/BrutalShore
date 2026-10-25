@@ -137,6 +137,7 @@ public sealed class ShoreboundGame : IGame
     private readonly GameUi _ui = new();
     private readonly DayClock _clock;
     private readonly TitleCamera _titleCamera;
+    private readonly Mining _mining = new();
 
     // Assigned in Load, because each of these needs a device, and there is none until the host has
     // opened a window.
@@ -160,6 +161,7 @@ public sealed class ShoreboundGame : IGame
 
     private int3 _centre;
     private double _playedSeconds;
+    private bool _isBreaking;
     private float4x4 _viewProjection;
     private float4x4 _lightViewProjection;
     private VoxelHit? _aimedAt;
@@ -280,6 +282,12 @@ public sealed class ShoreboundGame : IGame
 
         _playedSeconds += seconds;
         _clock.Step(seconds);
+
+        // Breaking is held rather than clicked, so it belongs in the fixed step: a block that
+        // took longer to break on a slower machine would be a block whose hardness was the frame
+        // rate rather than the stone.
+        if (_mining.Step(_world, _aimedAt, _isBreaking, seconds) is { } broken)
+            _world.SetBlock(broken, BlockId.Air);
         _player.Step(_world, _world.Registry, seconds, _controller.ReadIntent(), _camera.Yaw);
         _camera.Position = _player.EyeMeters;
 
@@ -298,6 +306,10 @@ public sealed class ShoreboundGame : IGame
             _camera.Position = _player.EyeMeters;
             ReadPlayingKeys(context);
             Aim();
+
+            // Read here and used by the step, because a button is a thing that is held and a
+            // step is where held things are acted on.
+            _isBreaking = context.Window.IsMouseButtonDown(GlfwMouseButton.Left);
         }
         else if (_screen == Screen.Title)
         {
@@ -353,6 +365,7 @@ public sealed class ShoreboundGame : IGame
                 Brightness = _settings.Brightness,
                 Held = CarriedLight(),
                 Field = FieldPlacement(),
+                Breaking = BreakingBlock(),
             }
         );
 
@@ -592,9 +605,6 @@ public sealed class ShoreboundGame : IGame
         if (window.ScrollDelta != 0.0)
             _hotbar.Cycle(window.ScrollDelta > 0.0 ? -1 : 1);
 
-        if (window.WasMouseButtonPressed(GlfwMouseButton.Left))
-            Break();
-
         if (window.WasMouseButtonPressed(GlfwMouseButton.Right))
             Place();
     }
@@ -621,6 +631,12 @@ public sealed class ShoreboundGame : IGame
 
         return new float4(corner, VoxelField.SizeBlocks);
     }
+
+    /// <summary>The block coming apart under the crosshair, and how far through it is.</summary>
+    private float4 BreakingBlock() =>
+        _mining.Target is { } target && _mining.Progress > 0f
+            ? new float4(target.X, target.Y, target.Z, float.Clamp(_mining.Progress, 0f, 1f))
+            : float4.Zero;
 
     /// <summary>The light the player is carrying, which is whatever is in their hand that glows.</summary>
     /// <remarks>
@@ -711,12 +727,6 @@ public sealed class ShoreboundGame : IGame
             new double3(forward.X, forward.Y, forward.Z),
             Player.ReachMeters
         );
-    }
-
-    private void Break()
-    {
-        if (_aimedAt is { } hit)
-            _world.SetBlock(hit.Block, BlockId.Air);
     }
 
     private void Place()
