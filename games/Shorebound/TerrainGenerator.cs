@@ -18,7 +18,7 @@ namespace Shorebound;
 /// thing that makes generated terrain stop looking generated.
 /// </para>
 /// </remarks>
-public sealed class TerrainGenerator : IChunkGenerator
+public sealed class TerrainGenerator : IChunkGenerator, IGround
 {
     /// <summary>Where the water line sits, in blocks above the bottom of the world.</summary>
     public const int SeaLevel = 72;
@@ -66,7 +66,7 @@ public sealed class TerrainGenerator : IChunkGenerator
     private readonly GradientNoise _caveFieldB;
     private readonly GameBlocks _blocks;
     private readonly Trees _trees;
-    private readonly Func<int, int, int> _surfaceHeight;
+    private readonly Biomes _biomes;
 
     /// <summary>Creates a generator for one world.</summary>
     /// <param name="blocks">The block types to build terrain out of.</param>
@@ -83,10 +83,7 @@ public sealed class TerrainGenerator : IChunkGenerator
         _caveFieldA = new GradientNoise(seed ^ 0x1B873593);
         _caveFieldB = new GradientNoise(seed ^ 0x27D4EB2D);
         _trees = new Trees(blocks, seed);
-
-        // Captured once rather than per chunk: generation runs on worker threads and this is
-        // called a few dozen times for every one of them.
-        _surfaceHeight = SurfaceHeight;
+        _biomes = new Biomes(blocks, seed);
     }
 
     /// <summary>The seed this world was generated from.</summary>
@@ -116,6 +113,16 @@ public sealed class TerrainGenerator : IChunkGenerator
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    public float TreeChance(int blockX, int blockZ) => _biomes.At(blockX, blockZ).TreeChance;
+
+    /// <summary>Which biome covers a column; shown in the overlay.</summary>
+    /// <param name="blockX">The column's x, in blocks.</param>
+    /// <param name="blockZ">The column's z, in blocks.</param>
+    /// <returns>The biome there.</returns>
+    public Biome BiomeAt(int blockX, int blockZ) => _biomes.At(blockX, blockZ);
+
+    /// <inheritdoc />
     public void Generate(int3 chunkCoordinate, Chunk into)
     {
         var origin = WorldCoordinates.ChunkOrigin(chunkCoordinate);
@@ -134,21 +141,22 @@ public sealed class TerrainGenerator : IChunkGenerator
                 var worldX = origin.X + localX;
                 var worldZ = origin.Z + localZ;
                 var surface = SurfaceHeight(worldX, worldZ);
+                var biome = _biomes.At(worldX, worldZ);
 
                 for (var localY = 0; localY < Chunk.Size; localY++)
                 {
                     var worldY = origin.Y + localY;
-                    blocks[Chunk.IndexOf(localX, localY, localZ)] = BlockFor(worldX, worldY, worldZ, surface);
+                    blocks[Chunk.IndexOf(localX, localY, localZ)] = BlockFor(worldX, worldY, worldZ, surface, biome);
                 }
             }
         }
 
-        _trees.Grow(chunkCoordinate, blocks, _surfaceHeight);
+        _trees.Grow(chunkCoordinate, blocks, this);
         into.EndBulkWrite();
     }
 
     /// <summary>What belongs at one absolute block coordinate, given its column's surface.</summary>
-    private BlockId BlockFor(int worldX, int worldY, int worldZ, int surface)
+    private BlockId BlockFor(int worldX, int worldY, int worldZ, int surface, in Biome biome)
     {
         if (worldY < 0 || worldY >= VoxelWorld.HeightBlocks)
             return BlockId.Air;
@@ -169,13 +177,16 @@ public sealed class TerrainGenerator : IChunkGenerator
         if (depth > 3)
             return _blocks.Stone;
 
-        if (depth > 0)
-            return surface <= SeaLevel + 1 ? _blocks.Sand : _blocks.Dirt;
-
+        // A shore is a shore and a mountain top is snow whatever the biome says: both are facts
+        // about the height, and a desert that ran into the sea without a beach, or a tundra whose
+        // peaks were bare, would read as a mistake rather than as a boundary.
         if (surface <= SeaLevel + 1)
             return _blocks.Sand;
 
-        return surface >= SnowLine ? _blocks.Snow : _blocks.Grass;
+        if (surface >= SnowLine)
+            return depth > 0 ? _blocks.Dirt : _blocks.Snow;
+
+        return depth > 0 ? biome.Subsurface : biome.Surface;
     }
 
     /// <summary>Whether a point in rock is hollowed out.</summary>

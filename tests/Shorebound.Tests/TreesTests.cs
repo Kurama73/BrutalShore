@@ -14,7 +14,8 @@ public sealed class TreesTests
     /// <summary>A flat surface high enough for trees and clear of the snow line.</summary>
     private const int Ground = 86;
 
-    private static readonly Func<int, int, int> FlatGround = (_, _) => Ground;
+    /// <summary>Flat ground at a height trees like, with the whole of the usual forest on it.</summary>
+    private static readonly IGround FlatGround = new Everywhere(Ground, treeChance: 1f);
 
     [Fact]
     public void a_tree_on_a_boundary_is_built_the_same_way_by_both_chunks()
@@ -104,7 +105,7 @@ public sealed class TreesTests
 
         for (var cellZ = -20; cellZ <= 20; cellZ++)
         for (var cellX = -20; cellX <= 20; cellX++)
-            Assert.Null(trees.TreeIn(cellX, cellZ, (_, _) => TerrainGenerator.SeaLevel));
+            Assert.Null(trees.TreeIn(cellX, cellZ, new Everywhere(TerrainGenerator.SeaLevel, treeChance: 1f)));
     }
 
     [Fact]
@@ -114,7 +115,7 @@ public sealed class TreesTests
 
         for (var cellZ = -20; cellZ <= 20; cellZ++)
         for (var cellX = -20; cellX <= 20; cellX++)
-            Assert.Null(trees.TreeIn(cellX, cellZ, (_, _) => TerrainGenerator.SnowLine));
+            Assert.Null(trees.TreeIn(cellX, cellZ, new Everywhere(TerrainGenerator.SnowLine, treeChance: 1f)));
     }
 
     [Fact]
@@ -148,6 +149,58 @@ public sealed class TreesTests
 
         Assert.NotEmpty(standing);
         Assert.All(standing, tree => Assert.Equal(Ground + 1, tree!.Value.Root.Y));
+    }
+
+    [Fact]
+    public void a_biome_with_no_trees_in_it_grows_none()
+    {
+        var trees = new Trees(new GameBlocks(new BlockRegistry()), seed: 1337);
+        var barren = new Everywhere(Ground, treeChance: 0f);
+
+        for (var cellZ = -10; cellZ <= 10; cellZ++)
+        for (var cellX = -10; cellX <= 10; cellX++)
+            Assert.Null(trees.TreeIn(cellX, cellZ, barren));
+    }
+
+    [Fact]
+    public void a_thinner_biome_grows_a_subset_of_the_same_forest()
+    {
+        var trees = new Trees(new GameBlocks(new BlockRegistry()), seed: 1337);
+        var thick = new Everywhere(Ground, treeChance: 1f);
+        var thin = new Everywhere(Ground, treeChance: 0.3f);
+
+        var thickCount = 0;
+        var thinCount = 0;
+
+        for (var cellZ = -20; cellZ <= 20; cellZ++)
+        for (var cellX = -20; cellX <= 20; cellX++)
+        {
+            var dense = trees.TreeIn(cellX, cellZ, thick);
+            var sparse = trees.TreeIn(cellX, cellZ, thin);
+
+            if (dense is not null)
+                thickCount++;
+
+            if (sparse is null)
+                continue;
+
+            thinCount++;
+
+            // Thinning takes trees away rather than moving them, which is what lets a forest
+            // fade into a plain instead of the two having a seam between them.
+            Assert.Equal(dense, sparse);
+        }
+
+        Assert.True(thinCount > 0, "a biome with some trees grew none");
+        Assert.True(thinCount < thickCount, $"{thinCount} is not fewer than {thickCount}");
+    }
+
+    /// <summary>Ground of one height, with one tree density, everywhere.</summary>
+    private sealed class Everywhere(int height, float treeChance) : IGround
+    {
+        public int SurfaceHeight(int blockX, int blockZ) => height;
+
+        public float TreeChance(int blockX, int blockZ) => treeChance;
     }
 
     /// <summary>Generates one chunk of nothing but trees, over flat ground.</summary>

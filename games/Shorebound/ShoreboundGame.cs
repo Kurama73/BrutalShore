@@ -365,7 +365,9 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_clock} (day {(int)_clock.DayFraction + 1})");
 
         ImGui.SeparatorText("World"u8);
+        var under = WorldCoordinates.ToBlock(_player.FeetMeters);
         ImGui.Text($"seed {_generator.Seed}, radius {_options.ViewRadiusChunks} chunks");
+        ImGui.Text($"{_generator.BiomeAt(under.X, under.Z).Name}");
         ImGui.Text($"{_world.LoadedChunkCount} loaded, {_chunks.MeshCount} meshed");
         ImGui.Text($"{_world.StreamingCount} being generated, {_chunks.PendingCount} waiting to mesh");
         ImGui.Text($"{_world.Edits.Count} blocks changed");
