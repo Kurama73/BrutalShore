@@ -121,7 +121,7 @@ were deleted.
 | `BrutalShore.Gpu`     | Window, Vulkan device, swapchain, frames in flight, shaders   |
 | `BrutalShore.Ui`      | What every panel looks like: the palette, the ImGui theme, the shared widgets |
 | `BrutalShore.World`   | Coordinates, gradient noise, streaming, block edits, ray casting and collision, `IChunkGenerator` |
-| `BrutalShore.Render`  | Camera, view frustum, the sun and sky, shadows, the voxel pipeline, chunk meshes |
+| `BrutalShore.Render`  | Camera, view frustum, the sun and sky, shadows, the ray marching field, the voxel pipeline, chunk meshes |
 | `BrutalShore.Runtime` | The window, the device and the frame loop around an `IGame`   |
 
 | Game            | What is in it                                        |
@@ -169,6 +169,29 @@ per frame. It needs no shadows and is given none — a light at the eye reaches
 everything the eye can see, because anything blocking it would be blocking the
 view. Putting the lantern down hands it back to the flood fill, where it gets
 real occlusion for free.
+
+## Rays through a grid
+
+Water reflects what is around it, and the reflection is traced rather than
+faked. There is no hardware ray tracing involved and there could not be: the one
+Vulkan implementation this has to run on besides a desktop driver is MoltenVK,
+which does not expose the ray tracing extensions at all. It would also be the
+slower answer. Hardware ray tracing exists to walk a tree over arbitrary
+geometry, and this world is not arbitrary geometry — it is a regular grid, where
+finding the next surface along a ray is arithmetic.
+
+So the ninety-six blocks around the camera are kept in a 3D texture, one texel a
+block, holding the block's colour and whether it is solid, see-through or
+nothing. A worker fills it from a frozen set of chunk references whenever the
+camera drifts an eighth of the way across it or the world inside it changes, and
+the fragment shader walks it with the same traversal the game uses on the CPU to
+work out which block the crosshair is on.
+
+What falls out of that is water that behaves: almost transparent looking
+straight down into it, almost a mirror looking across it, with the far bank in
+it. Beyond the cube a ray finds nothing and the sky is used instead, which is
+also what the water further away than forty-eight metres shows. It is the one
+setting worth real frame time, so it is a setting.
 
 ## How the world is drawn
 

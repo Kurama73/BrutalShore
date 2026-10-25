@@ -85,7 +85,7 @@ src/   the engine — BrutalShore.*, knows nothing about any particular game
            Gpu       window, input, device, swapchain, frames, shaders, depth targets  (Core)
            Ui        the palette, the ImGui theme, the shared widgets  (Core)
   Layer 2  World     coordinates, noise, streaming, edits, rays, collision, IChunkGenerator  (Core + Voxel)
-  Layer 3  Render    camera, frustum, sun and sky, shadows, voxel pipeline, chunk meshes  (Core + Voxel + World + Gpu)
+  Layer 3  Render    camera, frustum, sun and sky, shadows, the ray marching field, voxel pipeline, chunk meshes  (Core + Voxel + World + Gpu)
            Runtime   the window, the device and the frame loop around an IGame  (Core + Gpu + Ui)
 
 games/ the games — each one an executable that composes the engine
