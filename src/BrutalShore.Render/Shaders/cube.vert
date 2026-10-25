@@ -19,8 +19,9 @@ layout(set = 0, binding = 0, std140) uniform Scene {
 } scene;
 
 layout(push_constant) uniform Push {
-    vec4 middle; // xyz: the cube's middle relative to the camera, in metres. w: half its side
-    vec4 color;  // rgb: its colour, in sRGB. w: how far it is turned about its own y, in radians
+    vec4 middle;   // xyz: the box's middle relative to the camera, in metres. w: its turn, in radians
+    vec4 halfSize; // xyz: half its width, height and depth, in metres
+    vec4 color;    // rgb: its colour, in sRGB
 } push;
 
 layout(location = 0) in vec3 inPosition;
@@ -39,7 +40,7 @@ vec3 srgbToLinear(vec3 encoded) {
 void main() {
     // Turned about its own upright axis before it is placed. A dropped block that spins slowly
     // is the difference between an object lying in the world and a decal stuck to the ground.
-    float turn = push.color.w;
+    float turn = push.middle.w;
     float sine = sin(turn);
     float cosine = cos(turn);
 
@@ -49,9 +50,11 @@ void main() {
         vec3(sine, 0.0, cosine)
     );
 
-    vec3 corner = spin * (inPosition * push.middle.w);
+    vec3 corner = spin * (inPosition * (push.halfSize.xyz * 2.0));
 
     outColor = srgbToLinear(push.color.rgb);
+    // Normals turn with the box but are not scaled with it: a long thin box scaled normal is a
+    // normal that no longer points away from the face it belongs to.
     outNormal = normalize(spin * inNormal);
     outViewOffset = push.middle.xyz + corner;
 

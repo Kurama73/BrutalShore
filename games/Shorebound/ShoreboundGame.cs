@@ -411,7 +411,7 @@ public sealed class ShoreboundGame : IGame
                 var color = _world.Registry[drop.Block].Color;
                 _cubes.Draw(
                     drop.MiddleMeters,
-                    Drops.SizeMeters,
+                    new float3(Drops.SizeMeters, Drops.SizeMeters, Drops.SizeMeters),
                     new float3(color.X / 255f, color.Y / 255f, color.Z / 255f),
                     drop.TurnRadians,
                     _camera.Position

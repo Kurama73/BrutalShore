@@ -178,15 +178,20 @@ public sealed unsafe class CubeRenderer : IDisposable
         commands.BindVertexBuffer(0, _corners.Handle);
     }
 
-    /// <summary>Draws one cube. <see cref="Begin" /> must have been called this frame.</summary>
+    /// <summary>Draws one box. <see cref="Begin" /> must have been called this frame.</summary>
     /// <param name="middleMeters">Where its middle is, in world metres.</param>
-    /// <param name="sizeMeters">How long its side is, in metres.</param>
+    /// <param name="sizeMeters">Its width, height and depth, in metres.</param>
     /// <param name="color">Its colour, in sRGB.</param>
     /// <param name="turnRadians">How far it is turned about its own upright axis.</param>
     /// <param name="cameraMeters">Where the camera is; the render-space origin.</param>
+    /// <remarks>
+    /// Three sizes rather than one, because the things made of these are not all cubes: an animal
+    /// is a long body on four thin legs, and drawing it out of cubes alone would be drawing it out
+    /// of dice.
+    /// </remarks>
     public void Draw(
         double3 middleMeters,
-        float sizeMeters,
+        float3 sizeMeters,
         float3 color,
         float turnRadians,
         double3 cameraMeters
@@ -198,7 +203,7 @@ public sealed unsafe class CubeRenderer : IDisposable
             _layout,
             VkShaderStageFlags.VertexBit | VkShaderStageFlags.FragmentBit,
             ByteSize.Zero,
-            new CubePushConstants(middle, sizeMeters * 0.5f, color, turnRadians)
+            new CubePushConstants(middle, sizeMeters, color, turnRadians)
         );
         _renderer.Commands.Draw(_corners.Count, 1, 0, 0);
     }

@@ -17,6 +17,12 @@ layout(set = 0, binding = 0, std140) uniform Scene {
     vec4 submerged;
 } scene;
 
+layout(push_constant) uniform Push {
+    vec4 middle;
+    vec4 halfSize;
+    vec4 color;
+} push;
+
 layout(location = 0) in vec3 inColor;
 layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec3 inViewOffset;
