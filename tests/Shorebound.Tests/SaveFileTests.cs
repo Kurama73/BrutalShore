@@ -25,6 +25,7 @@ public sealed class SaveFileTests
             IsFlying = false,
             DayFraction = 3.6,
             HotbarIndex = 2,
+            Carried = [("stone", 9), (string.Empty, 0)],
         };
 
         var path = Path.Combine(Path.GetTempPath(), $"shorebound-{Guid.NewGuid():N}.world");
@@ -35,7 +36,11 @@ public sealed class SaveFileTests
             var reloaded = new BlockEdits();
             var (read, report) = SaveFile.Read(path, reloaded, blocks.Registry);
 
-            Assert.Equal(save, read);
+            // Compared member by member rather than as a whole, because what is carried is a
+            // list and a record compares a list by which list it is, not by what is in it.
+            Assert.Equal(save with { Carried = [] }, read with { Carried = [] });
+            Assert.Equal(save.Carried, read.Carried);
+
             Assert.Equal(2, report.Applied);
             Assert.Equal(0, report.Dropped);
             Assert.Equal(2, reloaded.Count);
@@ -59,6 +64,7 @@ public sealed class SaveFileTests
             IsFlying = true,
             DayFraction = 0.0,
             HotbarIndex = 0,
+            Carried = [],
         };
 
         var path = Path.Combine(Path.GetTempPath(), $"shorebound-{Guid.NewGuid():N}.world");
@@ -70,7 +76,8 @@ public sealed class SaveFileTests
             // it, and that is the whole file.
             var (read, report) = SaveFile.Read(path, new BlockEdits(), blocks.Registry);
 
-            Assert.Equal(save, read);
+            Assert.Equal(save with { Carried = [] }, read with { Carried = [] });
+            Assert.Equal(save.Carried, read.Carried);
             Assert.Equal(0, report.Applied);
             Assert.True(new FileInfo(path).Length < 128, "an empty world should not need a hundred bytes");
         }
@@ -113,6 +120,7 @@ public sealed class SaveFileTests
             IsFlying = false,
             DayFraction = 0.5,
             HotbarIndex = 1,
+            Carried = [],
         };
 
         try
@@ -123,7 +131,8 @@ public sealed class SaveFileTests
             // Saving twice has to overwrite rather than fail on the file it left behind, which is
             // the thing writing through a temporary file most easily gets wrong.
             var (read, _) = SaveFile.Read(path, new BlockEdits(), blocks.Registry);
-            Assert.Equal(first, read);
+            Assert.Equal(first with { Carried = [] }, read with { Carried = [] });
+            Assert.Equal(first.Carried, read.Carried);
         }
         finally
         {

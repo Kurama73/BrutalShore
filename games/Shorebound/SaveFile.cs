@@ -22,7 +22,12 @@ public sealed record SaveFile
     private static ReadOnlySpan<byte> Magic => "SHOREBOUND"u8;
 
     /// <summary>The format's version, bumped whenever the layout below changes.</summary>
-    private const byte Version = 1;
+    /// <remarks>
+    /// Version 2 added what the player is carrying. A version 1 file still reads, with an empty
+    /// row: the blocks in someone's hand are worth less than their world, and refusing to open a
+    /// world because a list that did not exist is missing from it would be the wrong trade.
+    /// </remarks>
+    private const byte Version = 2;
 
     /// <summary>The world's seed, which is the world.</summary>
     public required int Seed { get; init; }
@@ -44,6 +49,14 @@ public sealed record SaveFile
 
     /// <summary>Which hotbar slot was in hand.</summary>
     public required int HotbarIndex { get; init; }
+
+    /// <summary>What was in each slot: a block's name and how many of it, in slot order.</summary>
+    /// <remarks>
+    /// By name rather than by id, exactly as the edits are and for the same reason: an id is a
+    /// position in a registry, and a world saved against one registry has to open against a later
+    /// one. An empty slot is an empty name.
+    /// </remarks>
+    public required IReadOnlyList<(string Block, int Count)> Carried { get; init; }
 
     /// <summary>Writes a world to a file, replacing whatever was there.</summary>
     /// <param name="path">Where to write.</param>
@@ -73,6 +86,14 @@ public sealed record SaveFile
             writer.Write(IsFlying);
             writer.Write(DayFraction);
             writer.Write(HotbarIndex);
+
+            writer.Write(Carried.Count);
+            foreach (var (block, count) in Carried)
+            {
+                writer.Write(block);
+                writer.Write(count);
+            }
+
             writer.Flush();
 
             BlockEditFile.Write(stream, edits, registry);
@@ -97,7 +118,7 @@ public sealed record SaveFile
             throw new InvalidDataException($"'{path}' is not a Shorebound world.");
 
         var version = reader.ReadByte();
-        if (version != Version)
+        if (version is 0 or > Version)
             throw new InvalidDataException($"World version {version} cannot be read; this build writes {Version}.");
 
         var save = new SaveFile
@@ -109,8 +130,25 @@ public sealed record SaveFile
             IsFlying = reader.ReadBoolean(),
             DayFraction = reader.ReadDouble(),
             HotbarIndex = reader.ReadInt32(),
+            Carried = version >= 2 ? ReadCarried(reader) : [],
         };
 
         return (save, BlockEditFile.Read(stream, into, registry));
+    }
+
+    private static List<(string Block, int Count)> ReadCarried(BinaryReader reader)
+    {
+        var slots = reader.ReadInt32();
+
+        // A count read from a file decides how many times this loop runs, so a corrupt one is a
+        // hang or an allocation of gigabytes. Bounding it is cheaper than trusting the file.
+        if (slots is < 0 or > 256)
+            throw new InvalidDataException($"A world claiming {slots} carried slots is not one.");
+
+        var carried = new List<(string, int)>(slots);
+        for (var slot = 0; slot < slots; slot++)
+            carried.Add((reader.ReadString(), reader.ReadInt32()));
+
+        return carried;
     }
 }
