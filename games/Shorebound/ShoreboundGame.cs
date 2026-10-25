@@ -139,6 +139,7 @@ public sealed class ShoreboundGame : IGame
     private readonly TitleCamera _titleCamera;
     private readonly Mining _mining = new();
     private readonly Drops _drops;
+    private readonly Grazers _grazers;
 
     // Assigned in Load, because each of these needs a device, and there is none until the host has
     // opened a window.
@@ -187,6 +188,7 @@ public sealed class ShoreboundGame : IGame
         );
         _hotbar = new Hotbar(_blocks);
         _drops = new Drops(options.Seed);
+        _grazers = new Grazers(options.Seed);
         _clock = new DayClock(options.StartHour, _settings.DayLengthSeconds);
 
         // Above where the player will spawn, which is the one place the world is certain to have
@@ -306,6 +308,7 @@ public sealed class ShoreboundGame : IGame
         }
 
         _drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _hotbar);
+        _grazers.Step(_world, _world.Registry, seconds, _player.FeetMeters);
         _player.Step(_world, _world.Registry, seconds, _controller.ReadIntent(), _camera.Yaw);
         _camera.Position = _player.EyeMeters;
 
@@ -403,9 +406,18 @@ public sealed class ShoreboundGame : IGame
         _sky.Draw();
         _chunks.Draw(_camera, _viewProjection);
 
-        if (_drops.Count > 0)
+        if (_drops.Count > 0 || _grazers.Count > 0)
         {
             _cubes.Begin();
+
+            Span<GrazerShape.Part> parts = stackalloc GrazerShape.Part[GrazerShape.PartCount];
+            foreach (var grazer in _grazers.All)
+            {
+                GrazerShape.Lay(grazer, parts);
+                foreach (var part in parts)
+                    _cubes.Draw(part.MiddleMeters, part.SizeMeters, part.Color, grazer.Yaw, _camera.Position);
+            }
+
             foreach (var drop in _drops.All)
             {
                 var color = _world.Registry[drop.Block].Color;
@@ -545,6 +557,7 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_world.LoadedChunkCount} loaded, {_chunks.MeshCount} meshed");
         ImGui.Text($"{_world.StreamingCount} being generated, {_chunks.PendingCount} waiting to mesh");
         ImGui.Text($"{_world.Edits.Count} blocks changed, {_drops.Count} lying about");
+        ImGui.Text($"{_grazers.Count} grazing");
 
         ImGui.SeparatorText("Drawn"u8);
         ImGui.Text($"{_chunks.DrawnChunkCount} chunks, {_chunks.DrawnTriangleCount} triangles");
@@ -837,6 +850,7 @@ public sealed class ShoreboundGame : IGame
         _world.Edits.Clear();
         _hotbar.Clear();
         _drops.Clear();
+        _grazers.Clear();
 
         // One block above the surface, so the first step is a short fall rather than a long one
         // through terrain that has not streamed in yet.
@@ -863,6 +877,7 @@ public sealed class ShoreboundGame : IGame
             _hotbar.Select(save.HotbarIndex);
             _hotbar.Restore(save.Carried, _blocks.Registry);
             _drops.Clear();
+            _grazers.Clear();
             _clock.SetDayFraction(save.DayFraction);
 
             Say(
