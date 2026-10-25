@@ -38,6 +38,8 @@ Click to capture the mouse, `WASD` to move, `space` and `ctrl` for up and down,
 | ---------------------------------- | ------------------------------------------------ |
 | `--seed <n>`                       | The world seed. The same seed is the same world. |
 | `--view-radius <chunks>`           | How far chunks stay loaded. Default 8.           |
+| `--time <hour>`                    | The hour the world starts at. Default 8.         |
+| `--day-length <seconds>`           | Real seconds per in-game day; 0 stops the sun.   |
 | `--validation`                     | Turn on the Vulkan validation layers.            |
 | `--frames <n>`                     | Close after this many frames.                    |
 | `--camera <x> <y> <z> <yaw> <pitch>` | Start the camera here, angles in degrees.      |
@@ -45,7 +47,8 @@ Click to capture the mouse, `WASD` to move, `space` and `ctrl` for up and down,
 
 The last three together are how graphics changes are checked: a fixed seed and a
 fixed camera for a fixed number of frames produce an image that can be compared
-against the one before.
+against the one before. Add `--day-length 0` to stop the sun as well, or two
+runs an hour apart are not comparable.
 
 ```bash
 dotnet run --project games/Shorebound -c Release -- \

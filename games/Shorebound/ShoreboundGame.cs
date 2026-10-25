@@ -25,16 +25,31 @@ public sealed class ShoreboundGame : IGame
     /// <summary>How many chunks may be meshed and uploaded in one frame.</summary>
     private const int MeshBudgetPerFrame = 6;
 
+    /// <summary>Where fog begins, as a fraction of the loaded radius.</summary>
+    /// <remarks>
+    /// The band is placed around the loaded radius rather than inside it. A chunk appearing at the
+    /// boundary has to be most of the way into the fog by the time it does, but pulling the band
+    /// further in costs the whole middle distance — and the diagonal corners of the loaded box are
+    /// further away than the radius, which is why it ends past 1.
+    /// </remarks>
+    private const float FogStartFraction = 0.78f;
+
+    /// <summary>Where fog is total, as a fraction of the loaded radius.</summary>
+    private const float FogEndFraction = 1.15f;
+
     private readonly Options _options;
     private readonly GameBlocks _blocks;
     private readonly TerrainGenerator _generator;
     private readonly VoxelWorld _world;
     private readonly Camera _camera = new();
+    private readonly DayClock _clock;
 
     // Assigned in Load, because each of these needs a device, and there is none until the host has
     // opened a window.
     private PlayerController _controller = null!;
+    private SceneBindings _scene = null!;
     private VoxelPipeline _pipeline = null!;
+    private SkyRenderer _sky = null!;
     private ChunkRenderer _chunks = null!;
 
     private int3 _centre;
@@ -46,6 +61,7 @@ public sealed class ShoreboundGame : IGame
         _blocks = new GameBlocks(new BlockRegistry());
         _generator = new TerrainGenerator(_blocks, options.Seed);
         _world = new VoxelWorld(_blocks.Registry, _generator);
+        _clock = new DayClock(options.StartHour, options.DayLengthSeconds);
     }
 
     /// <inheritdoc />
@@ -58,8 +74,10 @@ public sealed class ShoreboundGame : IGame
     /// <inheritdoc />
     public void Load(GameContext context)
     {
-        _pipeline = new VoxelPipeline(context.Gpu, context.Shaders, context.Target.RenderPass);
-        _chunks = new ChunkRenderer(context.Gpu, context.Renderer, _world, _pipeline);
+        _scene = new SceneBindings(context.Gpu);
+        _pipeline = new VoxelPipeline(context.Gpu, context.Shaders, _scene, context.Target.RenderPass);
+        _sky = new SkyRenderer(context.Gpu, context.Renderer, context.Shaders, _scene, context.Target.RenderPass);
+        _chunks = new ChunkRenderer(context.Gpu, context.Renderer, _world, _pipeline, _scene);
         _controller = new PlayerController(context.Window, _camera);
 
         if (_options.Viewpoint is { } viewpoint)
@@ -83,7 +101,11 @@ public sealed class ShoreboundGame : IGame
     }
 
     /// <inheritdoc />
-    public void Step(double seconds) => _controller.Step(seconds);
+    public void Step(double seconds)
+    {
+        _controller.Step(seconds);
+        _clock.Step(seconds);
+    }
 
     /// <inheritdoc />
     public void Update(GameContext context)
@@ -94,7 +116,23 @@ public sealed class ShoreboundGame : IGame
     }
 
     /// <inheritdoc />
-    public void Draw(GameContext context) => _chunks.Draw(_camera, context.AspectRatio);
+    public void Draw(GameContext context)
+    {
+        var viewProjection = _camera.ViewProjection(context.AspectRatio);
+        var viewMeters = _options.ViewRadiusChunks * Chunk.Size;
+
+        _scene.Update(
+            context.Renderer.FrameIndex,
+            viewProjection,
+            SunCycle.At(_clock.DayFraction),
+            viewMeters * FogStartFraction,
+            viewMeters * FogEndFraction
+        );
+
+        // The sky first: it writes no depth, so everything below lands on top of it.
+        _sky.Draw();
+        _chunks.Draw(_camera, viewProjection);
+    }
 
     /// <inheritdoc />
     public void DrawOverlay()
@@ -103,6 +141,8 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_camera.Position.X:F1}, {_camera.Position.Y:F1}, {_camera.Position.Z:F1}");
         ImGui.Text($"chunk {_centre.X}, {_centre.Y}, {_centre.Z}");
 
+        ImGui.SeparatorText("Sky"u8);
+        ImGui.Text($"{_clock} (day {(int)_clock.DayFraction + 1})");
         ImGui.SeparatorText("World"u8);
         ImGui.Text($"seed {_generator.Seed}, radius {_options.ViewRadiusChunks} chunks");
         ImGui.Text($"{_world.LoadedChunkCount} loaded, {_chunks.MeshCount} meshed");
@@ -121,6 +161,8 @@ public sealed class ShoreboundGame : IGame
     public void Dispose()
     {
         _chunks.Dispose();
+        _sky.Dispose();
         _pipeline.Dispose();
+        _scene.Dispose();
     }
 }

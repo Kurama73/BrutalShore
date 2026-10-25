@@ -29,6 +29,7 @@ public sealed class ChunkRenderer : IDisposable
     private readonly GpuRenderer _renderer;
     private readonly VoxelWorld _world;
     private readonly VoxelPipeline _pipeline;
+    private readonly SceneBindings _scene;
 
     private readonly ChunkMesher _mesher = new();
     private readonly VoxelMesh _mesh = new();
@@ -40,12 +41,24 @@ public sealed class ChunkRenderer : IDisposable
     private readonly List<int3> _stale = [];
 
     /// <summary>Wires the renderer to a world and a pipeline.</summary>
-    public ChunkRenderer(GpuContext context, GpuRenderer renderer, VoxelWorld world, VoxelPipeline pipeline)
+    /// <param name="context">The device meshes are uploaded to.</param>
+    /// <param name="renderer">The renderer whose frame chunks are recorded into.</param>
+    /// <param name="world">The world whose chunks are meshed and drawn.</param>
+    /// <param name="pipeline">The pipeline that draws them.</param>
+    /// <param name="scene">The per-frame uniform block the shaders read.</param>
+    public ChunkRenderer(
+        GpuContext context,
+        GpuRenderer renderer,
+        VoxelWorld world,
+        VoxelPipeline pipeline,
+        SceneBindings scene
+    )
     {
         _context = context;
         _renderer = renderer;
         _world = world;
         _pipeline = pipeline;
+        _scene = scene;
     }
 
     /// <summary>How many chunks have a mesh on the GPU.</summary>
@@ -108,14 +121,17 @@ public sealed class ChunkRenderer : IDisposable
 
     /// <summary>Draws every visible chunk mesh into the frame being recorded.</summary>
     /// <param name="camera">The camera to draw from; its position is the render-space origin.</param>
-    /// <param name="aspectRatio">Framebuffer width divided by height.</param>
-    public void Draw(Camera camera, float aspectRatio)
+    /// <param name="viewProjection">
+    /// That camera's view-projection. It is passed in rather than rebuilt here because the
+    /// scene uniform block needs the same matrix, and two of them would be two chances to differ.
+    /// </param>
+    public void Draw(Camera camera, in float4x4 viewProjection)
     {
-        var viewProjection = camera.ViewProjection(aspectRatio);
         var frustum = ViewFrustum.FromViewProjection(viewProjection);
         var commands = _renderer.Commands;
 
         commands.BindPipeline(VkPipelineBindPoint.Graphics, _pipeline.Handle);
+        _scene.Bind(commands, _pipeline.Layout, _renderer.FrameIndex);
 
         DrawnChunkCount = 0;
         DrawnTriangleCount = 0;
@@ -134,7 +150,7 @@ public sealed class ChunkRenderer : IDisposable
                 _pipeline.Layout,
                 VkShaderStageFlags.VertexBit,
                 ByteSize.Zero,
-                new VoxelPushConstants(viewProjection, origin)
+                new VoxelPushConstants(origin)
             );
             commands.DrawIndexed(mesh.Indices.Count, 1, 0, 0, 0);
 

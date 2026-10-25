@@ -22,6 +22,12 @@ public sealed record Options
     /// </remarks>
     public int ViewRadiusChunks { get; init; } = 8;
 
+    /// <summary>The hour of the first morning, from 0 to 24.</summary>
+    public double StartHour { get; init; } = 8.0;
+
+    /// <summary>How long a whole day takes in real seconds; zero stops the sun.</summary>
+    public double DayLengthSeconds { get; init; } = DayClock.DefaultDayLengthSeconds;
+
     /// <summary>Where the camera starts, or <see langword="null" /> to stand on the ground at the origin.</summary>
     public Viewpoint? Viewpoint { get; init; }
 
@@ -51,6 +57,15 @@ public sealed record Options
                     options = options with { ViewRadiusChunks = ReadInteger(arguments, ++index, "--view-radius") };
                     break;
 
+                case "--time":
+                    options = options with { StartHour = ReadDouble(arguments, ++index, "--time") };
+                    break;
+                case "--day-length":
+                    options = options with
+                    {
+                        DayLengthSeconds = ReadDouble(arguments, ++index, "--day-length"),
+                    };
+                    break;
                 case "--camera":
                     options = options with { Viewpoint = ReadViewpoint(arguments, ref index) };
                     break;
@@ -88,14 +103,16 @@ public sealed record Options
     /// Degrees on the command line and radians everywhere inside: nobody types a heading in
     /// radians, and the conversion belongs at the edge where the human input arrives.
     /// </remarks>
+    private const string CameraShape = "five numbers: x y z yaw pitch";
+
     private static Viewpoint ReadViewpoint(string[] arguments, ref int index)
     {
         index++;
-        var x = ReadDouble(arguments, index++, "--camera");
-        var y = ReadDouble(arguments, index++, "--camera");
-        var z = ReadDouble(arguments, index++, "--camera");
-        var yaw = ReadDouble(arguments, index++, "--camera");
-        var pitch = ReadDouble(arguments, index, "--camera");
+        var x = ReadDouble(arguments, index++, "--camera", CameraShape);
+        var y = ReadDouble(arguments, index++, "--camera", CameraShape);
+        var z = ReadDouble(arguments, index++, "--camera", CameraShape);
+        var yaw = ReadDouble(arguments, index++, "--camera", CameraShape);
+        var pitch = ReadDouble(arguments, index, "--camera", CameraShape);
 
         return new Viewpoint(
             new double3(x, y, z),
@@ -104,11 +121,11 @@ public sealed record Options
         );
     }
 
-    private static double ReadDouble(string[] arguments, int index, string flag) =>
+    private static double ReadDouble(string[] arguments, int index, string flag, string shape = "a number") =>
         index < arguments.Length
         && double.TryParse(arguments[index], System.Globalization.CultureInfo.InvariantCulture, out var value)
             ? value
-            : throw new ArgumentException($"'{flag}' needs five numbers: x y z yaw pitch.", nameof(arguments));
+            : throw new ArgumentException($"'{flag}' needs {shape}.", nameof(arguments));
 
     private static string ReadText(string[] arguments, int index, string flag) =>
         index < arguments.Length

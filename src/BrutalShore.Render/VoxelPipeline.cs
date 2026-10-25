@@ -23,7 +23,16 @@ public sealed unsafe class VoxelPipeline : IDisposable
     private readonly GpuContext _context;
 
     /// <summary>Compiles the pipeline for one render pass.</summary>
-    public VoxelPipeline(GpuContext context, ShaderLibrary shaders, VkRenderPass renderPass)
+    /// <param name="context">The device the pipeline belongs to.</param>
+    /// <param name="shaders">Where <c>voxel.vert</c> and <c>voxel.frag</c> are compiled from.</param>
+    /// <param name="scene">The per-frame uniform block the shaders read.</param>
+    /// <param name="renderPass">The render pass chunks are drawn in.</param>
+    public VoxelPipeline(
+        GpuContext context,
+        ShaderLibrary shaders,
+        SceneBindings scene,
+        VkRenderPass renderPass
+    )
     {
         _context = context;
 
@@ -34,7 +43,8 @@ public sealed unsafe class VoxelPipeline : IDisposable
             Size = ByteSize.Of<VoxelPushConstants>(),
         };
 
-        Layout = context.Device.CreatePipelineLayout([], [pushConstantRange], null);
+        var setLayout = scene.Layout;
+        Layout = context.Device.CreatePipelineLayout([setLayout], [pushConstantRange], null);
 
         Span<VkPipelineShaderStageCreateInfo> stages =
         [
