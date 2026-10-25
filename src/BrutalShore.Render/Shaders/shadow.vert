@@ -15,6 +15,7 @@ layout(set = 0, binding = 0, std140) uniform Scene {
     vec4 horizonColor;
     vec4 fog;
     vec4 shadow;
+    vec4 submerged;
 } scene;
 
 layout(push_constant) uniform Push {

@@ -14,6 +14,7 @@ layout(set = 0, binding = 0, std140) uniform Scene {
     vec4 horizonColor;
     vec4 fog;
     vec4 shadow;
+    vec4 submerged;
 } scene;
 
 layout(location = 0) in vec3 inDirection;
@@ -77,5 +78,6 @@ void main() {
     float moonIsUp = smoothstep(-0.04, 0.06, scene.moonDirection.y);
     color += vec3(0.85, 0.86, 0.80) * pow(towardsMoon, 6000.0) * moonIsUp;
 
-    outColor = vec4(color, 1.0);
+    // Under a liquid there is no sky to see: what the far plane shows is more of the liquid.
+    outColor = vec4(mix(color, scene.submerged.rgb, scene.submerged.a), 1.0);
 }

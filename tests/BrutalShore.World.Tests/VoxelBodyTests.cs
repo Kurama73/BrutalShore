@@ -14,12 +14,21 @@ public sealed class VoxelBodyTests
     /// <summary>A player-shaped box: six tenths across, one and four fifths tall.</summary>
     private static readonly double3 PlayerSize = new(0.6, 1.8, 0.6);
 
+    /// <summary>
+    /// A registry whose one block stops a body, matching what the test worlds below put down.
+    /// </summary>
+    /// <remarks>
+    /// Collision asks what a block is, not merely whether there is one: water fills a chunk and
+    /// stops nothing. These tests are about the geometry, so the one block here is a wall.
+    /// </remarks>
+    private static readonly BlockRegistry Registry = Walls();
+
     [Fact]
     public void a_body_in_open_air_moves_the_whole_way()
     {
         var world = new FloorAt(0);
 
-        var move = VoxelBody.Move(world, new double3(0.5, 20.0, 0.5), PlayerSize, new double3(1.0, 0.0, 2.0));
+        var move = VoxelBody.Move(world, Registry, new double3(0.5, 20.0, 0.5), PlayerSize, new double3(1.0, 0.0, 2.0));
 
         Assert.Equal(1.5, move.FeetMeters.X, 1e-9);
         Assert.Equal(2.5, move.FeetMeters.Z, 1e-9);
@@ -32,7 +41,7 @@ public sealed class VoxelBodyTests
         // The floor fills y = 0, so its top face is at y = 1 and that is where feet belong.
         var world = new FloorAt(0);
 
-        var move = VoxelBody.Move(world, new double3(0.5, 6.0, 0.5), PlayerSize, new double3(0.0, -10.0, 0.0));
+        var move = VoxelBody.Move(world, Registry, new double3(0.5, 6.0, 0.5), PlayerSize, new double3(0.0, -10.0, 0.0));
 
         Assert.True(move.IsOnGround);
         Assert.Equal(1.0, move.FeetMeters.Y, 1e-3);
@@ -47,7 +56,7 @@ public sealed class VoxelBodyTests
         // overlap at either end to notice.
         var world = new FloorAt(0);
 
-        var move = VoxelBody.Move(world, new double3(0.5, 300.0, 0.5), PlayerSize, new double3(0.0, -600.0, 0.0));
+        var move = VoxelBody.Move(world, Registry, new double3(0.5, 300.0, 0.5), PlayerSize, new double3(0.0, -600.0, 0.0));
 
         Assert.True(move.IsOnGround);
         Assert.Equal(1.0, move.FeetMeters.Y, 1e-3);
@@ -58,7 +67,7 @@ public sealed class VoxelBodyTests
     {
         var world = new FloorAndCeiling(floor: 0, ceiling: 5);
 
-        var move = VoxelBody.Move(world, new double3(0.5, 1.0, 0.5), PlayerSize, new double3(0.0, 6.0, 0.0));
+        var move = VoxelBody.Move(world, Registry, new double3(0.5, 1.0, 0.5), PlayerSize, new double3(0.0, 6.0, 0.0));
 
         Assert.True(move.HitCeiling);
 
@@ -72,7 +81,7 @@ public sealed class VoxelBodyTests
     {
         var world = new WallAt(4);
 
-        var move = VoxelBody.Move(world, new double3(0.5, 1.0, 0.5), PlayerSize, new double3(8.0, 0.0, 0.0));
+        var move = VoxelBody.Move(world, Registry, new double3(0.5, 1.0, 0.5), PlayerSize, new double3(8.0, 0.0, 0.0));
 
         Assert.True(move.HitWall);
 
@@ -85,7 +94,7 @@ public sealed class VoxelBodyTests
     {
         var world = new WallAt(4);
 
-        var move = VoxelBody.Move(world, new double3(0.5, 1.0, 0.5), PlayerSize, new double3(8.0, 0.0, 3.0));
+        var move = VoxelBody.Move(world, Registry, new double3(0.5, 1.0, 0.5), PlayerSize, new double3(8.0, 0.0, 3.0));
 
         // Resolving the axes separately is what gives this: the push into the wall is thrown
         // away and the movement along it is kept, which is what walking along a wall feels like.
@@ -101,8 +110,8 @@ public sealed class VoxelBodyTests
 
         // Walking off a ledge has to stop being on the ground with nothing having stopped it, so
         // this cannot be something only a blocked move can report.
-        Assert.True(VoxelBody.IsStandingOn(world, new double3(0.5, 1.0, 0.5), PlayerSize));
-        Assert.False(VoxelBody.IsStandingOn(world, new double3(0.5, 4.0, 0.5), PlayerSize));
+        Assert.True(VoxelBody.IsStandingOn(world, Registry, new double3(0.5, 1.0, 0.5), PlayerSize));
+        Assert.False(VoxelBody.IsStandingOn(world, Registry, new double3(0.5, 4.0, 0.5), PlayerSize));
     }
 
     [Fact]
@@ -114,7 +123,7 @@ public sealed class VoxelBodyTests
         // Gravity keeps pulling after a landing. A resolution that gave back even a fraction of a
         // millimetre each time would bury a standing player over a few minutes.
         for (var tick = 0; tick < 600; tick++)
-            feet = VoxelBody.Move(world, feet, PlayerSize, new double3(0.0, -0.16, 0.0)).FeetMeters;
+            feet = VoxelBody.Move(world, Registry, feet, PlayerSize, new double3(0.0, -0.16, 0.0)).FeetMeters;
 
         Assert.Equal(1.0, feet.Y, 1e-3);
     }
@@ -125,12 +134,53 @@ public sealed class VoxelBodyTests
         var world = new FloorAt(0);
         const double far = 512_345.5;
 
-        var move = VoxelBody.Move(world, new double3(far, 6.0, -far), PlayerSize, new double3(0.0, -10.0, 0.0));
+        var move = VoxelBody.Move(world, Registry, new double3(far, 6.0, -far), PlayerSize, new double3(0.0, -10.0, 0.0));
 
         // Half a million metres out there is no room left in f32 for a tenth of a millimetre of
         // clearance; the whole resolution stays in f64 for this case.
         Assert.True(move.IsOnGround);
         Assert.Equal(1.0, move.FeetMeters.Y, 1e-3);
+    }
+
+    private static BlockRegistry Walls()
+    {
+        var registry = new BlockRegistry();
+        registry.Register(new BlockType { Name = "wall", Color = new byte3(128, 128, 128) });
+        return registry;
+    }
+
+    [Fact]
+    public void a_block_that_does_not_collide_is_moved_straight_through()
+    {
+        // A sea is made of blocks and stops nothing. Asking whether a block is there, rather than
+        // what it is, would make the ocean a floor.
+        var registry = new BlockRegistry();
+        var water = registry.Register(
+            new BlockType { Name = "water", Color = new byte3(0, 0, 255), Collides = false }
+        );
+
+        var world = new FilledWorld(water);
+        var move = VoxelBody.Move(world, registry, new double3(0.5, 40.0, 0.5), PlayerSize, new double3(0.0, -10.0, 0.0));
+
+        Assert.False(move.IsOnGround);
+        Assert.Equal(30.0, move.FeetMeters.Y, 1e-9);
+    }
+
+    [Fact]
+    public void air_never_stops_anything()
+    {
+        // Air is a registered block type like any other, and one that defaulted to stopping a
+        // body would wall the whole world in.
+        var registry = new BlockRegistry();
+        var world = new FilledWorld(BlockId.Air);
+
+        Assert.False(VoxelBody.IsStandingOn(world, registry, new double3(0.5, 1.0, 0.5), PlayerSize));
+    }
+
+    /// <summary>One block everywhere, whatever it is.</summary>
+    private sealed class FilledWorld(BlockId block) : IVoxelSource
+    {
+        public BlockId BlockAt(int x, int y, int z) => block;
     }
 
     /// <summary>One solid layer of blocks, unbounded sideways.</summary>

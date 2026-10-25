@@ -12,15 +12,15 @@ namespace BrutalShore.World;
 /// </para>
 /// <para>
 /// What a worker reads is a <see cref="ChunkNeighbourhood" />, captured on the main thread, never
-/// the world itself. What it writes is a <see cref="VoxelMesh" /> nobody else holds. Both the
-/// meshes and the mesher's own scratch buffers are kept per worker and reused, because a chunk
-/// mesh is tens of kilobytes and a world being flown across produces hundreds a second.
+/// the world itself. What it writes is a <see cref="ChunkSurface" /> nobody else holds. Both the
+/// surfaces and the mesher's own scratch buffers are kept and reused, because a chunk's geometry
+/// is tens of kilobytes and a world being flown across produces hundreds a second.
 /// </para>
 /// <para>
-/// A mesh handed to <see cref="Collect" /> is only the caller's for the duration of the call: it
-/// goes back into the pool afterwards. That is what keeps the pool from needing a return call
-/// that a caller can forget, and it costs nothing, because the only thing done with a finished
-/// mesh is to copy it into a GPU buffer.
+/// A surface handed to <see cref="Collect" /> is only the caller's for the duration of the call:
+/// it goes back into the pool afterwards. That is what keeps the pool from needing a return call
+/// a caller can forget, and it costs nothing, because the only thing done with a finished surface
+/// is to copy it into GPU buffers.
 /// </para>
 /// </remarks>
 public sealed class MeshStreamer : IDisposable
@@ -28,7 +28,7 @@ public sealed class MeshStreamer : IDisposable
     private readonly BlockRegistry _registry;
     private readonly BlockingCollection<ChunkNeighbourhood> _requested = new();
     private readonly ConcurrentQueue<Finished> _finished = new();
-    private readonly ConcurrentBag<VoxelMesh> _spare = [];
+    private readonly ConcurrentBag<ChunkSurface> _spare = [];
     private readonly HashSet<int3> _outstanding = [];
     private readonly Thread[] _workers;
 
@@ -71,7 +71,7 @@ public sealed class MeshStreamer : IDisposable
     /// <summary>How many chunks have been asked for and not yet collected.</summary>
     public int OutstandingCount => _outstanding.Count;
 
-    /// <summary>How many meshes are finished and waiting to be uploaded.</summary>
+    /// <summary>How many surfaces are finished and waiting to be uploaded.</summary>
     public int ReadyCount => _finished.Count;
 
     /// <summary>Asks for a chunk's surface to be built.</summary>
@@ -94,27 +94,27 @@ public sealed class MeshStreamer : IDisposable
     }
 
     /// <summary>Hands over the meshes that are ready.</summary>
-    /// <param name="maxMeshes">How many to take at most.</param>
+    /// <param name="maxSurfaces">How many to take at most.</param>
     /// <param name="accept">
-    /// What to do with each. The mesh is valid only for the duration of the call; it is reused
+    /// What to do with each. The surface is valid only for the duration of the call; it is reused
     /// afterwards, so anything wanted from it has to be copied out.
     /// </param>
     /// <returns>How many were handed over.</returns>
     /// <remarks>Main thread only.</remarks>
-    public int Collect(int maxMeshes, Action<int3, VoxelMesh> accept)
+    public int Collect(int maxSurfaces, Action<int3, ChunkSurface> accept)
     {
         var taken = 0;
-        while (taken < maxMeshes && _finished.TryDequeue(out var ready))
+        while (taken < maxSurfaces && _finished.TryDequeue(out var ready))
         {
             _outstanding.Remove(ready.Coordinate);
 
             try
             {
-                accept(ready.Coordinate, ready.Mesh);
+                accept(ready.Coordinate, ready.Surface);
             }
             finally
             {
-                _spare.Add(ready.Mesh);
+                _spare.Add(ready.Surface);
             }
 
             taken++;
@@ -148,12 +148,11 @@ public sealed class MeshStreamer : IDisposable
         {
             foreach (var neighbourhood in _requested.GetConsumingEnumerable())
             {
-                if (!_spare.TryTake(out var mesh))
-                    mesh = new VoxelMesh();
+                if (!_spare.TryTake(out var surface))
+                    surface = new ChunkSurface();
 
-                mesh.Clear();
-                mesher.Mesh(neighbourhood.Middle, neighbourhood.Centre, neighbourhood, _registry, mesh);
-                _finished.Enqueue(new Finished(neighbourhood.Centre, mesh));
+                mesher.Mesh(neighbourhood.Middle, neighbourhood.Centre, neighbourhood, _registry, surface);
+                _finished.Enqueue(new Finished(neighbourhood.Centre, surface));
             }
         }
         catch (ObjectDisposedException)
@@ -162,5 +161,5 @@ public sealed class MeshStreamer : IDisposable
         }
     }
 
-    private readonly record struct Finished(int3 Coordinate, VoxelMesh Mesh);
+    private readonly record struct Finished(int3 Coordinate, ChunkSurface Surface);
 }

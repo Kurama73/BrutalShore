@@ -33,6 +33,7 @@ namespace BrutalShore.Voxel;
 /// Packed1:  bits  0..7   red, sRGB
 ///           bits  8..15  green
 ///           bits 16..23  blue
+///           bits 24..31  opacity, 255 for a solid block
 /// </code>
 /// </para>
 /// </remarks>
@@ -52,7 +53,8 @@ public readonly struct VoxelVertex
     /// <param name="face">Which way the quad faces.</param>
     /// <param name="ambientOcclusion">0 darkest to 3 unoccluded.</param>
     /// <param name="color">The block's colour in sRGB bytes.</param>
-    public VoxelVertex(int x, int y, int z, VoxelFace face, int ambientOcclusion, byte3 color)
+    /// <param name="opacity">How much of what is behind the face it hides; 255 is solid.</param>
+    public VoxelVertex(int x, int y, int z, VoxelFace face, int ambientOcclusion, byte3 color, byte opacity)
     {
         Packed0 =
             (uint)x
@@ -61,7 +63,7 @@ public readonly struct VoxelVertex
             | ((uint)face << 18)
             | ((uint)ambientOcclusion << 21);
 
-        Packed1 = color.X | ((uint)color.Y << 8) | ((uint)color.Z << 16);
+        Packed1 = color.X | ((uint)color.Y << 8) | ((uint)color.Z << 16) | ((uint)opacity << 24);
     }
 
     /// <summary>The chunk-local position this corner was packed with.</summary>
@@ -76,4 +78,7 @@ public readonly struct VoxelVertex
     /// <summary>The colour this corner was packed with.</summary>
     public byte3 Color =>
         new((byte)(Packed1 & 0xFF), (byte)((Packed1 >> 8) & 0xFF), (byte)((Packed1 >> 16) & 0xFF));
+
+    /// <summary>How much of what is behind this face it hides, from 0 to 255.</summary>
+    public byte Opacity => (byte)((Packed1 >> 24) & 0xFF);
 }

@@ -56,11 +56,21 @@ public static class VoxelBody
 
     /// <summary>Moves a body as far along a delta as the world allows.</summary>
     /// <param name="source">The blocks to collide against.</param>
+    /// <param name="registry">
+    /// Where a block id is resolved to whether it stops a body. Not every solid block does —
+    /// water is in the way of nothing, and the sea would otherwise be a floor.
+    /// </param>
     /// <param name="feetMeters">The middle of the body's base, in world metres.</param>
     /// <param name="sizeMeters">Its width, height and depth, in metres.</param>
     /// <param name="deltaMeters">How far it is trying to move.</param>
     /// <returns>Where it ended up and what stopped it.</returns>
-    public static BodyMove Move(IVoxelSource source, double3 feetMeters, double3 sizeMeters, double3 deltaMeters)
+    public static BodyMove Move(
+        IVoxelSource source,
+        BlockRegistry registry,
+        double3 feetMeters,
+        double3 sizeMeters,
+        double3 deltaMeters
+    )
     {
         var remaining = deltaMeters;
         var feet = feetMeters;
@@ -78,7 +88,7 @@ public static class VoxelBody
         for (var step = 0; step < steps; step++)
         {
             // Vertical first: landing on something is what the horizontal moves then slide along.
-            if (Slide(source, ref feet, sizeMeters, 1, perStep.Y))
+            if (Slide(source, registry, ref feet, sizeMeters, 1, perStep.Y))
             {
                 if (perStep.Y < 0.0)
                     onGround = true;
@@ -86,8 +96,8 @@ public static class VoxelBody
                     ceiling = true;
             }
 
-            wall |= Slide(source, ref feet, sizeMeters, 0, perStep.X);
-            wall |= Slide(source, ref feet, sizeMeters, 2, perStep.Z);
+            wall |= Slide(source, registry, ref feet, sizeMeters, 0, perStep.X);
+            wall |= Slide(source, registry, ref feet, sizeMeters, 2, perStep.Z);
         }
 
         return new BodyMove
@@ -101,6 +111,7 @@ public static class VoxelBody
 
     /// <summary>Whether a body standing here has something solid immediately under it.</summary>
     /// <param name="source">The blocks to test against.</param>
+    /// <param name="registry">Where a block id is resolved to whether it stops a body.</param>
     /// <param name="feetMeters">The middle of the body's base, in world metres.</param>
     /// <param name="sizeMeters">Its width, height and depth, in metres.</param>
     /// <returns><see langword="true" /> if it is resting on something.</returns>
@@ -109,20 +120,32 @@ public static class VoxelBody
     /// still needs to know whether it may jump, and because walking off a ledge has to stop being
     /// on the ground without anything having stopped it.
     /// </remarks>
-    public static bool IsStandingOn(IVoxelSource source, double3 feetMeters, double3 sizeMeters)
+    public static bool IsStandingOn(
+        IVoxelSource source,
+        BlockRegistry registry,
+        double3 feetMeters,
+        double3 sizeMeters
+    )
     {
         var below = new double3(feetMeters.X, feetMeters.Y - (Clearance * 2.0), feetMeters.Z);
-        return Overlaps(source, below, sizeMeters);
+        return Overlaps(source, registry, below, sizeMeters);
     }
 
     /// <summary>Moves one axis as far as it can; true if something stopped it short.</summary>
-    private static bool Slide(IVoxelSource source, ref double3 feet, double3 size, int axis, double delta)
+    private static bool Slide(
+        IVoxelSource source,
+        BlockRegistry registry,
+        ref double3 feet,
+        double3 size,
+        int axis,
+        double delta
+    )
     {
         if (delta == 0.0)
             return false;
 
         var moved = Offset(feet, axis, delta);
-        if (!Overlaps(source, moved, size))
+        if (!Overlaps(source, registry, moved, size))
         {
             feet = moved;
             return false;
@@ -141,7 +164,7 @@ public static class VoxelBody
     }
 
     /// <summary>Whether a body standing at a position overlaps anything solid.</summary>
-    private static bool Overlaps(IVoxelSource source, double3 feet, double3 size)
+    private static bool Overlaps(IVoxelSource source, BlockRegistry registry, double3 feet, double3 size)
     {
         var minimum = new double3(feet.X - (size.X / 2.0), feet.Y, feet.Z - (size.Z / 2.0));
         var maximum = new double3(feet.X + (size.X / 2.0), feet.Y + size.Y, feet.Z + (size.Z / 2.0));
@@ -159,7 +182,7 @@ public static class VoxelBody
         for (var z = lowZ; z <= highZ; z++)
         for (var x = lowX; x <= highX; x++)
         {
-            if (source.BlockAt(x, y, z).IsSolid)
+            if (registry[source.BlockAt(x, y, z)].Collides)
                 return true;
         }
 

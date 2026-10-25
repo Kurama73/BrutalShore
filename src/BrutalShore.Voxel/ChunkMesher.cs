@@ -54,7 +54,14 @@ public sealed class ChunkMesher
     /// <summary>
     /// One face in the plane being merged: what it looks like, and therefore what it may merge with.
     /// </summary>
-    private readonly record struct MaskCell(byte3 Color, byte Occlusion0, byte Occlusion1, byte Occlusion2, byte Occlusion3)
+    private readonly record struct MaskCell(
+        byte3 Color,
+        byte Opacity,
+        byte Occlusion0,
+        byte Occlusion1,
+        byte Occlusion2,
+        byte Occlusion3
+    )
     {
         /// <summary>No face here.</summary>
         public static MaskCell None => default;
@@ -67,7 +74,8 @@ public sealed class ChunkMesher
 
     /// <summary>
     /// Meshes <paramref name="chunk"/>, which sits at <paramref name="chunkCoordinate"/> in chunk
-    /// units, into <paramref name="into"/>, which is cleared first.
+    /// units, into <paramref name="into"/>, which is cleared first. Solid faces and see-through
+    /// ones land in the two halves of the surface.
     /// </summary>
     /// <param name="chunk">The chunk whose surface is wanted.</param>
     /// <param name="chunkCoordinate">Where that chunk sits, in chunk units.</param>
@@ -75,9 +83,15 @@ public sealed class ChunkMesher
     /// Read access to the world, used for the blocks just outside the chunk. It must agree with
     /// <paramref name="chunk"/> about the chunk's own blocks.
     /// </param>
-    /// <param name="registry">Where a block id's colour is resolved.</param>
-    /// <param name="into">The mesh to fill.</param>
-    public void Mesh(Chunk chunk, int3 chunkCoordinate, IVoxelSource source, BlockRegistry registry, VoxelMesh into)
+    /// <param name="registry">Where a block id's colour and opacity are resolved.</param>
+    /// <param name="into">The surface to fill; both halves are cleared first.</param>
+    public void Mesh(
+        Chunk chunk,
+        int3 chunkCoordinate,
+        IVoxelSource source,
+        BlockRegistry registry,
+        ChunkSurface into
+    )
     {
         into.Clear();
 
@@ -169,11 +183,14 @@ public sealed class ChunkMesher
                 var facingWorldY = originY + facing[1];
                 var facingWorldZ = originZ + facing[2];
 
-                if (source.BlockAt(facingWorldX, facingWorldY, facingWorldZ).IsSolid)
+                var facingBlock = source.BlockAt(facingWorldX, facingWorldY, facingWorldZ);
+                var ownerType = registry[ownerBlock];
+                if (IsHidden(ownerBlock, ownerType, facingBlock, registry))
                     continue;
 
                 _mask[i + Chunk.Size * j] = new MaskCell(
-                    registry[ownerBlock].Color,
+                    ownerType.Color,
+                    ownerType.Opacity,
                     Occlusion(source, u, v, facingWorldX, facingWorldY, facingWorldZ, -1, -1),
                     Occlusion(source, u, v, facingWorldX, facingWorldY, facingWorldZ, +1, -1),
                     Occlusion(source, u, v, facingWorldX, facingWorldY, facingWorldZ, +1, +1),
@@ -184,6 +201,29 @@ public sealed class ChunkMesher
                 };
             }
         }
+    }
+
+    /// <summary>Whether the block in front of a face hides it well enough not to build it.</summary>
+    /// <remarks>
+    /// <para>
+    /// Air hides nothing. An opaque block hides everything. A see-through block hides only a face
+    /// of its own kind — which is the rule that turns a body of water into a surface instead of a
+    /// lattice of every cell's six sides, while still letting the sand underneath be drawn.
+    /// </para>
+    /// <para>
+    /// Comparing the ids rather than the types is deliberate: two different see-through blocks
+    /// meeting should show the boundary between them, and two of the same should not.
+    /// </para>
+    /// </remarks>
+    private static bool IsHidden(BlockId owner, BlockType ownerType, BlockId facing, BlockRegistry registry)
+    {
+        if (facing.IsAir)
+            return false;
+
+        if (!registry[facing].IsTranslucent)
+            return true;
+
+        return ownerType.IsTranslucent && owner == facing;
     }
 
     /// <summary>
@@ -239,7 +279,15 @@ public sealed class ChunkMesher
     /// would save — but it is linear in the mask, and because every cell it emits it also clears,
     /// it can neither emit two overlapping rectangles nor leave a face uncovered.
     /// </remarks>
-    private void MergeAndEmit(VoxelMesh into, int axis, int u, int v, int offset, bool facingPositive, VoxelFace face)
+    private void MergeAndEmit(
+        ChunkSurface into,
+        int axis,
+        int u,
+        int v,
+        int offset,
+        bool facingPositive,
+        VoxelFace face
+    )
     {
         for (var j = 0; j < Chunk.Size; j++)
         {
@@ -280,7 +328,11 @@ public sealed class ChunkMesher
                     for (var column = 0; column < width; column++)
                         _mask[i + column + Chunk.Size * (j + row)] = MaskCell.None;
 
-                Emit(into, cell, axis, u, v, offset, i, j, width, height, facingPositive, face);
+                // The merge has already kept the two kinds apart: a cell's opacity is part of
+                // what makes two of them equal, so no merged quad is ever half one and half
+                // the other.
+                var mesh = cell.Opacity == byte.MaxValue ? into.Opaque : into.Translucent;
+                Emit(mesh, cell, axis, u, v, offset, i, j, width, height, facingPositive, face);
                 i += width;
             }
         }
@@ -312,17 +364,17 @@ public sealed class ChunkMesher
     {
         if (facingPositive)
             into.AddQuad(
-                Corner(axis, u, v, offset, i, j, 0, 0, face, cell.Occlusion0, cell.Color),
-                Corner(axis, u, v, offset, i, j, width, 0, face, cell.Occlusion1, cell.Color),
-                Corner(axis, u, v, offset, i, j, width, height, face, cell.Occlusion2, cell.Color),
-                Corner(axis, u, v, offset, i, j, 0, height, face, cell.Occlusion3, cell.Color)
+                Corner(axis, u, v, offset, i, j, 0, 0, face, cell.Occlusion0, cell),
+                Corner(axis, u, v, offset, i, j, width, 0, face, cell.Occlusion1, cell),
+                Corner(axis, u, v, offset, i, j, width, height, face, cell.Occlusion2, cell),
+                Corner(axis, u, v, offset, i, j, 0, height, face, cell.Occlusion3, cell)
             );
         else
             into.AddQuad(
-                Corner(axis, u, v, offset, i, j, 0, 0, face, cell.Occlusion0, cell.Color),
-                Corner(axis, u, v, offset, i, j, 0, height, face, cell.Occlusion3, cell.Color),
-                Corner(axis, u, v, offset, i, j, width, height, face, cell.Occlusion2, cell.Color),
-                Corner(axis, u, v, offset, i, j, width, 0, face, cell.Occlusion1, cell.Color)
+                Corner(axis, u, v, offset, i, j, 0, 0, face, cell.Occlusion0, cell),
+                Corner(axis, u, v, offset, i, j, 0, height, face, cell.Occlusion3, cell),
+                Corner(axis, u, v, offset, i, j, width, height, face, cell.Occlusion2, cell),
+                Corner(axis, u, v, offset, i, j, width, 0, face, cell.Occlusion1, cell)
             );
     }
 
@@ -338,13 +390,13 @@ public sealed class ChunkMesher
         int deltaV,
         VoxelFace face,
         int occlusion,
-        byte3 color
+        in MaskCell cell
     )
     {
         Span<int> position = stackalloc int[3];
         position[axis] = offset;
         position[u] = i + deltaU;
         position[v] = j + deltaV;
-        return new VoxelVertex(position[0], position[1], position[2], face, occlusion, color);
+        return new VoxelVertex(position[0], position[1], position[2], face, occlusion, cell.Color, cell.Opacity);
     }
 }

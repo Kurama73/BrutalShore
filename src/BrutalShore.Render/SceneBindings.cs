@@ -126,13 +126,18 @@ public sealed unsafe class SceneBindings : IDisposable
     /// <param name="sky">The sun, the moon and the sky's colours at this moment.</param>
     /// <param name="fogStartMeters">How far away fog begins.</param>
     /// <param name="fogEndMeters">How far away fog is total.</param>
+    /// <param name="submerged">
+    /// The colour and strength of the liquid the eye is inside; see
+    /// <see cref="SceneUniforms.Submerged" />. All zero above the surface.
+    /// </param>
     public void Update(
         int frameIndex,
         in float4x4 viewProjection,
         in float4x4 lightViewProjection,
         in SkyLight sky,
         float fogStartMeters,
-        float fogEndMeters
+        float fogEndMeters,
+        float4 submerged
     )
     {
         var shadow = new float4(
@@ -148,7 +153,8 @@ public sealed unsafe class SceneBindings : IDisposable
             sky,
             fogStartMeters,
             fogEndMeters,
-            shadow
+            shadow,
+            submerged
         );
         _buffers[frameIndex].Rewrite(new ReadOnlySpan<SceneUniforms>(in uniforms));
     }

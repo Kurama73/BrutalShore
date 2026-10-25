@@ -15,6 +15,7 @@ layout(set = 0, binding = 0, std140) uniform Scene {
     vec4 horizonColor;
     vec4 fog;
     vec4 shadow;
+    vec4 submerged;
 } scene;
 
 layout(push_constant) uniform Push {
@@ -29,6 +30,7 @@ layout(location = 1) out vec3 outNormal;
 layout(location = 2) out vec2 outSurface;
 layout(location = 3) out float outOcclusion;
 layout(location = 4) out vec3 outViewOffset;
+layout(location = 5) out float outOpacity;
 
 const vec3 NORMALS[6] = vec3[6](
     vec3( 1.0,  0.0,  0.0),
@@ -61,6 +63,7 @@ void main() {
     ) / 255.0;
 
     outColor = srgbToLinear(encoded);
+    outOpacity = float((inPacked1 >> 24) & 0xFFu) / 255.0;
     outNormal = NORMALS[face];
     outOcclusion = float(occlusion) / 3.0;
 

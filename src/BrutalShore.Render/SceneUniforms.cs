@@ -5,10 +5,13 @@ namespace BrutalShore.Render;
 /// <summary>Everything the shaders read once per frame rather than once per draw.</summary>
 /// <remarks>
 /// <para>
-/// The layout is std140 and it is duplicated by hand at the top of every shader that reads it —
+/// The order of these fields is the layout. It is duplicated by hand at the top of every shader
+/// that reads it —
 /// <c>voxel.vert</c>, <c>voxel.frag</c> and <c>sky.frag</c>. Shaders are compiled from source at
 /// startup with no include path, so there is nowhere to put one shared declaration; the comment
-/// in each shader names this struct so the two cannot drift silently.
+/// in each shader names this struct, and <c>SceneUniformsTests</c> reads both and fails if the
+/// two ever stop agreeing — because they did once, and two swapped members produced a picture
+/// that looked merely wrong rather than broken.
 /// </para>
 /// <para>
 /// Every member is sixteen bytes or a multiple of it, which is what makes the plain sequential C#
@@ -59,6 +62,19 @@ internal readonly struct SceneUniforms
     /// </summary>
     public readonly float4 Shadow;
 
+    /// <summary>
+    /// rgb: the colour everything turns while the eye is inside a liquid. w: how much of it
+    /// applies, 0 above the surface and 1 below it.
+    /// </summary>
+    /// <remarks>
+    /// Being underwater is drawn as a change to the fog rather than as a pane over the screen.
+    /// There is no water geometry between an eye inside a sea and the seabed — the faces inside a
+    /// body of water are the ones the mesher throws away — so the only thing left to tint with is
+    /// the distance, which is also the thing that makes being underwater feel like being
+    /// underwater.
+    /// </remarks>
+    public readonly float4 Submerged;
+
     /// <summary>Packs one frame's view and sky into the block the shaders read.</summary>
     /// <param name="viewProjection">The camera's view-projection, in render space.</param>
     /// <param name="lightViewProjection">Render space to the shadow map's clip space.</param>
@@ -66,13 +82,15 @@ internal readonly struct SceneUniforms
     /// <param name="fogStartMeters">How far away fog begins.</param>
     /// <param name="fogEndMeters">How far away fog is total.</param>
     /// <param name="shadow">The shadow terms, laid out as <see cref="Shadow" /> describes.</param>
+    /// <param name="submerged">The liquid the eye is in, laid out as <see cref="Submerged" /> describes.</param>
     public SceneUniforms(
         in float4x4 viewProjection,
         in float4x4 lightViewProjection,
         in SkyLight sky,
         float fogStartMeters,
         float fogEndMeters,
-        float4 shadow
+        float4 shadow,
+        float4 submerged
     )
     {
         ViewProjection = viewProjection;
@@ -91,5 +109,6 @@ internal readonly struct SceneUniforms
         HorizonColor = new float4(sky.HorizonColor, 0f);
         Fog = new float4(fogStartMeters, fogEndMeters, 0f, 0f);
         Shadow = shadow;
+        Submerged = submerged;
     }
 }

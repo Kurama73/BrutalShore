@@ -6,7 +6,7 @@ public class ChunkMesherTests
 {
     private readonly BlockRegistry _registry = new();
     private readonly ChunkMesher _mesher = new();
-    private readonly VoxelMesh _mesh = new();
+    private readonly ChunkSurface _surface = new();
     private readonly BlockId _stone;
     private readonly BlockId _dirt;
 
@@ -23,8 +23,8 @@ public class ChunkMesherTests
 
         Mesh(world);
 
-        Assert.True(_mesh.IsEmpty);
-        Assert.Equal(0, _mesh.TriangleCount);
+        Assert.True(Opaque.IsEmpty);
+        Assert.Equal(0, Opaque.TriangleCount);
     }
 
     [Fact]
@@ -35,9 +35,9 @@ public class ChunkMesherTests
 
         Mesh(new TestWorld(chunk));
 
-        Assert.Equal(6, _mesh.QuadCount);
-        Assert.Equal(12, _mesh.TriangleCount);
-        Assert.Equal(6, _mesh.Vertices.ToArray().Select(vertex => vertex.Face).Distinct().Count());
+        Assert.Equal(6, Opaque.QuadCount);
+        Assert.Equal(12, Opaque.TriangleCount);
+        Assert.Equal(6, Opaque.Vertices.ToArray().Select(vertex => vertex.Face).Distinct().Count());
     }
 
     [Fact]
@@ -50,8 +50,8 @@ public class ChunkMesherTests
 
         Mesh(new TestWorld(chunk));
 
-        Assert.Equal(6, _mesh.QuadCount);
-        Assert.Equal(12, _mesh.TriangleCount);
+        Assert.Equal(6, Opaque.QuadCount);
+        Assert.Equal(12, Opaque.TriangleCount);
     }
 
     [Fact]
@@ -66,9 +66,9 @@ public class ChunkMesherTests
         // Two cubes side by side share one face, so ten of the twelve faces survive and the two
         // facing each other do not. Merging then joins the four pairs that are coplanar, leaving
         // six quads: four merged sides and the two ends.
-        Assert.Equal(6, _mesh.QuadCount);
+        Assert.Equal(6, Opaque.QuadCount);
         Assert.DoesNotContain(
-            _mesh.Vertices.ToArray(),
+            Opaque.Vertices.ToArray(),
             vertex => vertex.Face == VoxelFace.PositiveX && vertex.Position.X == 9
         );
     }
@@ -84,11 +84,11 @@ public class ChunkMesherTests
 
         var sealedAbove = new TestWorld(chunk).WithSolidNeighbourAbove(_stone);
         Mesh(sealedAbove);
-        var withNeighbour = _mesh.QuadCount;
+        var withNeighbour = Opaque.QuadCount;
 
         var openAbove = new TestWorld(chunk);
         Mesh(openAbove);
-        var withoutNeighbour = _mesh.QuadCount;
+        var withoutNeighbour = Opaque.QuadCount;
 
         Assert.Equal(5, withNeighbour);
         Assert.Equal(6, withoutNeighbour);
@@ -128,7 +128,7 @@ public class ChunkMesherTests
 
         Mesh(new TestWorld(chunk));
 
-        Assert.Equal(solid * 6, _mesh.QuadCount);
+        Assert.Equal(solid * 6, Opaque.QuadCount);
     }
 
     [Fact]
@@ -142,8 +142,8 @@ public class ChunkMesherTests
 
         Mesh(new TestWorld(chunk));
 
-        var vertices = _mesh.Vertices.ToArray();
-        var indices = _mesh.Indices.ToArray();
+        var vertices = Opaque.Vertices.ToArray();
+        var indices = Opaque.Indices.ToArray();
         var centre = new float3(Chunk.Size / 2.0f);
 
         for (var triangle = 0; triangle < indices.Length; triangle += 3)
@@ -171,12 +171,12 @@ public class ChunkMesherTests
         sheltered[0, 1, 1] = _stone;
         sheltered[1, 1, 0] = _stone;
         Mesh(new TestWorld(sheltered));
-        var darkest = _mesh.Vertices.ToArray().Min(vertex => vertex.AmbientOcclusion);
+        var darkest = Opaque.Vertices.ToArray().Min(vertex => vertex.AmbientOcclusion);
 
         var lone = new Chunk();
         lone[8, 8, 8] = _stone;
         Mesh(new TestWorld(lone));
-        var allOpen = _mesh.Vertices.ToArray().All(vertex => vertex.AmbientOcclusion == 3);
+        var allOpen = Opaque.Vertices.ToArray().All(vertex => vertex.AmbientOcclusion == 3);
 
         Assert.Equal(0, darkest);
         Assert.True(allOpen, "a block with nothing around it should have no occluded corner");
@@ -211,18 +211,21 @@ public class ChunkMesherTests
         var world = new TestWorld(chunk);
 
         Mesh(world);
-        var first = _mesh.Vertices.ToArray();
+        var first = Opaque.Vertices.ToArray();
         Mesh(world);
-        var second = _mesh.Vertices.ToArray();
+        var second = Opaque.Vertices.ToArray();
 
         Assert.Equal(first, second);
     }
 
-    private void Mesh(TestWorld world) => _mesher.Mesh(world.Chunk, int3.Zero, world, _registry, _mesh);
+        /// <summary>The solid half of the last mesh, which is all these tests build.</summary>
+    private VoxelMesh Opaque => _surface.Opaque;
+
+    private void Mesh(TestWorld world) => _mesher.Mesh(world.Chunk, int3.Zero, world, _registry, _surface);
 
     private int CountQuads(VoxelFace face)
     {
-        var vertices = _mesh.Vertices.ToArray();
+        var vertices = Opaque.Vertices.ToArray();
         var count = 0;
         for (var quad = 0; quad < vertices.Length; quad += 4)
             if (vertices[quad].Face == face)

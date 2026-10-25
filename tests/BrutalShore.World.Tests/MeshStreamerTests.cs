@@ -18,7 +18,7 @@ public sealed class MeshStreamerTests
         Assert.True(streamer.Request(world.CaptureNeighbourhood(coordinate)!));
 
         var triangles = 0;
-        WaitUntil(() => streamer.Collect(1, (_, mesh) => triangles = mesh.TriangleCount) == 1);
+        WaitUntil(() => streamer.Collect(1, (_, surface) => triangles = surface.Opaque.TriangleCount) == 1);
 
         Assert.True(triangles > 0, "a chunk with a surface in it meshed to nothing");
         Assert.Equal(0, streamer.OutstandingCount);
@@ -38,14 +38,14 @@ public sealed class MeshStreamerTests
     }
 
     [Fact]
-    public void finished_meshes_are_reused_rather_than_allocated_one_per_chunk()
+    public void finished_surfaces_are_reused_rather_than_allocated_one_per_chunk()
     {
         var (world, _) = Flat();
         world.UpdateStreaming(int3.Zero, radiusChunks: 2, maxLoadsPerCall: 10_000);
 
         using var streamer = new MeshStreamer(world.Registry, workerCount: 2, queueCapacity: 8);
 
-        var seen = new HashSet<VoxelMesh>(ReferenceEqualityComparer.Instance as IEqualityComparer<VoxelMesh>);
+        var seen = new HashSet<ChunkSurface>(ReferenceEqualityComparer.Instance as IEqualityComparer<ChunkSurface>);
         var done = 0;
 
         foreach (var coordinate in world.LoadedCoordinates.ToArray())
@@ -53,21 +53,21 @@ public sealed class MeshStreamerTests
             while (!streamer.Request(world.CaptureNeighbourhood(coordinate)!))
             {
                 WaitUntil(() => streamer.ReadyCount > 0);
-                done += streamer.Collect(8, (_, mesh) => seen.Add(mesh));
+                done += streamer.Collect(8, (_, surface) => seen.Add(surface));
             }
         }
 
         WaitUntil(() =>
         {
-            done += streamer.Collect(64, (_, mesh) => seen.Add(mesh));
+            done += streamer.Collect(64, (_, surface) => seen.Add(surface));
             return streamer.OutstandingCount == 0;
         });
 
-        // A mesh is tens of kilobytes and a world being flown across produces hundreds a second,
+        // A surface is tens of kilobytes and a world flown across produces hundreds a second,
         // so the pool is what keeps the large object heap out of it. The bound is generous: what
         // matters is that it does not grow with the number of chunks meshed.
         Assert.True(done > 100, $"only {done} chunks were meshed, which is too few to prove anything");
-        Assert.True(seen.Count <= 16, $"{seen.Count} meshes were allocated for {done} chunks");
+        Assert.True(seen.Count <= 16, $"{seen.Count} surfaces were allocated for {done} chunks");
     }
 
     [Fact]

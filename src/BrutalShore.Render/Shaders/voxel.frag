@@ -14,6 +14,7 @@ layout(set = 0, binding = 0, std140) uniform Scene {
     vec4 horizonColor;
     vec4 fog;
     vec4 shadow;
+    vec4 submerged;
 } scene;
 
 layout(location = 0) in vec3 inColor;
@@ -21,6 +22,7 @@ layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec2 inSurface;
 layout(location = 3) in float inOcclusion;
 layout(location = 4) in vec3 inViewOffset;
+layout(location = 5) in float inOpacity;
 
 // Compares rather than reads: each fetch answers "is this fragment nearer the light than what
 // was stored", and with a linear filter the hardware averages four of those answers for free.
@@ -98,7 +100,10 @@ void main() {
     // Fog towards the sky in this direction, which is what hides the edge of the loaded world.
     float distance = length(inViewOffset);
     float fog = smoothstep(scene.fog.x, scene.fog.y, distance);
-    lit = mix(lit, skyColorAt(normalize(inViewOffset).y), fog);
+    vec3 distant = mix(skyColorAt(normalize(inViewOffset).y), scene.submerged.rgb, scene.submerged.a);
+    lit = mix(lit, distant, fog);
 
-    outColor = vec4(lit, 1.0);
+    // Fog has to reach the alpha too, or a see-through surface stays sharp against a sky the
+    // solid world has already faded into.
+    outColor = vec4(lit, mix(inOpacity, 1.0, fog));
 }
