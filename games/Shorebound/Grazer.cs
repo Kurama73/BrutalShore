@@ -16,11 +16,21 @@ namespace Shorebound;
 /// </remarks>
 public record struct Grazer
 {
-    /// <summary>The middle of its feet, in world metres.</summary>
-    public double3 FeetMeters { get; set; }
+    /// <summary>Where its body is: position, speed, footing and stride.</summary>
+    /// <remarks>
+    /// The half of an animal that something else also has. Everything below is what makes it a
+    /// grazer rather than a creature; this is what makes it a thing standing on the ground.
+    /// </remarks>
+    public Footing Footing { get; set; }
 
-    /// <summary>How fast it is moving, in metres a second.</summary>
-    public double3 VelocityMeters { get; set; }
+    /// <summary>The middle of its feet, in world metres.</summary>
+    public double3 FeetMeters => Footing.FeetMeters;
+
+    /// <summary>Whether it is resting on something solid.</summary>
+    public bool IsOnGround => Footing.IsOnGround;
+
+    /// <summary>How far through its stride it is, in radians, which is what swings its legs.</summary>
+    public float StrideRadians => Footing.StrideRadians;
 
     /// <summary>Which way it faces, in radians.</summary>
     public float Yaw { get; set; }
@@ -30,18 +40,6 @@ public record struct Grazer
 
     /// <summary>Whether it is walking rather than standing.</summary>
     public bool IsWalking { get; set; }
-
-    /// <summary>Whether it is resting on something solid.</summary>
-    public bool IsOnGround { get; set; }
-
-    /// <summary>
-    /// How far through its stride it is, in radians, which is what swings its legs.
-    /// </summary>
-    /// <remarks>
-    /// Kept rather than derived from the clock, so an animal that stops mid-step starts again
-    /// from where it stopped instead of snapping to wherever the world's clock had got to.
-    /// </remarks>
-    public float StrideRadians { get; set; }
 
     /// <summary>Which way it is facing, as a direction on the ground.</summary>
     public double3 Forward

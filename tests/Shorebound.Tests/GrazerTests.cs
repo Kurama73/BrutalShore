@@ -125,7 +125,11 @@ public sealed class GrazerTests
     [Fact]
     public void an_animal_is_six_boxes_standing_on_the_ground_it_is_on()
     {
-        var grazer = new Grazer { FeetMeters = new double3(3.0, 41.0, -2.0), Yaw = 0.7f };
+        var grazer = new Grazer
+        {
+            Footing = new Footing { FeetMeters = new double3(3.0, 41.0, -2.0) },
+            Yaw = 0.7f,
+        };
         Span<GrazerShape.Part> parts = stackalloc GrazerShape.Part[GrazerShape.PartCount];
 
         GrazerShape.Lay(grazer, parts);

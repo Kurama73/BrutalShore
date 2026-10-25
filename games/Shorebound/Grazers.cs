@@ -45,14 +45,9 @@ public sealed class Grazers
     private const double WalkSpeedMetersPerSecond = 1.5;
     private const double FleeSpeedMetersPerSecond = 3.4;
     private const double AccelerationMetersPerSecondSquared = 9.0;
-    private const double GravityMetersPerSecondSquared = 24.0;
-    private const double TerminalSpeedMetersPerSecond = 40.0;
 
     /// <summary>How tall a ledge one walks up rather than stopping at, in metres.</summary>
     private const double StepHeightMeters = 1.05;
-
-    /// <summary>How far the legs swing per metre walked, in radians.</summary>
-    private const double StrideRadiansPerMeter = 3.4;
 
     private readonly List<Grazer> _grazers = [];
     private readonly Random _minds;
@@ -85,7 +80,7 @@ public sealed class Grazers
         {
             var grazer = _grazers[index];
 
-            if (Away(grazer.FeetMeters, playerFeetMeters) > ForgetMeters || grazer.FeetMeters.Y < -8.0)
+            if (Walking.Away(grazer.FeetMeters, playerFeetMeters) > ForgetMeters || grazer.FeetMeters.Y < -8.0)
             {
                 _grazers.RemoveAt(index);
                 continue;
@@ -114,7 +109,7 @@ public sealed class Grazers
     private Grazer Born(double3 feet) =>
         new()
         {
-            FeetMeters = feet,
+            Footing = new Footing { FeetMeters = feet },
             Yaw = (float)(_minds.NextDouble() * double.Tau),
             MindLeftSeconds = 1.0 + (_minds.NextDouble() * 3.0),
             IsWalking = _minds.NextDouble() < 0.6,
@@ -139,7 +134,8 @@ public sealed class Grazers
             var x = playerFeetMeters.X + (double.Sin(angle) * away);
             var z = playerFeetMeters.Z + (double.Cos(angle) * away);
 
-            if (StandingHeight(world, registry, (int)double.Floor(x), (int)double.Floor(z)) is not { } y)
+            var highest = VoxelWorld.HeightBlocks - 2;
+            if (Walking.StandingHeight(world, registry, (int)double.Floor(x), (int)double.Floor(z), highest) is not { } y)
                 continue;
 
             var feet = new double3(double.Floor(x) + 0.5, y, double.Floor(z) + 0.5);
@@ -150,26 +146,6 @@ public sealed class Grazers
                 continue;
 
             return feet;
-        }
-
-        return null;
-    }
-
-    /// <summary>The height an animal would stand at in a column, or nothing if it could not.</summary>
-    private static double? StandingHeight(VoxelWorld world, BlockRegistry registry, int x, int z)
-    {
-        for (var y = VoxelWorld.HeightBlocks - 2; y > 1; y--)
-        {
-            var type = registry[world.BlockAt(x, y, z)];
-            if (!type.Collides)
-                continue;
-
-            // Standing on it, and not in whatever is above it: a block at the bottom of a lake is
-            // solid ground with three metres of water on top.
-            if (registry[world.BlockAt(x, y + 1, z)].IsLiquid)
-                return null;
-
-            return y + 1.0;
         }
 
         return null;
@@ -205,47 +181,27 @@ public sealed class Grazers
         var speed = shy ? FleeSpeedMetersPerSecond : WalkSpeedMetersPerSecond;
         var wanted = grazer.IsWalking ? grazer.Forward * speed : double3.Zero;
 
-        var velocity = grazer.VelocityMeters;
-        velocity.X = Approach(velocity.X, wanted.X, AccelerationMetersPerSecondSquared * seconds);
-        velocity.Z = Approach(velocity.Z, wanted.Z, AccelerationMetersPerSecondSquared * seconds);
-        velocity.Y = double.Max(
-            velocity.Y - (GravityMetersPerSecondSquared * seconds),
-            -TerminalSpeedMetersPerSecond
+        var walked = Walking.Step(
+            grazer.Footing,
+            world,
+            registry,
+            seconds,
+            Size,
+            wanted,
+            AccelerationMetersPerSecondSquared,
+            StepHeightMeters,
+
+            // An animal that walked off every ledge it came to would spend the day falling into
+            // the sea.
+            mindsTheEdge: true
         );
 
-        var wantedMove = new double3(velocity.X * seconds, velocity.Y * seconds, velocity.Z * seconds);
-
-        // An animal that walked off every ledge it came to would spend the day falling into the
-        // sea. Checked rather than resolved afterwards, exactly as crouching is.
-        if (grazer.IsOnGround && velocity.Y <= 0.0 && !KeepsItsFooting(world, registry, grazer, wantedMove))
-        {
-            wantedMove = new double3(0.0, wantedMove.Y, 0.0);
-            velocity.X = 0.0;
-            velocity.Z = 0.0;
-            grazer = grazer with { MindLeftSeconds = 0.0 };
-        }
-
-        var before = grazer.FeetMeters;
-        var move = VoxelBody.Move(world, registry, before, Size, wantedMove, StepHeightMeters);
-
-        if (move.IsOnGround || move.HitCeiling)
-            velocity.Y = 0.0;
-
-        // Walking into something is a reason to think again, which is what keeps one from
-        // standing against a wall pushing for ever.
-        if (move.HitWall)
+        // Being stopped — by a wall or by a drop — is a reason to think again, which is what
+        // keeps one from standing against a cliff pushing for ever.
+        if (walked.HitWall)
             grazer = grazer with { MindLeftSeconds = 0.0 };
 
-        var travelled = move.FeetMeters - before;
-        var alongGround = double.Sqrt((travelled.X * travelled.X) + (travelled.Z * travelled.Z));
-
-        return grazer with
-        {
-            FeetMeters = move.FeetMeters,
-            VelocityMeters = velocity,
-            IsOnGround = VoxelBody.IsStandingOn(world, registry, move.FeetMeters, Size),
-            StrideRadians = (float)(grazer.StrideRadians + (alongGround * StrideRadiansPerMeter)),
-        };
+        return grazer with { Footing = walked };
     }
 
     private Grazer ChangeItsMind(Grazer grazer)
@@ -263,21 +219,6 @@ public sealed class Grazers
         };
     }
 
-    private static bool KeepsItsFooting(
-        IVoxelSource world,
-        BlockRegistry registry,
-        in Grazer grazer,
-        double3 move
-    )
-    {
-        var ahead = new double3(
-            grazer.FeetMeters.X + move.X,
-            grazer.FeetMeters.Y,
-            grazer.FeetMeters.Z + move.Z
-        );
-
-        return VoxelBody.IsStandingOn(world, registry, ahead, Size);
-    }
 
     private static double Away(double3 from, double3 to)
     {
