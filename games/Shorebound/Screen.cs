@@ -16,4 +16,12 @@ public enum Screen
 
     /// <summary>In the world, mouse free, everything stopped.</summary>
     Paused,
+
+    /// <summary>The settings, which the title screen and the pause menu both open.</summary>
+    /// <remarks>
+    /// A state of its own rather than a panel inside the other two, because the world behind it
+    /// has to keep being drawn and must not keep being simulated — which is exactly what the
+    /// other states already decide.
+    /// </remarks>
+    Settings,
 }

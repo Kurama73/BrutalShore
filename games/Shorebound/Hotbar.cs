@@ -1,3 +1,4 @@
+using BrutalShore.Ui;
 using BrutalShore.Voxel;
 
 namespace Shorebound;
@@ -10,25 +11,33 @@ namespace Shorebound;
 /// </remarks>
 public sealed class Hotbar
 {
-    private readonly (string Name, BlockId Block)[] _slots;
+    private readonly (string Name, BlockId Block, float4 Color)[] _slots;
 
     /// <summary>Builds the row from this game's blocks.</summary>
     /// <param name="blocks">The game's registered block types.</param>
     public Hotbar(GameBlocks blocks)
     {
+        // The colour is taken once, here, because the interface draws a swatch of it every frame
+        // and a block's colour is the one thing about it that never changes.
+        (string, BlockId, float4) Slot(string name, BlockId block)
+        {
+            var color = blocks.Registry[block].Color;
+            return (name, block, UiPalette.FromSrgb(color.X, color.Y, color.Z));
+        }
+
         // Water is left out on purpose: it is drawn as a solid block, so placing one would make a
         // cube of sea rather than anything that flows.
         _slots =
         [
-            ("Stone", blocks.Stone),
-            ("Dirt", blocks.Dirt),
-            ("Grass", blocks.Grass),
-            ("Sand", blocks.Sand),
-            ("Snow", blocks.Snow),
-            ("Log", blocks.Log),
-            ("Leaves", blocks.Leaves),
-            ("Lantern", blocks.Lantern),
-            ("Bedrock", blocks.Bedrock),
+            Slot("Stone", blocks.Stone),
+            Slot("Dirt", blocks.Dirt),
+            Slot("Grass", blocks.Grass),
+            Slot("Sand", blocks.Sand),
+            Slot("Snow", blocks.Snow),
+            Slot("Log", blocks.Log),
+            Slot("Leaves", blocks.Leaves),
+            Slot("Lantern", blocks.Lantern),
+            Slot("Bedrock", blocks.Bedrock),
         ];
     }
 
@@ -48,6 +57,11 @@ public sealed class Hotbar
     /// <param name="index">Which slot, counting from zero.</param>
     /// <returns>Its block's name.</returns>
     public string NameOf(int index) => _slots[index].Name;
+
+    /// <summary>The colour of a slot's block, for the swatch the interface draws.</summary>
+    /// <param name="index">Which slot, counting from zero.</param>
+    /// <returns>Its block's colour, in the linear light the interface draws in.</returns>
+    public float4 ColorOf(int index) => _slots[index].Color;
 
     /// <summary>Puts a particular slot in hand.</summary>
     /// <param name="index">Which slot; out-of-range values are ignored.</param>

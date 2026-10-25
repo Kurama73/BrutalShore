@@ -2,6 +2,7 @@ using Brutal.ImGuiApi;
 using BrutalShore.Gpu;
 using BrutalShore.Render;
 using BrutalShore.Runtime;
+using BrutalShore.Ui;
 using BrutalShore.Voxel;
 using BrutalShore.World;
 
@@ -113,6 +114,7 @@ public sealed class ShoreboundGame : IGame
     private readonly Hotbar _hotbar;
     private readonly GameUi _ui = new();
     private readonly DayClock _clock;
+    private readonly TitleCamera _titleCamera;
 
     // Assigned in Load, because each of these needs a device, and there is none until the host has
     // opened a window.
@@ -126,22 +128,28 @@ public sealed class ShoreboundGame : IGame
     private OutlineRenderer _outline = null!;
     private ChunkRenderer _chunks = null!;
 
+    private Settings _settings;
     private Screen _screen = Screen.Title;
+
+    // Where the settings were opened from, so closing them goes back rather than always to one
+    // of the two: the same screen is reached from the title and from a paused world.
+    private Screen _screenBehindSettings = Screen.Title;
+
     private int3 _centre;
     private float4x4 _viewProjection;
     private float4x4 _lightViewProjection;
     private VoxelHit? _aimedAt;
     private float4 _submerged;
-    private bool _showShadows = true;
-    private bool _showFog = true;
     private string _notice = string.Empty;
     private double _noticeLeftSeconds;
 
     /// <summary>Builds the world, which needs nothing from the GPU.</summary>
     /// <param name="options">What the command line asked for.</param>
-    public ShoreboundGame(Options options)
+    /// <param name="settings">The player's settings, with the command line already folded in.</param>
+    public ShoreboundGame(Options options, Settings settings)
     {
         _options = options;
+        _settings = settings.Clamped();
         _blocks = new GameBlocks(new BlockRegistry());
         _generator = new TerrainGenerator(_blocks, options.Seed);
         _world = new VoxelWorld(
@@ -150,7 +158,11 @@ public sealed class ShoreboundGame : IGame
             new ChunkStreamer(_generator, WorkerCount, StreamingQueueCapacity)
         );
         _hotbar = new Hotbar(_blocks);
-        _clock = new DayClock(options.StartHour, options.DayLengthSeconds);
+        _clock = new DayClock(options.StartHour, _settings.DayLengthSeconds);
+
+        // Above where the player will spawn, which is the one place the world is certain to have
+        // something in it worth looking at.
+        _titleCamera = new TitleCamera(new double3(0.0, _generator.SurfaceHeight(0, 0), 0.0));
     }
 
     /// <inheritdoc />
@@ -199,6 +211,10 @@ public sealed class ShoreboundGame : IGame
         );
         _controller = new PlayerController(context.Window, _camera);
 
+        // Everything that has to be told about a setting rather than read it, told once now that
+        // the things to tell exist.
+        Apply(_settings);
+
         StartFreshWorld();
 
         // A run with a fixed frame count is a render check, not a play session: it has nobody to
@@ -228,7 +244,14 @@ public sealed class ShoreboundGame : IGame
     public void Step(double seconds)
     {
         if (_screen != Screen.Playing)
+        {
+            // The title screen's world is live rather than a picture, so its camera keeps moving
+            // while everything else is stopped.
+            if (_screen == Screen.Title)
+                _titleCamera.Step(seconds);
+
             return;
+        }
 
         _clock.Step(seconds);
         _player.Step(_world, _world.Registry, seconds, _controller.ReadIntent(), _camera.Yaw);
@@ -250,9 +273,14 @@ public sealed class ShoreboundGame : IGame
             ReadPlayingKeys(context);
             Aim();
         }
+        else if (_screen == Screen.Title)
+        {
+            _camera.Position = _titleCamera.EyeMeters;
+            _controller.AimAt(_titleCamera.Yaw, _titleCamera.Pitch);
+        }
 
         _centre = WorldCoordinates.ToChunk(WorldCoordinates.ToBlock(_camera.Position));
-        _world.UpdateStreaming(_centre, _options.ViewRadiusChunks, LoadBudgetPerFrame);
+        _world.UpdateStreaming(_centre, _settings.ViewRadiusChunks, LoadBudgetPerFrame);
         _chunks.Update(_centre, MeshBudgetPerFrame);
     }
 
@@ -262,6 +290,7 @@ public sealed class ShoreboundGame : IGame
         // The whole frame's view of the world is decided here, before anything is recorded, so
         // that the shadow pass and the camera pass cannot disagree about where the sun is.
         var sky = SunCycle.At(_clock.DayFraction);
+        _camera.FieldOfView = _settings.FieldOfViewRadians;
         _viewProjection = _camera.ViewProjection(context.AspectRatio);
         _lightViewProjection = SunShadow.LightViewProjection(
             _camera.Position,
@@ -274,15 +303,15 @@ public sealed class ShoreboundGame : IGame
             ShadowResolution
         );
 
-        var viewMeters = _options.ViewRadiusChunks * Chunk.Size;
+        var viewMeters = _settings.ViewRadiusChunks * Chunk.Size;
         _submerged = LiquidAtTheEye();
         var inLiquid = _submerged.W > 0f;
 
         // Turning fog off pushes it past the far plane rather than branching in the shader: the
         // point of the switch is to see how far the world really goes, and a world with no fog
         // and no far plane would be a different question.
-        var fogStart = _showFog ? viewMeters * FogStartFraction : viewMeters * 8f;
-        var fogEnd = _showFog ? viewMeters * FogEndFraction : viewMeters * 9f;
+        var fogStart = _settings.Fog ? viewMeters * FogStartFraction : viewMeters * 8f;
+        var fogEnd = _settings.Fog ? viewMeters * FogEndFraction : viewMeters * 9f;
 
         _scene.Update(
             context.Renderer.FrameIndex,
@@ -294,7 +323,8 @@ public sealed class ShoreboundGame : IGame
                 FogStartMeters = inLiquid ? UnderwaterSightMeters * 0.15f : fogStart,
                 FogEndMeters = inLiquid ? UnderwaterSightMeters : fogEnd,
                 Submerged = _submerged,
-                ShadowStrength = _showShadows ? DefaultShadowStrength : 0f,
+                ShadowStrength = _settings.Shadows ? _settings.ShadowStrength : 0f,
+                Brightness = _settings.Brightness,
             }
         );
 
@@ -324,18 +354,80 @@ public sealed class ShoreboundGame : IGame
         switch (_screen)
         {
             case Screen.Title:
-                Choose(context, _ui.DrawTitle(File.Exists(_options.SavePath)));
+                Choose(
+                    context,
+                    _ui.DrawTitle(File.Exists(_options.SavePath), $"seed {_generator.Seed}")
+                );
                 break;
 
             case Screen.Playing:
-                _ui.DrawCrosshair();
-                _ui.DrawHotbar(_hotbar);
+                _ui.DrawCrosshair(_aimedAt is not null);
+                _ui.DrawHotbar(_hotbar, _hotbar.ColorOf);
                 break;
 
             case Screen.Paused:
-                _ui.DrawHotbar(_hotbar);
+                _ui.DrawHotbar(_hotbar, _hotbar.ColorOf);
                 Choose(context, _ui.DrawPause(_options.SavePath));
                 break;
+
+            case Screen.Settings:
+                DrawSettings(context);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Draws the settings, applies anything moved at once, and writes them when the player leaves.
+    /// </summary>
+    /// <remarks>
+    /// Written on the way out rather than on every frame a slider moves: dragging one produces a
+    /// value a frame, and a file rewritten sixty times a second to record a field of view nobody
+    /// has settled on yet is a file waiting to be truncated by a crash.
+    /// </remarks>
+    private void DrawSettings(GameContext context)
+    {
+        var settings = _settings;
+        var choice = _ui.DrawSettings(ref settings, out var changed);
+
+        if (changed)
+            Apply(settings);
+
+        if (choice == MenuChoice.Back)
+            LeaveSettings();
+    }
+
+    /// <summary>Takes a new set of settings and makes everything that reads them agree.</summary>
+    /// <remarks>
+    /// Only two of them need anything done to them at all. The rest are read where they are used,
+    /// every frame, which is why this is three lines rather than a list of every setting.
+    /// </remarks>
+    private void Apply(Settings settings)
+    {
+        _settings = settings.Clamped();
+
+        _controller.Sensitivity = _settings.RadiansPerPixel;
+        _clock.DayLengthSeconds = _settings.DayLengthSeconds;
+        UiTheme.Apply(_settings.UiScale);
+    }
+
+    /// <summary>Goes back to whichever screen opened the settings, and writes them out.</summary>
+    private void LeaveSettings()
+    {
+        _screen = _screenBehindSettings;
+
+        try
+        {
+            SettingsFile.Write(_options.SettingsPath, _settings);
+        }
+        catch (IOException failure)
+        {
+            // Worth saying rather than throwing: a settings file that cannot be written is a
+            // reason to lose the settings, not a reason to lose the world.
+            Say($"Could not write {_options.SettingsPath}: {failure.Message}");
+        }
+        catch (UnauthorizedAccessException failure)
+        {
+            Say($"Could not write {_options.SettingsPath}: {failure.Message}");
         }
     }
 
@@ -366,7 +458,7 @@ public sealed class ShoreboundGame : IGame
 
         ImGui.SeparatorText("World"u8);
         var under = WorldCoordinates.ToBlock(_player.FeetMeters);
-        ImGui.Text($"seed {_generator.Seed}, radius {_options.ViewRadiusChunks} chunks");
+        ImGui.Text($"seed {_generator.Seed}, radius {_settings.ViewRadiusChunks} chunks");
         ImGui.Text($"{_generator.BiomeAt(under.X, under.Z).Name}");
         ImGui.Text($"{_world.LoadedChunkCount} loaded, {_chunks.MeshCount} meshed");
         ImGui.Text($"{_world.StreamingCount} being generated, {_chunks.PendingCount} waiting to mesh");
@@ -378,9 +470,15 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_chunks.ResidentBytes / (1024.0 * 1024.0):F1} MiB of geometry");
 
         ImGui.SeparatorText("Render"u8);
-        ImGui.Checkbox("shadows"u8, ref _showShadows);
+        var shadows = _settings.Shadows;
+        if (ImGui.Checkbox("shadows"u8, ref shadows))
+            Apply(_settings with { Shadows = shadows });
+
         ImGui.SameLine();
-        ImGui.Checkbox("fog"u8, ref _showFog);
+
+        var fog = _settings.Fog;
+        if (ImGui.Checkbox("fog"u8, ref fog))
+            Apply(_settings with { Fog = fog });
 
         var frozen = _clock.IsFrozen;
         if (ImGui.Checkbox("hold the sun"u8, ref frozen))
@@ -425,6 +523,10 @@ public sealed class ShoreboundGame : IGame
 
             case Screen.Paused:
                 Enter(context);
+                break;
+
+            case Screen.Settings:
+                LeaveSettings();
                 break;
         }
     }
@@ -537,6 +639,11 @@ public sealed class ShoreboundGame : IGame
 
             case MenuChoice.Resume:
                 Enter(context);
+                break;
+
+            case MenuChoice.Settings:
+                _screenBehindSettings = _screen;
+                _screen = Screen.Settings;
                 break;
 
             case MenuChoice.Save:
