@@ -64,6 +64,17 @@ public sealed class VoxelWorld : IVoxelSource, IDisposable
     /// <summary>The block types this world is made of.</summary>
     public BlockRegistry Registry { get; }
 
+    /// <summary>
+    /// Increments every time a chunk arrives, leaves, or has a block changed in it.
+    /// </summary>
+    /// <remarks>
+    /// For anything that keeps a copy of a part of the world and has to know when it is stale.
+    /// Comparing against the whole set of chunks would be the alternative, and a counter that
+    /// moves on every change is both cheaper and harder to get subtly wrong — what it cannot do
+    /// is say <em>where</em> the change was, which is why whoever reads it rebuilds everything.
+    /// </remarks>
+    public int Revision { get; private set; }
+
     /// <summary>Every block that has been changed from what the generator would have made.</summary>
     /// <remarks>
     /// Writable from outside so a save can be loaded into a world before anything is streamed;
@@ -113,6 +124,7 @@ public sealed class VoxelWorld : IVoxelSource, IDisposable
         // for the chunk to unload, because unloading is how a chunk is forgotten.
         Edits.ApplyTo(chunkCoordinate, chunk);
         _chunks[chunkCoordinate] = chunk;
+        Revision++;
 
         // A new chunk needs meshing, and so do its neighbours: the faces along the boundary they
         // share were built against air and now have something to be culled against.
@@ -126,6 +138,7 @@ public sealed class VoxelWorld : IVoxelSource, IDisposable
         if (!_chunks.Remove(chunkCoordinate))
             return false;
 
+        Revision++;
         MarkDirtyWithNeighbours(chunkCoordinate);
         _dirty.Remove(chunkCoordinate);
         return true;
@@ -158,6 +171,7 @@ public sealed class VoxelWorld : IVoxelSource, IDisposable
             return false;
 
         Edits.Record(blockCoordinate, block);
+        Revision++;
         _dirty.Add(chunkCoordinate);
 
         // Only the neighbours the block actually touches. A block in the middle of a chunk affects
@@ -314,6 +328,7 @@ public sealed class VoxelWorld : IVoxelSource, IDisposable
 
         Edits.ApplyTo(coordinate, chunk);
         _chunks[coordinate] = chunk;
+        Revision++;
         MarkDirtyWithNeighbours(coordinate);
     }
 
