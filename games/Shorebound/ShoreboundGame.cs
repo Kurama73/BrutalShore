@@ -57,6 +57,9 @@ public sealed class ShoreboundGame : IGame
     /// <summary>The shadow map's size in texels.</summary>
     private const int ShadowResolution = 2048;
 
+    /// <summary>How long a message about saving or loading stays on screen, in seconds.</summary>
+    private const double NoticeSeconds = 3.0;
+
     private readonly Options _options;
     private readonly GameBlocks _blocks;
     private readonly TerrainGenerator _generator;
@@ -77,10 +80,13 @@ public sealed class ShoreboundGame : IGame
     private SkyRenderer _sky = null!;
     private ChunkRenderer _chunks = null!;
 
+    private Screen _screen = Screen.Title;
     private int3 _centre;
     private float4x4 _viewProjection;
     private float4x4 _lightViewProjection;
     private VoxelHit? _aimedAt;
+    private string _notice = string.Empty;
+    private double _noticeLeftSeconds;
 
     /// <summary>Builds the world, which needs nothing from the GPU.</summary>
     /// <param name="options">What the command line asked for.</param>
@@ -114,6 +120,8 @@ public sealed class ShoreboundGame : IGame
 
         StartFreshWorld();
 
+        // A run with a fixed frame count is a render check, not a play session: it has nobody to
+        // click past a title screen, and the frames it was asked for start now.
         if (_options.Viewpoint is { } viewpoint)
         {
             // --camera names where the eye goes, so the feet go a player's height below it.
@@ -125,35 +133,42 @@ public sealed class ShoreboundGame : IGame
                 )
             );
             _controller.AimAt(viewpoint.Yaw, viewpoint.Pitch);
+            Enter(context);
+        }
+        else if (_options.Host.FrameLimit > 0)
+        {
+            Enter(context);
         }
 
-        _camera.Position = _player.EyeMeters;
-        Console.WriteLine(
-            "Click to look. WASD to move, space to jump, F to fly, 1-6 picks a block, escape releases the mouse."
-        );
+        Console.WriteLine("Click to play. WASD to move, space to jump, F to fly, escape for the menu.");
     }
 
     /// <inheritdoc />
     public void Step(double seconds)
     {
+        if (_screen != Screen.Playing)
+            return;
+
         _clock.Step(seconds);
         _player.Step(_world, seconds, _controller.ReadIntent(), _camera.Yaw);
         _camera.Position = _player.EyeMeters;
+
+        if (_noticeLeftSeconds > 0.0)
+            _noticeLeftSeconds -= seconds;
     }
 
     /// <inheritdoc />
     public void Update(GameContext context)
     {
-        UpdateMouseCapture(context);
+        ReadScreenKeys(context);
 
-        if (context.Window.IsMouseCaptured)
+        if (_screen == Screen.Playing)
         {
             _controller.Look();
             _camera.Position = _player.EyeMeters;
             ReadPlayingKeys(context);
+            Aim();
         }
-
-        Aim();
 
         _centre = WorldCoordinates.ToChunk(WorldCoordinates.ToBlock(_camera.Position));
         _world.UpdateStreaming(_centre, _options.ViewRadiusChunks, LoadBudgetPerFrame);
@@ -204,8 +219,25 @@ public sealed class ShoreboundGame : IGame
     /// <inheritdoc />
     public void DrawUi(GameContext context)
     {
-        _ui.DrawCrosshair();
-        _ui.DrawHotbar(_hotbar);
+        if (_noticeLeftSeconds > 0.0)
+            _ui.DrawNotice(_notice, (float)(_noticeLeftSeconds / NoticeSeconds));
+
+        switch (_screen)
+        {
+            case Screen.Title:
+                Choose(context, _ui.DrawTitle(File.Exists(_options.SavePath)));
+                break;
+
+            case Screen.Playing:
+                _ui.DrawCrosshair();
+                _ui.DrawHotbar(_hotbar);
+                break;
+
+            case Screen.Paused:
+                _ui.DrawHotbar(_hotbar);
+                Choose(context, _ui.DrawPause(_options.SavePath));
+                break;
+        }
     }
 
     /// <inheritdoc />
@@ -243,7 +275,7 @@ public sealed class ShoreboundGame : IGame
         ImGui.SeparatorText("Controls"u8);
         ImGui.Text("WASD, space, shift to sprint, F to fly"u8);
         ImGui.Text("left click breaks, right click places, 1-6 picks"u8);
-        ImGui.Text("escape releases the mouse, F3 hides this"u8);
+        ImGui.Text("escape for the menu, F3 hides this"u8);
     }
 
     /// <inheritdoc />
@@ -257,13 +289,23 @@ public sealed class ShoreboundGame : IGame
         _shadowMap.Dispose();
     }
 
-    /// <summary>Takes the mouse on a click and gives it back on escape.</summary>
-    private static void UpdateMouseCapture(GameContext context)
+    /// <summary>Reads the keys that change which screen is showing.</summary>
+    private void ReadScreenKeys(GameContext context)
     {
-        if (context.Window.WasKeyPressed(GlfwKey.Escape))
-            context.Window.SetMouseCaptured(false);
-        else if (!context.Window.IsMouseCaptured && context.Window.WasMouseButtonPressed(GlfwMouseButton.Left))
-            context.Window.SetMouseCaptured(true);
+        if (!context.Window.WasKeyPressed(GlfwKey.Escape))
+            return;
+
+        switch (_screen)
+        {
+            case Screen.Playing:
+                _screen = Screen.Paused;
+                context.Window.SetMouseCaptured(false);
+                break;
+
+            case Screen.Paused:
+                Enter(context);
+                break;
+        }
     }
 
     /// <summary>Reads the keys and clicks that only mean something inside the world.</summary>
@@ -324,6 +366,48 @@ public sealed class ShoreboundGame : IGame
         _world.SetBlock(hit.Before, _hotbar.Selected);
     }
 
+    /// <summary>Acts on what a menu reported.</summary>
+    private void Choose(GameContext context, MenuChoice choice)
+    {
+        switch (choice)
+        {
+            case MenuChoice.NewWorld:
+                StartFreshWorld();
+                Enter(context);
+                break;
+
+            case MenuChoice.Continue:
+                LoadWorld();
+                Enter(context);
+                break;
+
+            case MenuChoice.Resume:
+                Enter(context);
+                break;
+
+            case MenuChoice.Save:
+                SaveWorld();
+                break;
+
+            case MenuChoice.SaveAndQuit:
+                SaveWorld();
+                context.Window.Close();
+                break;
+
+            case MenuChoice.Quit:
+                context.Window.Close();
+                break;
+        }
+    }
+
+    /// <summary>Goes into the world: mouse captured, time running.</summary>
+    private void Enter(GameContext context)
+    {
+        _screen = Screen.Playing;
+        context.Window.SetMouseCaptured(true);
+        _camera.Position = _player.EyeMeters;
+    }
+
     /// <summary>Puts the player on the surface above the origin, with nothing changed.</summary>
     private void StartFreshWorld()
     {
@@ -334,5 +418,69 @@ public sealed class ShoreboundGame : IGame
         _player.TeleportTo(new double3(0.5, _generator.SurfaceHeight(0, 0) + 2.0, 0.5));
         _player.IsFlying = true;
         _camera.Position = _player.EyeMeters;
+    }
+
+    private void LoadWorld()
+    {
+        try
+        {
+            _world.Edits.Clear();
+            var (save, edits) = SaveFile.Read(_options.SavePath, _world.Edits, _world.Registry);
+
+            // Every loaded chunk was generated before the edits arrived, so each has to be made
+            // again; unloading is how a chunk is asked for a second time.
+            foreach (var coordinate in _world.LoadedCoordinates.ToArray())
+                _world.Unload(coordinate);
+
+            _player.TeleportTo(save.FeetMeters);
+            _player.IsFlying = save.IsFlying;
+            _controller.AimAt(save.Yaw, save.Pitch);
+            _hotbar.Select(save.HotbarIndex);
+            _clock.SetDayFraction(save.DayFraction);
+
+            Say(
+                edits.Dropped == 0
+                    ? $"Loaded {_options.SavePath}: {edits.Applied} blocks changed."
+                    : $"Loaded {_options.SavePath}: {edits.Applied} blocks changed, {edits.Dropped} dropped."
+            );
+        }
+        catch (Exception failure) when (failure is IOException or InvalidDataException)
+        {
+            // A world that cannot be read is a thing to say, not a thing to crash over: the
+            // player is standing in a perfectly good fresh one.
+            Say($"Could not load {_options.SavePath}: {failure.Message}");
+            StartFreshWorld();
+        }
+    }
+
+    private void SaveWorld()
+    {
+        var save = new SaveFile
+        {
+            Seed = _generator.Seed,
+            FeetMeters = _player.FeetMeters,
+            Yaw = _camera.Yaw,
+            Pitch = _camera.Pitch,
+            IsFlying = _player.IsFlying,
+            DayFraction = _clock.DayFraction,
+            HotbarIndex = _hotbar.SelectedIndex,
+        };
+
+        try
+        {
+            save.Write(_options.SavePath, _world.Edits, _world.Registry);
+            Say($"Saved {_world.Edits.Count} changed blocks to {_options.SavePath}.");
+        }
+        catch (IOException failure)
+        {
+            Say($"Could not save to {_options.SavePath}: {failure.Message}");
+        }
+    }
+
+    private void Say(string message)
+    {
+        _notice = message;
+        _noticeLeftSeconds = NoticeSeconds;
+        Console.WriteLine(message);
     }
 }

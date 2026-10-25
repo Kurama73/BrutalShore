@@ -28,6 +28,9 @@ public sealed record Options
     /// <summary>How long a whole day takes in real seconds; zero stops the sun.</summary>
     public double DayLengthSeconds { get; init; } = DayClock.DefaultDayLengthSeconds;
 
+    /// <summary>Where the world is saved to and loaded from.</summary>
+    public string SavePath { get; init; } = "shorebound.world";
+
     /// <summary>Where the camera starts, or <see langword="null" /> to stand on the ground at the origin.</summary>
     public Viewpoint? Viewpoint { get; init; }
 
@@ -65,6 +68,9 @@ public sealed record Options
                     {
                         DayLengthSeconds = ReadDouble(arguments, ++index, "--day-length"),
                     };
+                    break;
+                case "--save":
+                    options = options with { SavePath = ReadText(arguments, ++index, "--save") };
                     break;
                 case "--camera":
                     options = options with { Viewpoint = ReadViewpoint(arguments, ref index) };

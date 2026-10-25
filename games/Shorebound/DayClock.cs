@@ -47,6 +47,10 @@ public sealed class DayClock
     /// <summary>Whether time stands still.</summary>
     public bool IsFrozen { get; set; }
 
+    /// <summary>Puts the clock at a particular moment, for a world being loaded.</summary>
+    /// <param name="dayFraction">How many days have passed, the fraction being the time of day.</param>
+    public void SetDayFraction(double dayFraction) => DayFraction = dayFraction;
+
     /// <summary>Advances the clock by one simulation step.</summary>
     /// <param name="seconds">How much real time the step covers.</param>
     public void Step(double seconds)

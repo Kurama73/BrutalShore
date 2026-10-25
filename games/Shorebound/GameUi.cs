@@ -10,9 +10,9 @@ namespace Shorebound;
 /// one kind of thing — which matters more while the thing is still changing shape every week.
 /// </para>
 /// <para>
-/// It draws and reports; it never acts on the world. Deciding what a click means is the game's,
-/// because an interface that reaches into the world is one that has to be read to know what the
-/// world can do.
+/// It draws and reports; it never acts. A button returns a <see cref="MenuChoice" /> and the game
+/// decides what that means, because loading a world and quitting are not decisions an interface
+/// should be making on its own.
 /// </para>
 /// </remarks>
 public sealed class GameUi
@@ -70,6 +70,84 @@ public sealed class GameUi
         ImGui.End();
     }
 
+    /// <summary>Draws the title screen and reports what was clicked.</summary>
+    /// <param name="hasSave">Whether there is a world to continue.</param>
+    /// <returns>What the player chose, or <see cref="MenuChoice.None" />.</returns>
+    public MenuChoice DrawTitle(bool hasSave)
+    {
+        var choice = MenuChoice.None;
+
+        ImGui.SetNextWindowPos(Middle(), ImGuiCond.Always, new float2(0.5f, 0.5f));
+        ImGui.SetNextWindowBgAlpha(0.88f);
+
+        if (ImGui.Begin("Shorebound"u8, Plain))
+        {
+            ImGui.SeparatorText("Shorebound"u8);
+
+            if (hasSave && ImGui.Button("Continue"u8, new float2(220f, 0f)))
+                choice = MenuChoice.Continue;
+
+            if (ImGui.Button(hasSave ? "New world" : "Play", new float2(220f, 0f)))
+                choice = MenuChoice.NewWorld;
+
+            if (ImGui.Button("Quit"u8, new float2(220f, 0f)))
+                choice = MenuChoice.Quit;
+        }
+
+        ImGui.End();
+        return choice;
+    }
+
+    /// <summary>Draws the pause menu and reports what was clicked.</summary>
+    /// <param name="savePath">Where the world would be written, for the player to see.</param>
+    /// <returns>What the player chose, or <see cref="MenuChoice.None" />.</returns>
+    public MenuChoice DrawPause(string savePath)
+    {
+        var choice = MenuChoice.None;
+
+        ImGui.SetNextWindowPos(Middle(), ImGuiCond.Always, new float2(0.5f, 0.5f));
+        ImGui.SetNextWindowBgAlpha(0.88f);
+
+        if (ImGui.Begin("Paused"u8, Plain))
+        {
+            ImGui.SeparatorText("Paused"u8);
+
+            if (ImGui.Button("Resume"u8, new float2(220f, 0f)))
+                choice = MenuChoice.Resume;
+
+            if (ImGui.Button("Save"u8, new float2(220f, 0f)))
+                choice = MenuChoice.Save;
+
+            if (ImGui.Button("Save and quit"u8, new float2(220f, 0f)))
+                choice = MenuChoice.SaveAndQuit;
+
+            ImGui.TextDisabled(savePath);
+        }
+
+        ImGui.End();
+        return choice;
+    }
+
+    /// <summary>Draws a line that fades away, for the result of saving or loading.</summary>
+    /// <param name="message">What happened.</param>
+    /// <param name="opacity">How visible it still is, from 1 down to 0.</param>
+    public void DrawNotice(string message, float opacity)
+    {
+        if (opacity <= 0f)
+            return;
+
+        var viewport = ImGui.GetMainViewport();
+        var top = new float2(viewport.Pos.X + (viewport.Size.X * 0.5f), viewport.Pos.Y + 24f);
+
+        ImGui.SetNextWindowPos(top, ImGuiCond.Always, new float2(0.5f, 0f));
+        ImGui.SetNextWindowBgAlpha(0.5f * opacity);
+
+        if (ImGui.Begin("notice"u8, Plain | ImGuiWindowFlags.NoInputs))
+            ImGui.TextColored(new float4(1f, 1f, 1f, opacity), message);
+
+        ImGui.End();
+    }
+
     private static float2 Middle()
     {
         var viewport = ImGui.GetMainViewport();
@@ -78,4 +156,29 @@ public sealed class GameUi
             viewport.Pos.Y + (viewport.Size.Y * 0.5f)
         );
     }
+}
+
+/// <summary>What a menu was asked to do.</summary>
+public enum MenuChoice
+{
+    /// <summary>Nothing was clicked.</summary>
+    None,
+
+    /// <summary>Start a fresh world from the seed the game was given.</summary>
+    NewWorld,
+
+    /// <summary>Load the world on disk.</summary>
+    Continue,
+
+    /// <summary>Go back to the world.</summary>
+    Resume,
+
+    /// <summary>Write the world out and stay in it.</summary>
+    Save,
+
+    /// <summary>Write the world out and close the game.</summary>
+    SaveAndQuit,
+
+    /// <summary>Close the game without saving.</summary>
+    Quit,
 }
