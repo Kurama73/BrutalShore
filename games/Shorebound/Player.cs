@@ -30,6 +30,47 @@ public sealed class Player
     private const double WalkSpeedMetersPerSecond = 4.8;
     private const double SprintFactor = 1.9;
 
+    /// <summary>How fast a crouching player walks, in metres per second.</summary>
+    private const double CrouchSpeedMetersPerSecond = 1.6;
+
+    /// <summary>How far the eyes drop while crouching, in metres.</summary>
+    private const double CrouchDropMeters = 0.32;
+
+    /// <summary>How quickly the eyes get most of the way to their new height, in seconds.</summary>
+    /// <remarks>
+    /// Short, but not nothing. A camera that snaps down the instant a key goes in reads as the
+    /// world jumping rather than as the player ducking.
+    /// </remarks>
+    private const double CrouchEaseSeconds = 0.09;
+
+    /// <summary>How tall a ledge is walked up rather than stopped at, in metres.</summary>
+    /// <remarks>
+    /// A whole block and a little over. Every ledge in a voxel world is a multiple of one metre,
+    /// so a step of less than that is a step that never fires; the alternative is a player who
+    /// has to jump to cross a ploughed field.
+    /// </remarks>
+    private const double StepHeightMeters = 1.05;
+
+    /// <summary>How hard the ground pushes a body up to speed, in metres per second squared.</summary>
+    /// <remarks>
+    /// High enough that the first tenth of a second is most of the way to walking pace, which is
+    /// what keeps the controls feeling direct, and low enough that there is a moment of weight
+    /// at the start of a sprint rather than a teleport into one.
+    /// </remarks>
+    private const double GroundAccelerationMetersPerSecondSquared = 62.0;
+
+    /// <summary>The same in mid-air, where there is much less to push against.</summary>
+    private const double AirAccelerationMetersPerSecondSquared = 14.0;
+
+    /// <summary>How quickly the ground takes speed away when nothing is being asked of it.</summary>
+    private const double GroundFrictionPerSecond = 13.0;
+
+    /// <summary>The same in the air, where almost nothing slows a body horizontally.</summary>
+    private const double AirFrictionPerSecond = 0.6;
+
+    /// <summary>The same in water, which takes speed away quickly whatever is being asked.</summary>
+    private const double WaterFrictionPerSecond = 5.0;
+
     /// <summary>How fast a jump leaves the ground, in metres per second.</summary>
     /// <remarks>
     /// A jump reaches v squared over twice gravity, so 8.6 against 28 is about 1.32 metres: enough
@@ -61,11 +102,26 @@ public sealed class Player
 
     private double _fallSpeed;
 
+    // Horizontal speed in world metres a second, kept between steps. Keeping it is the whole
+    // difference between a body that is moved and a body that moves: without it, letting go of a
+    // key stops a sprinting player dead, which no amount of animation hides.
+    private double _velocityX;
+    private double _velocityZ;
+    private double _eyeDrop;
+
     /// <summary>Where the middle of the player's feet is, in world metres.</summary>
     public double3 FeetMeters { get; set; }
 
     /// <summary>Where the player's eyes are, which is where the camera and any ray start.</summary>
-    public double3 EyeMeters => new(FeetMeters.X, FeetMeters.Y + EyeHeightMeters, FeetMeters.Z);
+    public double3 EyeMeters =>
+        new(FeetMeters.X, FeetMeters.Y + EyeHeightMeters - _eyeDrop, FeetMeters.Z);
+
+    /// <summary>Whether the player is crouching.</summary>
+    public bool IsCrouching { get; private set; }
+
+    /// <summary>How fast the player is moving across the ground, in metres per second.</summary>
+    public double SpeedMetersPerSecond =>
+        double.Sqrt((_velocityX * _velocityX) + (_velocityZ * _velocityZ));
 
     /// <summary>The box the player occupies: width, height and depth in metres.</summary>
     public static double3 Size => BodySize;
@@ -97,6 +153,9 @@ public sealed class Player
     )
     {
         IsSwimming = !IsFlying && IsInLiquid(world, registry);
+        IsCrouching = !IsFlying && intent.Crouch;
+
+        EaseEyeHeight(seconds);
 
         var (sinYaw, cosYaw) = double.SinCos(yaw);
 
@@ -109,16 +168,20 @@ public sealed class Player
 
         var speed = IsFlying
             ? FlySpeedMetersPerSecond * (intent.Sprint ? FlySprintFactor : 1.0)
-            : WalkSpeedMetersPerSecond * (intent.Sprint ? SprintFactor : 1.0);
+            : IsCrouching
+                ? CrouchSpeedMetersPerSecond
+                : WalkSpeedMetersPerSecond * (intent.Sprint ? SprintFactor : 1.0);
 
         if (IsSwimming)
             speed *= SwimDragFactor;
 
-        var horizontal = new double3(
-            ((forward * cosYaw) + (right * -sinYaw)) * speed * seconds,
-            0.0,
-            ((forward * sinYaw) + (right * cosYaw)) * speed * seconds
-        );
+        // What the player is asking for, as a velocity rather than a displacement.
+        var wantedX = ((forward * cosYaw) + (right * -sinYaw)) * speed;
+        var wantedZ = ((forward * sinYaw) + (right * cosYaw)) * speed;
+
+        Accelerate(wantedX, wantedZ, push > 0.0, seconds);
+
+        var horizontal = new double3(_velocityX * seconds, 0.0, _velocityZ * seconds);
 
         double vertical;
         if (IsFlying)
@@ -152,15 +215,31 @@ public sealed class Player
             vertical = -_fallSpeed * seconds;
         }
 
+        var wanted = new double3(horizontal.X, vertical, horizontal.Z);
+
+        // Crouching at an edge stops at it. Done by refusing the move rather than by undoing one,
+        // because a body already over the drop has to be put back somewhere, and the only place
+        // that is certainly safe is where it came from.
+        if (IsCrouching && IsOnGround && vertical <= 0.0)
+            wanted = WithoutStepsOffTheEdge(world, registry, wanted);
+
+        var before = FeetMeters;
         var move = VoxelBody.Move(
             world,
             registry,
             FeetMeters,
             BodySize,
-            new double3(horizontal.X, vertical, horizontal.Z)
+            wanted,
+            IsFlying || IsSwimming ? 0.0 : StepHeightMeters
         );
 
         FeetMeters = move.FeetMeters;
+
+        // Walking into a wall loses the speed that was going into it, the way it loses the
+        // distance: without this a player held against a wall builds up speed in place and shoots
+        // sideways the moment the wall ends.
+        if (move.HitWall)
+            StopAgainstWall(wanted, before, move.FeetMeters);
 
         if (IsFlying)
         {
@@ -176,6 +255,98 @@ public sealed class Player
         // Asked rather than taken from the move, because walking off a ledge leaves the ground
         // with nothing having stopped the body.
         IsOnGround = VoxelBody.IsStandingOn(world, registry, FeetMeters, BodySize);
+    }
+
+    /// <summary>Brings the horizontal velocity towards what the player is asking for.</summary>
+    /// <remarks>
+    /// Acceleration towards the wanted velocity, and friction when nothing is wanted. Both are
+    /// per second and applied over the step, so the result does not depend on the frame rate —
+    /// which it would if either were a fraction applied per step.
+    /// </remarks>
+    private void Accelerate(double wantedX, double wantedZ, bool pushing, double seconds)
+    {
+        if (IsFlying)
+        {
+            // Flying is direct. There is nothing to push against and nothing to slide on, and a
+            // camera that drifts after the key is let go is a camera that overshoots a block.
+            _velocityX = wantedX;
+            _velocityZ = wantedZ;
+            return;
+        }
+
+        var friction = IsSwimming
+            ? WaterFrictionPerSecond
+            : IsOnGround
+                ? GroundFrictionPerSecond
+                : AirFrictionPerSecond;
+
+        var acceleration = IsOnGround || IsSwimming
+            ? GroundAccelerationMetersPerSecondSquared
+            : AirAccelerationMetersPerSecondSquared;
+
+        if (pushing)
+        {
+            // Along the vector, not axis by axis. Per axis, a diagonal reaches each of its two
+            // smaller targets sooner than a straight line reaches its one larger one, and the
+            // result is that pressing two keys accelerates faster than pressing one.
+            var towardX = wantedX - _velocityX;
+            var towardZ = wantedZ - _velocityZ;
+            var distance = double.Sqrt((towardX * towardX) + (towardZ * towardZ));
+            var step = acceleration * seconds;
+
+            if (distance <= step || distance <= 0.0)
+            {
+                _velocityX = wantedX;
+                _velocityZ = wantedZ;
+                return;
+            }
+
+            _velocityX += towardX / distance * step;
+            _velocityZ += towardZ / distance * step;
+            return;
+        }
+
+        var kept = double.Max(0.0, 1.0 - (friction * seconds));
+        _velocityX *= kept;
+        _velocityZ *= kept;
+    }
+
+    /// <summary>Takes the velocity out of whichever axis a wall stopped.</summary>
+    /// <remarks>
+    /// Compared against what was asked for rather than against the wall: an axis that covered
+    /// less than a tenth of what it was told to is an axis that met something. Asking the world
+    /// again would be the other way round, and would cost a second pass over the blocks for an
+    /// answer the move already knows.
+    /// </remarks>
+    private void StopAgainstWall(double3 wanted, double3 before, double3 after)
+    {
+        if (double.Abs(wanted.X) > 1e-9 && double.Abs(after.X - before.X) < double.Abs(wanted.X) * 0.1)
+            _velocityX = 0.0;
+
+        if (double.Abs(wanted.Z) > 1e-9 && double.Abs(after.Z - before.Z) < double.Abs(wanted.Z) * 0.1)
+            _velocityZ = 0.0;
+    }
+
+    /// <summary>Drops whichever parts of a move would take a crouching player over an edge.</summary>
+    private double3 WithoutStepsOffTheEdge(IVoxelSource world, BlockRegistry registry, double3 wanted)
+    {
+        var alongX = new double3(FeetMeters.X + wanted.X, FeetMeters.Y, FeetMeters.Z);
+        var alongZ = new double3(FeetMeters.X, FeetMeters.Y, FeetMeters.Z + wanted.Z);
+
+        // One axis at a time, so edging along a ledge keeps whichever direction still has ground
+        // under it — which is what makes crouching along a one-block ledge possible at all.
+        var keepX = VoxelBody.IsStandingOn(world, registry, alongX, BodySize);
+        var keepZ = VoxelBody.IsStandingOn(world, registry, alongZ, BodySize);
+
+        return new double3(keepX ? wanted.X : 0.0, wanted.Y, keepZ ? wanted.Z : 0.0);
+    }
+
+    /// <summary>Moves the eyes towards where crouching or standing puts them.</summary>
+    private void EaseEyeHeight(double seconds)
+    {
+        var target = IsCrouching ? CrouchDropMeters : 0.0;
+        var caught = CrouchEaseSeconds <= 0.0 ? 1.0 : 1.0 - double.Exp(-seconds / (CrouchEaseSeconds / 3.0));
+        _eyeDrop = double.Lerp(_eyeDrop, target, double.Clamp(caught, 0.0, 1.0));
     }
 
     /// <summary>Whether a block placed here would be inside the player.</summary>
@@ -223,6 +394,8 @@ public sealed class Player
     {
         FeetMeters = feetMeters;
         _fallSpeed = 0.0;
+        _velocityX = 0.0;
+        _velocityZ = 0.0;
         IsOnGround = false;
     }
 }

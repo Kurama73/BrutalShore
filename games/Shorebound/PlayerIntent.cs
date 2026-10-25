@@ -22,6 +22,13 @@ public readonly record struct PlayerIntent
     /// <summary>Whether to move at the sprinting speed.</summary>
     public required bool Sprint { get; init; }
 
+    /// <summary>Whether to crouch: slower, lower, and unable to walk off an edge.</summary>
+    /// <remarks>
+    /// The same key as sinking while flying, because the two never apply at once and a player
+    /// holding "down" means one thing: go lower, or at least do not go higher.
+    /// </remarks>
+    public required bool Crouch { get; init; }
+
     /// <summary>Nothing held.</summary>
     public static PlayerIntent Still =>
         new()
@@ -31,5 +38,6 @@ public readonly record struct PlayerIntent
             Jump = false,
             Sink = false,
             Sprint = false,
+            Crouch = false,
         };
 }

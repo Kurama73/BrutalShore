@@ -45,6 +45,7 @@ public sealed class PlayerController
             Jump = _window.IsKeyDown(GlfwKey.Space),
             Sink = _window.IsKeyDown(GlfwKey.LeftControl),
             Sprint = _window.IsKeyDown(GlfwKey.LeftShift),
+            Crouch = _window.IsKeyDown(GlfwKey.LeftControl),
         };
     }
 

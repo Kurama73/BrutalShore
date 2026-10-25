@@ -200,7 +200,13 @@ public sealed class PlayerTests
         return player;
     }
 
-    private static PlayerIntent Held(double forward = 0.0, double right = 0.0, bool jump = false, bool sprint = false) =>
+    private static PlayerIntent Held(
+        double forward = 0.0,
+        double right = 0.0,
+        bool jump = false,
+        bool sprint = false,
+        bool crouch = false
+    ) =>
         new()
         {
             Forward = forward,
@@ -208,6 +214,7 @@ public sealed class PlayerTests
             Jump = jump,
             Sink = false,
             Sprint = sprint,
+            Crouch = crouch,
         };
 
     /// <summary>

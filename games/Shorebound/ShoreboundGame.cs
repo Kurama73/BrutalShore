@@ -443,10 +443,13 @@ public sealed class ShoreboundGame : IGame
                 ? "flying"
                 : _player.IsSwimming
                     ? "swimming"
-                    : _player.IsOnGround
-                        ? "on the ground"
-                        : $"falling at {_player.FallSpeedMetersPerSecond:F1} m/s"
+                    : _player.IsCrouching
+                        ? "crouching"
+                        : _player.IsOnGround
+                            ? "on the ground"
+                            : $"falling at {_player.FallSpeedMetersPerSecond:F1} m/s"
         );
+        ImGui.Text($"{_player.SpeedMetersPerSecond:F1} m/s");
         ImGui.Text(
             _aimedAt is { } hit
                 ? $"aimed at {hit.Block.X}, {hit.Block.Y}, {hit.Block.Z} ({_world.Registry[_world.BlockAt(hit.Block.X, hit.Block.Y, hit.Block.Z)].Name})"
@@ -489,8 +492,8 @@ public sealed class ShoreboundGame : IGame
             _clock.SetDayFraction(double.Floor(_clock.DayFraction) + (hour / 24.0));
 
         ImGui.SeparatorText("Controls"u8);
-        ImGui.Text("WASD, space, shift to sprint, F to fly"u8);
-        ImGui.Text("left click breaks, right click places, 1-6 picks"u8);
+        ImGui.Text("WASD, space, shift to sprint, ctrl to crouch, F to fly"u8);
+        ImGui.Text("left click breaks, right click places, 1-9 picks"u8);
         ImGui.Text("escape for the menu, F3 hides this"u8);
     }
 

@@ -621,6 +621,8 @@ public sealed class GameUi
 
         UiControls.Heading("Keys", width);
         UiControls.Note("WASD to move, space to jump, shift to sprint");
+        UiControls.Note("Ctrl crouches: slower, lower, and it will not walk off an edge");
+        UiControls.Note("A ledge one block high is walked up rather than jumped");
         UiControls.Note("F flies, space and ctrl go up and down while flying");
         UiControls.Note("Left click breaks, right click places, 1 to 9 or Q and E pick");
         UiControls.Note("Escape opens this menu, F3 shows what the engine is doing");
