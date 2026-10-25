@@ -155,6 +155,43 @@ public sealed class VoxelWorld : IVoxelSource, IDisposable
             ?? BlockId.Air;
     }
 
+    /// <summary>The altitude of the highest solid block in a column, across the whole world.</summary>
+    /// <param name="x">The column's x, in blocks.</param>
+    /// <param name="z">Its z, in blocks.</param>
+    /// <returns>
+    /// The y of the highest block, or <see cref="int.MinValue" /> for a column that is empty or
+    /// not loaded.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// Eight dictionary lookups and eight array reads, because every chunk already keeps its own
+    /// columns' tops for the lighting. That is what makes this worth having as a query rather
+    /// than something a caller walks down a column to find out: the answer is already computed
+    /// and the naive version reads a hundred and twenty-eight blocks.
+    /// </para>
+    /// <para>
+    /// "Is there sky here" is the question it is really for, and it is one anything above the
+    /// voxel layer asks: what the weather falls on, where a creature may stand in daylight, which
+    /// surface a tree may grow from.
+    /// </para>
+    /// </remarks>
+    public int HighestBlock(int x, int z)
+    {
+        var chunkX = WorldCoordinates.ToChunk(x);
+        var chunkZ = WorldCoordinates.ToChunk(z);
+        var localX = WorldCoordinates.ToLocal(x);
+        var localZ = WorldCoordinates.ToLocal(z);
+
+        for (var chunkY = ChunksTall - 1; chunkY >= 0; chunkY--)
+        {
+            var top = _chunks.GetValueOrDefault(new int3(chunkX, chunkY, chunkZ))?.HighestBlock(localX, localZ) ?? -1;
+            if (top >= 0)
+                return (chunkY * Chunk.Size) + top;
+        }
+
+        return int.MinValue;
+    }
+
     /// <summary>
     /// Writes a block at an absolute coordinate, marking what has to be re-meshed. Returns whether
     /// anything changed.

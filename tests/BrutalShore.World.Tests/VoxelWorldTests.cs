@@ -136,4 +136,60 @@ public class VoxelWorldTests
         Assert.Single(_world.Dirty);
         Assert.Contains(new int3(0, 1, 0), _world.Dirty);
     }
+
+    [Fact]
+    public void an_unloaded_column_has_no_highest_block()
+    {
+        var registry = new BlockRegistry();
+        var ground = registry.Register(new BlockType { Name = "ground", Color = byte3.HexColor(0x808080) });
+        var world = new VoxelWorld(registry, new FlatGenerator(ground, surfaceHeight: 20));
+
+        Assert.Equal(int.MinValue, world.HighestBlock(3, 5));
+    }
+
+    [Fact]
+    public void the_highest_block_of_a_flat_world_is_its_surface()
+    {
+        var registry = new BlockRegistry();
+        var ground = registry.Register(new BlockType { Name = "ground", Color = byte3.HexColor(0x808080) });
+        var world = new VoxelWorld(registry, new FlatGenerator(ground, surfaceHeight: 20));
+
+        for (var chunkY = 0; chunkY < VoxelWorld.ChunksTall; chunkY++)
+            world.Load(new int3(0, chunkY, 0));
+
+        // The generator fills up to and including the surface height.
+        Assert.Equal(20, world.HighestBlock(3, 5));
+    }
+
+    [Fact]
+    public void a_block_placed_above_the_surface_becomes_the_highest()
+    {
+        var registry = new BlockRegistry();
+        var ground = registry.Register(new BlockType { Name = "ground", Color = byte3.HexColor(0x808080) });
+        var world = new VoxelWorld(registry, new FlatGenerator(ground, surfaceHeight: 20));
+
+        for (var chunkY = 0; chunkY < VoxelWorld.ChunksTall; chunkY++)
+            world.Load(new int3(0, chunkY, 0));
+
+        world.SetBlock(new int3(3, 40, 5), ground);
+
+        // Across chunks, which is the case the naive answer gets wrong: the block is two chunks
+        // above the one holding the surface.
+        Assert.Equal(40, world.HighestBlock(3, 5));
+    }
+
+    [Fact]
+    public void breaking_the_top_block_lowers_the_highest()
+    {
+        var registry = new BlockRegistry();
+        var ground = registry.Register(new BlockType { Name = "ground", Color = byte3.HexColor(0x808080) });
+        var world = new VoxelWorld(registry, new FlatGenerator(ground, surfaceHeight: 20));
+
+        for (var chunkY = 0; chunkY < VoxelWorld.ChunksTall; chunkY++)
+            world.Load(new int3(0, chunkY, 0));
+
+        world.SetBlock(new int3(3, 20, 5), BlockId.Air);
+
+        Assert.Equal(19, world.HighestBlock(3, 5));
+    }
 }
