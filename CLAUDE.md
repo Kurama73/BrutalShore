@@ -232,7 +232,13 @@ does, rename something instead.
   running process — is checked by `--playtest`, which feeds the game a
   `SessionScript` through `IInputSource` instead of a keyboard. The script is
   code rather than a recorded file, so it goes stale the way code does: the
-  build breaks.
+  build breaks. It found the panel keys not closing their panels, which every
+  unit test in the repository was blind to because the bug was two correct
+  pieces of code reading the same key press in one frame.
+- When a device-bound bug turns out to have a rule inside it, the rule comes out
+  into something headless and the regression test goes there. `Screens.Panel` is
+  that: one function from a screen and two key presses to the next screen, which
+  cannot open and close in the same frame because it only answers once.
 
 ## Quality gates
 

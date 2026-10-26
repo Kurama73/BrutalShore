@@ -108,6 +108,14 @@ and planks, the lantern with ember out of a deep shaft. Nothing else unlocks
 recipes, and a pattern you were not meant to know yet makes nothing even if you
 guess it.
 
+They are a tree rather than a queue. After the first smelt the shore opens two
+ways at once — light, to go deeper, and belts, to stop carrying — and more than
+one of them is payable for most of the game, so the order is yours. The two come
+back together at the drill, which needs what both arms gave: branching without
+rejoining would mean writing two games, and a branch nobody takes is content
+nobody sees. A locked step says which steps it is waiting on, so the tree can be
+read backwards from whatever you want next.
+
 ### The dark
 
 Animals graze the open ground. They wander, step up the same one-block ledges
@@ -166,6 +174,7 @@ inside the game. Anything the command line mentions beats what is in that file.
 | `--camera <x> <y> <z> <yaw> <pitch>` | Start the camera here, angles in degrees.      |
 | `--screenshot <path>`              | Save the last frame as a PNG.                    |
 | `--playtest`                       | Play the game from a script instead of a keyboard. |
+| `--profile <path>`                 | Write a table of what the run cost.              |
 
 Passing `--frames` or `--camera` goes straight into the world rather than
 stopping at the title screen: a run with a fixed frame count is a render check,
@@ -228,6 +237,29 @@ The script is a `SessionScript`, which is engine-side and holds no file format:
 a step is a method call, so a control that is renamed breaks the build instead
 of silently doing nothing. `ScriptedInput` merges with the real window rather
 than replacing it, so a person watching can still take over mid-run.
+
+It has already earned it: the key that opens the inventory did not close it
+again, because closing a panel puts the player back to playing inside the same
+frame and the second place that read the key opened it straight back up. Only
+escape ever closed anything, and nothing short of playing the game through
+would have said so.
+
+Add `--profile <path>` and the run leaves its costs behind as well as its
+picture:
+
+```
+                    share     mean      p50      p99    worst
+frame              100.0%  299.250  316.228  384.254  384.254
+  simulation         0.0%    0.097    0.004    1.413   24.357
+  presenting        97.5%  291.729  316.228  354.813  375.694
+  chunks             0.1%    0.242    0.079    6.310   21.074
+```
+
+Those are the whole run rather than the overlay's last four seconds, which is
+the difference between a number that can be compared with yesterday's and one
+that can only be watched. They come out of a `Histogram` of twenty buckets to
+the decade, so a percentile over a ninety-second run is one walk over a hundred
+and twenty counters and costs nothing to keep.
 
 ## Layout
 
