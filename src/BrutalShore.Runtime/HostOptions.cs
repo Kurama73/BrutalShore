@@ -43,6 +43,14 @@ public sealed record HostOptions
     /// </remarks>
     public bool ShowOverlay { get; init; } = true;
 
+    /// <summary>Where to write a table of what the run cost, or nothing.</summary>
+    /// <remarks>
+    /// The other half of a scripted session. The script makes a run repeatable and the report
+    /// makes it measurable, and the two together turn a playtest into something that can be put
+    /// beside the same playtest from before a change.
+    /// </remarks>
+    public string? ProfilePath { get; init; }
+
     /// <summary>A session to play instead of waiting for a person, or nothing.</summary>
     /// <remarks>
     /// What makes an automated playtest possible: the host feeds the script to the game as

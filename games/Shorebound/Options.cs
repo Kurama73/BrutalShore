@@ -120,6 +120,13 @@ public sealed record Options
                     options = options with { Viewpoint = ReadViewpoint(arguments, ref index) };
                     break;
 
+                case "--profile":
+                    options = options with
+                    {
+                        Host = options.Host with { ProfilePath = ReadText(arguments, ++index, "--profile") },
+                    };
+                    break;
+
                 case "--playtest":
                     options = options with
                     {

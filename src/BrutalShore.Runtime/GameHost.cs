@@ -149,6 +149,12 @@ public sealed class GameHost : IDisposable
             Console.WriteLine($"Wrote {path}.");
         }
 
+        if (_options.ProfilePath is { } report)
+        {
+            RunReport.WriteTo(report, _options.Title, _profile, game.Summary);
+            Console.WriteLine($"Wrote {report}.");
+        }
+
         // Printed on the way out rather than per frame: a line every frame costs more than some of
         // what it measures, and these numbers are steady by the time the window closes.
         Console.WriteLine($"{_clock.FrameCount} frames, {_clock.FramesPerSecond:F1} fps. {game.Summary}");
