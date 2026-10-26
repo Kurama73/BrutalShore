@@ -74,8 +74,18 @@ public sealed class Stalkers
     private const double AccelerationMetersPerSecondSquared = 14.0;
     private const double StepHeightMeters = 1.05;
 
-    /// <summary>How close one gets before it bites, in metres.</summary>
+    /// <summary>How close one gets before it bites, in metres, measured flat.</summary>
     private const double BiteReachMeters = 1.5;
+
+    /// <summary>How far above or below itself one can reach, in metres.</summary>
+    /// <remarks>
+    /// Flat distance alone is not reach. Without this, something standing on the ground bit a
+    /// player hovering fourteen blocks over its head, because the only thing being measured was
+    /// the shadow. A metre and a half is one block of ledge and a little: a player who steps up
+    /// onto a block is still within reach of something that could step up after them, and a
+    /// player two blocks up is not.
+    /// </remarks>
+    private const double BiteRiseMeters = 1.6;
 
     /// <summary>How long between one bite and the next, in seconds.</summary>
     private const double BiteEverySeconds = 1.1;
@@ -367,7 +377,12 @@ public sealed class Stalkers
         if (away > 1e-6)
             stalker.Yaw = (float)double.Atan2(toPlayer.X, toPlayer.Z);
 
-        if (away <= BiteReachMeters && stalker.BiteLeftSeconds <= 0.0 && vitality.Hurt(BiteDamage))
+        if (
+            away <= BiteReachMeters
+            && double.Abs(toPlayer.Y) <= BiteRiseMeters
+            && stalker.BiteLeftSeconds <= 0.0
+            && vitality.Hurt(BiteDamage)
+        )
             stalker.BiteLeftSeconds = BiteEverySeconds;
 
         // Straight at them, unless something got in the way recently, in which case along the

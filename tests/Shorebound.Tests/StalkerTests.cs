@@ -160,11 +160,12 @@ public sealed class StalkerTests
         double seconds,
         bool isDay,
         Vitality? vitality = null,
-        int machines = 0
+        int machines = 0,
+        double3? at = null
     )
     {
         const double Step = 1.0 / 60.0;
-        var player = new double3(0.5, 21.0, 0.5);
+        var player = at ?? new double3(0.5, 21.0, 0.5);
         var health = vitality ?? new Vitality();
 
         for (var elapsed = 0.0; elapsed < seconds; elapsed += Step)
@@ -172,6 +173,43 @@ public sealed class StalkerTests
             health.Step(Step);
             stalkers.Step(world, registry, Step, player, health, machines, isDay);
         }
+    }
+
+    [Fact]
+    public void nothing_reaches_a_player_standing_well_above_it()
+    {
+        // The regression. Reach was measured flat, so something standing on the ground bit a
+        // player hovering fourteen blocks over it — found by leaving a works running through a
+        // night and watching the camera die in mid-air with nothing anywhere near it.
+        var world = Flat(out var registry);
+        var stalkers = new Stalkers(11);
+        var ground = new double3(0.5, 21.0, 0.5);
+
+        // Let them gather where the player was, then rise out of reach without moving off.
+        Run(stalkers, world, registry, seconds: 120.0, isDay: false, at: ground);
+        Assert.True(stalkers.Count > 0, "nothing came out, so this proves nothing");
+
+        var aloft = new Vitality();
+        Run(stalkers, world, registry, seconds: 20.0, isDay: false, vitality: aloft, at: ground + new double3(0, 6, 0));
+
+        Assert.Equal(Vitality.Whole, aloft.Health);
+    }
+
+    [Fact]
+    public void stepping_up_one_block_does_not_make_a_player_safe()
+    {
+        // The other half of the claim: the fix must not turn every ledge into a wall, because
+        // something that steps up one block has to be able to bite what is standing up there.
+        var world = Flat(out var registry);
+        var stalkers = new Stalkers(11);
+        var ground = new double3(0.5, 21.0, 0.5);
+
+        Run(stalkers, world, registry, seconds: 120.0, isDay: false, at: ground);
+
+        var raised = new Vitality();
+        Run(stalkers, world, registry, seconds: 30.0, isDay: false, vitality: raised, at: ground + new double3(0, 1, 0));
+
+        Assert.True(raised.Health < Vitality.Whole, "a single block of ledge made the player untouchable");
     }
 
     private static double3 Normalised(double3 value)
