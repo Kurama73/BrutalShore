@@ -47,6 +47,14 @@ public sealed record Options
     /// <summary>Where the camera starts, or <see langword="null" /> to stand on the ground at the origin.</summary>
     public Viewpoint? Viewpoint { get; init; }
 
+    /// <summary>A works to build before the run starts, or nothing for an untouched world.</summary>
+    /// <remarks>
+    /// For watching the game's middle rather than its first morning. What it builds would take a
+    /// player a quarter of an hour to reach honestly, and the point of the run is what happens
+    /// after that, not the quarter of an hour.
+    /// </remarks>
+    public Scenario? Scenario { get; init; }
+
     /// <summary>What the host is told, before the player's settings are folded into it.</summary>
     public HostOptions Host { get; init; } = new() { Title = "Shorebound" };
 
@@ -127,6 +135,10 @@ public sealed record Options
                     };
                     break;
 
+                case "--scenario":
+                    options = options with { Scenario = ReadScenario(arguments, ++index) };
+                    break;
+
                 case "--playtest":
                     options = options with
                     {
@@ -187,6 +199,13 @@ public sealed record Options
             float.DegreesToRadians((float)pitch)
         );
     }
+
+    private static Scenario ReadScenario(string[] arguments, int index) =>
+        Scenario.Named(ReadText(arguments, index, "--scenario"))
+        ?? throw new ArgumentException(
+            $"'--scenario' takes one of: {string.Join(", ", Scenario.Names)}.",
+            nameof(arguments)
+        );
 
     private static double ReadDouble(string[] arguments, int index, string flag, string shape = "a number") =>
         index < arguments.Length

@@ -252,7 +252,8 @@ public sealed class ShoreboundGame : IGame
 
     /// <inheritdoc />
     public string Summary =>
-        $"{_world.LoadedChunkCount} chunks loaded, {_chunks.MeshCount} meshed "
+        (_options.Scenario is { } scenario ? scenario.Report(_blocks, _machines, _stalkers) + " " : string.Empty)
+        + $"{_world.LoadedChunkCount} chunks loaded, {_chunks.MeshCount} meshed "
         + $"({_chunks.ResidentBytes / (1024.0 * 1024.0):F1} MiB), "
         + $"{_chunks.DrawnChunkCount} drawn, {_chunks.DrawnTriangleCount} triangles, "
         + $"{_chunks.PendingCount} waiting.";
@@ -318,6 +319,9 @@ public sealed class ShoreboundGame : IGame
         Apply(_settings);
 
         StartFreshWorld();
+
+        if (_options.Scenario is { } scenario)
+            BuildScenario(scenario, context);
 
         // A run with a fixed frame count is a render check, not a play session: it has nobody to
         // click past a title screen, and the frames it was asked for start now.
@@ -1576,6 +1580,29 @@ public sealed class ShoreboundGame : IGame
         _screen = Screen.Playing;
         context.Window.SetMouseCaptured(true);
         _camera.Position = _player.EyeMeters;
+    }
+
+    /// <summary>Builds a works, sets the hour it is meant to be watched at, and stands back.</summary>
+    /// <remarks>
+    /// Everything it unlocks is unlocked for real, because a works the player cannot add to is a
+    /// diorama. The viewpoint is only a default: <c>--camera</c> still wins, which is how a
+    /// different angle on the same works is asked for.
+    /// </remarks>
+    private void BuildScenario(Scenario scenario, GameContext context)
+    {
+        var corner = scenario.Build(_blocks, _world, _machines, Scenario.CornerAt(_generator.SurfaceHeight(-2, -2)));
+
+        _progression.Restore(_progression.All.Select(step => step.Name).ToArray());
+        _clock.SetDayFraction(scenario.StartHour / 24.0);
+
+        var view = scenario.ViewFrom(corner);
+        _player.TeleportTo(new double3(view.Position.X, view.Position.Y - Player.EyeHeightMeters, view.Position.Z));
+        _player.IsFlying = true;
+        _controller.AimAt(view.Yaw, view.Pitch);
+        _camera.Position = _player.EyeMeters;
+        Enter(context);
+
+        Console.WriteLine($"Built the '{scenario.Name}' works at {corner.X}, {corner.Y}, {corner.Z}.");
     }
 
     /// <summary>Puts the player on the surface above the origin, with nothing changed.</summary>

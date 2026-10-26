@@ -47,6 +47,14 @@ public sealed class Turret : IMachine, IPowered
     /// <summary>Whether it fired within the last moment, for drawing a muzzle flash.</summary>
     public bool JustFired { get; private set; }
 
+    /// <summary>How many times it has fired since it was built.</summary>
+    /// <remarks>
+    /// Not saved and not restored. It answers one question — whether the thing on the wire is
+    /// actually doing anything over a night — and a count that survived a reload would answer it
+    /// about some other night as well.
+    /// </remarks>
+    public int Shots { get; private set; }
+
     /// <summary>Which way it is pointing, in radians, for drawing it.</summary>
     public float Yaw { get; private set; }
 
@@ -97,6 +105,7 @@ public sealed class Turret : IMachine, IPowered
 
         _reloadLeftSeconds = EverySeconds;
         JustFired = true;
+        Shots++;
 
         var away = double.Sqrt(double3.Dot(toIt, toIt));
         return stalkers.Strike(middle, toIt / double.Max(away, 1e-9), ReachMeters + 1.0, Damage);
