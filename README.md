@@ -175,6 +175,7 @@ inside the game. Anything the command line mentions beats what is in that file.
 | `--screenshot <path>`              | Save the last frame as a PNG.                    |
 | `--playtest`                       | Play the game from a script instead of a keyboard. |
 | `--profile <path>`                 | Write a table of what the run cost.              |
+| `--scenario works\|night`           | Build a running works before the run starts.     |
 
 Passing `--frames` or `--camera` goes straight into the world rather than
 stopping at the title screen: a run with a fixed frame count is a render check,
@@ -189,6 +190,38 @@ runs an hour apart are not comparable.
 dotnet run --project games/Shorebound -c Release -- \
     --frames 400 --camera -140 190 -140 45 -22 --screenshot coastline.png
 ```
+
+### Watching the middle of the game
+
+The first morning is the part a screenshot can reach. The part worth looking at
+is the hour after it: a drill on a seam, a belt into a fire, one generator
+holding both up, and the dark arriving because of the noise. `--scenario` builds
+that and stands back.
+
+```bash
+dotnet run --project games/Shorebound -c Release -- \
+    --scenario night --frames 700 --day-length 0 --screenshot night.png
+```
+
+```
+night: 9 ingots made, 13 ore waiting at the fire, 0 riding the belts,
+0 stacked at the drill, 300 watts delivered of 300 asked for.
+The turret fired 67 times; 4 still about.
+```
+
+Three hundred watts is the drill, the fire and the turret on one wire — the
+turret only draws when something is in front of it, so that number is the dark
+arriving. It is built with the same calls a player's click makes, and nothing
+about it is a diorama: the recipes are unlocked, the blocks are real blocks, and
+anything it builds can be broken.
+
+It has already earned its place twice. The watcher standing beside the works at
+head height was eaten, which is correct. The watcher moved ten blocks away was
+not — and the turret stopped firing, because the horde hunts the player rather
+than the machines and had walked straight past the works to get to them. Then
+the watcher hovering fourteen blocks overhead was eaten anyway, which was a bug:
+reach was being measured flat, so something standing on the ground could bite a
+player with nothing underneath them.
 
 ### Checking it without a GPU
 
