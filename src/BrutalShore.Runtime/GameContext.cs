@@ -17,18 +17,38 @@ public sealed class GameContext
         SwapchainTarget target,
         GpuRenderer renderer,
         ShaderLibrary shaders,
-        FrameClock clock
+        FrameClock clock,
+        Profiler counters,
+        IInputSource input
     )
     {
         Window = window;
+        Input = input;
         Gpu = gpu;
         Target = target;
         Renderer = renderer;
         Shaders = shaders;
         Clock = clock;
+        Counters = counters;
     }
 
-    /// <summary>The window, for input and its framebuffer size.</summary>
+    /// <summary>Where the game times its own work, for the overlay to show.</summary>
+    /// <remarks>
+    /// Handed to the game rather than reached for, so that timing something is available
+    /// everywhere the context is and nothing has to be wired through on purpose. Counters are
+    /// meant to be opened once, at load, and the handles kept.
+    /// </remarks>
+    public Profiler Counters { get; }
+
+    /// <summary>Where the keyboard and the mouse come from this frame.</summary>
+    /// <remarks>
+    /// Normally the window, and a script when the host was told to run one. A game that reads
+    /// input through this rather than off the window can be driven from top to bottom with
+    /// nobody at the machine, which is what a scripted session is for.
+    /// </remarks>
+    public IInputSource Input { get; }
+
+    /// <summary>The window, for its framebuffer size and for closing it.</summary>
     public GameWindow Window { get; }
 
     /// <summary>The Vulkan device everything is created on.</summary>

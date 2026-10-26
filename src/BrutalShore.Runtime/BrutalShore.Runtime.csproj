@@ -3,11 +3,13 @@
   <ItemGroup>
     <ProjectReference Include="../BrutalShore.Core/BrutalShore.Core.csproj" />
     <ProjectReference Include="../BrutalShore.Gpu/BrutalShore.Gpu.csproj" />
+    <ProjectReference Include="../BrutalShore.Ui/BrutalShore.Ui.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Ahwoo.BRUTAL.ImGui" />
     <PackageReference Include="Ahwoo.BRUTAL.ImGui.Backends" />
+    <PackageReference Include="Ahwoo.BRUTAL.ImPlot" />
   </ItemGroup>
 
 </Project>

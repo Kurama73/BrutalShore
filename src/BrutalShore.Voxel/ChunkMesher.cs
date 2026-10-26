@@ -40,6 +40,12 @@ namespace BrutalShore.Voxel;
 /// at the edges of shadows and nowhere else.
 /// </para>
 /// <para>
+/// Light is in the key for the same reason and sampled the same way, averaged over the four cells
+/// that touch a corner on its open side. Baking it into the vertices is what keeps the frame's
+/// cost unchanged: the shader reads two nibbles it already had room for, and nothing about
+/// lighting a world of caves reaches the renderer at all.
+/// </para>
+/// <para>
 /// The mesh is in chunk-local voxel units with the chunk's minimum corner at the origin: block
 /// <c>(i, j, k)</c> occupies the cube from <c>(i, j, k)</c> to <c>(i+1, j+1, k+1)</c>. Where the
 /// chunk sits in the world is the caller's transform, not arithmetic repeated over every vertex.
@@ -54,7 +60,22 @@ public sealed class ChunkMesher
     /// <summary>
     /// One face in the plane being merged: what it looks like, and therefore what it may merge with.
     /// </summary>
-    private readonly record struct MaskCell(byte3 Color, byte Occlusion0, byte Occlusion1, byte Occlusion2, byte Occlusion3)
+    /// <param name="Color">The owning block's colour.</param>
+    /// <param name="Opacity">The owning block's opacity, which keeps the two passes apart.</param>
+    /// <param name="Pattern">What the owning block's surface looks like closer than a block.</param>
+    /// <param name="Corner0">The corner at (i, j).</param>
+    /// <param name="Corner1">The corner at (i + 1, j).</param>
+    /// <param name="Corner2">The corner at (i + 1, j + 1).</param>
+    /// <param name="Corner3">The corner at (i, j + 1).</param>
+    private readonly record struct MaskCell(
+        byte3 Color,
+        byte Opacity,
+        BlockPattern Pattern,
+        CornerShade Corner0,
+        CornerShade Corner1,
+        CornerShade Corner2,
+        CornerShade Corner3
+    )
     {
         /// <summary>No face here.</summary>
         public static MaskCell None => default;
@@ -63,11 +84,18 @@ public sealed class ChunkMesher
         public bool Exists { get; init; }
     }
 
+    /// <summary>How one corner of a face is shaded: how enclosed it is, and what light reaches it.</summary>
+    /// <param name="Occlusion">0 for a corner wedged into an inside angle, 3 for one in the open.</param>
+    /// <param name="SkyLight">The sky light averaged over the cells touching the corner, 0 to 15.</param>
+    /// <param name="BlockLight">The same for light from glowing blocks.</param>
+    private readonly record struct CornerShade(byte Occlusion, byte SkyLight, byte BlockLight);
+
     private readonly MaskCell[] _mask = new MaskCell[Chunk.Size * Chunk.Size];
 
     /// <summary>
     /// Meshes <paramref name="chunk"/>, which sits at <paramref name="chunkCoordinate"/> in chunk
-    /// units, into <paramref name="into"/>, which is cleared first.
+    /// units, into <paramref name="into"/>, which is cleared first. Solid faces and see-through
+    /// ones land in the two halves of the surface.
     /// </summary>
     /// <param name="chunk">The chunk whose surface is wanted.</param>
     /// <param name="chunkCoordinate">Where that chunk sits, in chunk units.</param>
@@ -75,9 +103,21 @@ public sealed class ChunkMesher
     /// Read access to the world, used for the blocks just outside the chunk. It must agree with
     /// <paramref name="chunk"/> about the chunk's own blocks.
     /// </param>
-    /// <param name="registry">Where a block id's colour is resolved.</param>
-    /// <param name="into">The mesh to fill.</param>
-    public void Mesh(Chunk chunk, int3 chunkCoordinate, IVoxelSource source, BlockRegistry registry, VoxelMesh into)
+    /// <param name="registry">Where a block id's colour and opacity are resolved.</param>
+    /// <param name="light">
+    /// The light around this chunk, already worked out. It has to have been lit for
+    /// <paramref name="chunkCoordinate" />, because what is read is the cell in front of each
+    /// face and the three beside it.
+    /// </param>
+    /// <param name="into">The surface to fill; both halves are cleared first.</param>
+    public void Mesh(
+        Chunk chunk,
+        int3 chunkCoordinate,
+        IVoxelSource source,
+        BlockRegistry registry,
+        LightVolume light,
+        ChunkSurface into
+    )
     {
         into.Clear();
 
@@ -106,7 +146,20 @@ public sealed class ChunkMesher
                 {
                     var facingPositive = facing == 0;
                     var face = (VoxelFace)(axis * 2 + facing);
-                    GatherFaces(chunk, source, registry, originX, originY, originZ, axis, u, v, offset, facingPositive);
+                    GatherFaces(
+                        chunk,
+                        source,
+                        registry,
+                        light,
+                        originX,
+                        originY,
+                        originZ,
+                        axis,
+                        u,
+                        v,
+                        offset,
+                        facingPositive
+                    );
                     MergeAndEmit(into, axis, u, v, offset, facingPositive, face);
                 }
             }
@@ -128,6 +181,7 @@ public sealed class ChunkMesher
         Chunk chunk,
         IVoxelSource source,
         BlockRegistry registry,
+        LightVolume light,
         int originX,
         int originY,
         int originZ,
@@ -169,15 +223,19 @@ public sealed class ChunkMesher
                 var facingWorldY = originY + facing[1];
                 var facingWorldZ = originZ + facing[2];
 
-                if (source.BlockAt(facingWorldX, facingWorldY, facingWorldZ).IsSolid)
+                var facingBlock = source.BlockAt(facingWorldX, facingWorldY, facingWorldZ);
+                var ownerType = registry[ownerBlock];
+                if (IsHidden(ownerBlock, ownerType, facingBlock, registry))
                     continue;
 
                 _mask[i + Chunk.Size * j] = new MaskCell(
-                    registry[ownerBlock].Color,
-                    Occlusion(source, u, v, facingWorldX, facingWorldY, facingWorldZ, -1, -1),
-                    Occlusion(source, u, v, facingWorldX, facingWorldY, facingWorldZ, +1, -1),
-                    Occlusion(source, u, v, facingWorldX, facingWorldY, facingWorldZ, +1, +1),
-                    Occlusion(source, u, v, facingWorldX, facingWorldY, facingWorldZ, -1, +1)
+                    ownerType.Color,
+                    ownerType.Opacity,
+                    ownerType.Pattern,
+                    Shade(source, light, u, v, facingWorldX, facingWorldY, facingWorldZ, -1, -1),
+                    Shade(source, light, u, v, facingWorldX, facingWorldY, facingWorldZ, +1, -1),
+                    Shade(source, light, u, v, facingWorldX, facingWorldY, facingWorldZ, +1, +1),
+                    Shade(source, light, u, v, facingWorldX, facingWorldY, facingWorldZ, -1, +1)
                 )
                 {
                     Exists = true,
@@ -186,20 +244,50 @@ public sealed class ChunkMesher
         }
     }
 
+    /// <summary>Whether the block in front of a face hides it well enough not to build it.</summary>
+    /// <remarks>
+    /// <para>
+    /// Air hides nothing. An opaque block hides everything. A see-through block hides only a face
+    /// of its own kind — which is the rule that turns a body of water into a surface instead of a
+    /// lattice of every cell's six sides, while still letting the sand underneath be drawn.
+    /// </para>
+    /// <para>
+    /// Comparing the ids rather than the types is deliberate: two different see-through blocks
+    /// meeting should show the boundary between them, and two of the same should not.
+    /// </para>
+    /// </remarks>
+    private static bool IsHidden(BlockId owner, BlockType ownerType, BlockId facing, BlockRegistry registry)
+    {
+        if (facing.IsAir)
+            return false;
+
+        if (!registry[facing].IsTranslucent)
+            return true;
+
+        return ownerType.IsTranslucent && owner == facing;
+    }
+
     /// <summary>
-    /// How shadowed one corner of a face is, from 0 for a corner wedged into an inside angle to 3
-    /// for one out in the open.
+    /// How one corner of a face is shaded: how enclosed it is, and the light reaching it.
     /// </summary>
     /// <remarks>
-    /// The three blocks that can shade a corner are the two beside it along the face's own axes and
-    /// the one diagonally between them, all on the open side of the face. Two sides present means
-    /// the corner is in an interior angle and gets the darkest value regardless of the diagonal,
-    /// which is what stops a seam appearing along the inside of a corner. This is the standard
-    /// voxel occlusion rule and it is cheap: three block reads per corner, twelve per face, all of
-    /// them hitting the same chunk the face came from.
+    /// <para>
+    /// Four cells decide a corner, all on the open side of the face: the one the face looks into,
+    /// the two beside it along the face's own axes, and the one diagonally between them. Occlusion
+    /// counts how many of them are filled — two sides filled means the corner is in an interior
+    /// angle and gets the darkest value whatever the diagonal is, which is what stops a seam
+    /// appearing along the inside of a corner. This is the standard voxel occlusion rule.
+    /// </para>
+    /// <para>
+    /// Light averages the same four cells, skipping the filled ones, because a filled cell holds
+    /// no light and counting its zero would draw a dark band along the foot of every wall. The
+    /// cell in front of the face is always counted: it is the one the face is actually lit by, and
+    /// a corner has to have something to average even when everything around it is solid.
+    /// </para>
     /// </remarks>
-    private static byte Occlusion(
+    private static CornerShade Shade(
         IVoxelSource source,
+        LightVolume light,
         int u,
         int v,
         int facingX,
@@ -213,22 +301,44 @@ public sealed class ChunkMesher
 
         offset.Clear();
         offset[u] = stepU;
-        var sideU = source.BlockAt(facingX + offset[0], facingY + offset[1], facingZ + offset[2]).IsSolid;
+        var sideU = Sample(source, light, facingX + offset[0], facingY + offset[1], facingZ + offset[2]);
 
         offset.Clear();
         offset[v] = stepV;
-        var sideV = source.BlockAt(facingX + offset[0], facingY + offset[1], facingZ + offset[2]).IsSolid;
-
-        if (sideU && sideV)
-            return 0;
+        var sideV = Sample(source, light, facingX + offset[0], facingY + offset[1], facingZ + offset[2]);
 
         offset.Clear();
         offset[u] = stepU;
         offset[v] = stepV;
-        var diagonal = source.BlockAt(facingX + offset[0], facingY + offset[1], facingZ + offset[2]).IsSolid;
+        var diagonal = Sample(source, light, facingX + offset[0], facingY + offset[1], facingZ + offset[2]);
 
-        return (byte)(3 - ((sideU ? 1 : 0) + (sideV ? 1 : 0) + (diagonal ? 1 : 0)));
+        var front = Sample(source, light, facingX, facingY, facingZ);
+
+        var filled = (sideU.Filled ? 1 : 0) + (sideV.Filled ? 1 : 0) + (diagonal.Filled ? 1 : 0);
+        var occlusion = sideU.Filled && sideV.Filled ? 0 : 3 - filled;
+
+        var sky = front.Sky;
+        var block = front.Block;
+        var counted = 1;
+
+        foreach (var around in (ReadOnlySpan<Cell>)[sideU, sideV, diagonal])
+        {
+            if (around.Filled)
+                continue;
+
+            sky += around.Sky;
+            block += around.Block;
+            counted++;
+        }
+
+        return new CornerShade((byte)occlusion, (byte)(sky / counted), (byte)(block / counted));
     }
+
+    /// <summary>What one cell contributes to a corner: whether it blocks, and what it is lit by.</summary>
+    private readonly record struct Cell(bool Filled, int Sky, int Block);
+
+    private static Cell Sample(IVoxelSource source, LightVolume light, int x, int y, int z) =>
+        new(source.BlockAt(x, y, z).IsSolid, light.SkyLightAt(x, y, z), light.BlockLightAt(x, y, z));
 
     /// <summary>
     /// Emits one quad per maximal rectangle of identical faces in the mask, consuming it as it goes.
@@ -239,7 +349,15 @@ public sealed class ChunkMesher
     /// would save — but it is linear in the mask, and because every cell it emits it also clears,
     /// it can neither emit two overlapping rectangles nor leave a face uncovered.
     /// </remarks>
-    private void MergeAndEmit(VoxelMesh into, int axis, int u, int v, int offset, bool facingPositive, VoxelFace face)
+    private void MergeAndEmit(
+        ChunkSurface into,
+        int axis,
+        int u,
+        int v,
+        int offset,
+        bool facingPositive,
+        VoxelFace face
+    )
     {
         for (var j = 0; j < Chunk.Size; j++)
         {
@@ -280,7 +398,11 @@ public sealed class ChunkMesher
                     for (var column = 0; column < width; column++)
                         _mask[i + column + Chunk.Size * (j + row)] = MaskCell.None;
 
-                Emit(into, cell, axis, u, v, offset, i, j, width, height, facingPositive, face);
+                // The merge has already kept the two kinds apart: a cell's opacity is part of
+                // what makes two of them equal, so no merged quad is ever half one and half
+                // the other.
+                var mesh = cell.Opacity == byte.MaxValue ? into.Opaque : into.Translucent;
+                Emit(mesh, cell, axis, u, v, offset, i, j, width, height, facingPositive, face);
                 i += width;
             }
         }
@@ -291,9 +413,9 @@ public sealed class ChunkMesher
     /// faces.
     /// </summary>
     /// <remarks>
-    /// The two windings differ only by reversal, and the occlusion values travel with their
-    /// corners through that reversal rather than staying in place — a corner's shading belongs to
-    /// the corner, not to its position in the list.
+    /// The two windings differ only by reversal, and a corner's shading travels with it through
+    /// that reversal rather than staying in place — the shading belongs to the corner, not to its
+    /// position in the list.
     /// </remarks>
     private static void Emit(
         VoxelMesh into,
@@ -312,17 +434,17 @@ public sealed class ChunkMesher
     {
         if (facingPositive)
             into.AddQuad(
-                Corner(axis, u, v, offset, i, j, 0, 0, face, cell.Occlusion0, cell.Color),
-                Corner(axis, u, v, offset, i, j, width, 0, face, cell.Occlusion1, cell.Color),
-                Corner(axis, u, v, offset, i, j, width, height, face, cell.Occlusion2, cell.Color),
-                Corner(axis, u, v, offset, i, j, 0, height, face, cell.Occlusion3, cell.Color)
+                Corner(axis, u, v, offset, i, j, 0, 0, face, cell.Corner0, cell),
+                Corner(axis, u, v, offset, i, j, width, 0, face, cell.Corner1, cell),
+                Corner(axis, u, v, offset, i, j, width, height, face, cell.Corner2, cell),
+                Corner(axis, u, v, offset, i, j, 0, height, face, cell.Corner3, cell)
             );
         else
             into.AddQuad(
-                Corner(axis, u, v, offset, i, j, 0, 0, face, cell.Occlusion0, cell.Color),
-                Corner(axis, u, v, offset, i, j, 0, height, face, cell.Occlusion3, cell.Color),
-                Corner(axis, u, v, offset, i, j, width, height, face, cell.Occlusion2, cell.Color),
-                Corner(axis, u, v, offset, i, j, width, 0, face, cell.Occlusion1, cell.Color)
+                Corner(axis, u, v, offset, i, j, 0, 0, face, cell.Corner0, cell),
+                Corner(axis, u, v, offset, i, j, 0, height, face, cell.Corner3, cell),
+                Corner(axis, u, v, offset, i, j, width, height, face, cell.Corner2, cell),
+                Corner(axis, u, v, offset, i, j, width, 0, face, cell.Corner1, cell)
             );
     }
 
@@ -337,14 +459,25 @@ public sealed class ChunkMesher
         int deltaU,
         int deltaV,
         VoxelFace face,
-        int occlusion,
-        byte3 color
+        in CornerShade shade,
+        in MaskCell cell
     )
     {
         Span<int> position = stackalloc int[3];
         position[axis] = offset;
         position[u] = i + deltaU;
         position[v] = j + deltaV;
-        return new VoxelVertex(position[0], position[1], position[2], face, occlusion, color);
+        return new VoxelVertex(
+            position[0],
+            position[1],
+            position[2],
+            face,
+            shade.Occlusion,
+            shade.SkyLight,
+            shade.BlockLight,
+            cell.Color,
+            cell.Opacity,
+            cell.Pattern
+        );
     }
 }

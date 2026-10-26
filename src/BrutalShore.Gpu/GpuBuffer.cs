@@ -10,9 +10,15 @@ namespace BrutalShore.Gpu;
 /// device-local memory — if a discrete card ever shows up in a profile.
 /// </para>
 /// <para>
-/// A buffer is immutable once created: a chunk whose mesh changed gets a new buffer rather than a
-/// rewrite of this one, because the GPU may still be reading the old contents for a frame that has
-/// not finished. <see cref="GpuRenderer.Retire" /> is what makes that safe.
+/// Geometry is treated as immutable once created: a chunk whose mesh changed gets a new buffer
+/// rather than a rewrite of this one, because the GPU may still be reading the old contents for a
+/// frame that has not finished. <see cref="GpuRenderer.Retire" /> is what makes that safe.
+/// </para>
+/// <para>
+/// <see cref="Rewrite{T}" /> is the deliberate exception, and it is only sound for a buffer kept
+/// one per frame in flight: the fence waited on at the top of a frame proves the GPU has finished
+/// reading that frame's copy, so overwriting it cannot race. Rewriting a buffer any draw call
+/// still in flight might read is a use-after-free with no managed signal.
 /// </para>
 /// </remarks>
 public sealed class GpuBuffer : IDisposable
@@ -80,6 +86,25 @@ public sealed class GpuBuffer : IDisposable
         context.Device.WriteMemory(data, memory);
 
         return new GpuBuffer(context, handle, memory, size, data.Length);
+    }
+
+    /// <summary>Replaces the whole contents of the buffer.</summary>
+    /// <typeparam name="T">The element type, which must match the one the buffer was created with.</typeparam>
+    /// <param name="data">The new contents; must be no larger than the buffer.</param>
+    /// <exception cref="ArgumentException">The data does not fit.</exception>
+    /// <remarks>
+    /// Only safe on a buffer the GPU is provably not reading; see the remarks on the type for what
+    /// makes that provable.
+    /// </remarks>
+    public void Rewrite<T>(ReadOnlySpan<T> data)
+        where T : unmanaged
+    {
+        var size = ByteSize.Of(data);
+        if (size > Size)
+            throw new ArgumentException($"{size} does not fit in a buffer of {Size}.", nameof(data));
+
+        // Coherent memory needs no flush: the write is visible to the device as soon as it lands.
+        _context.Device.WriteMemory(data, Memory);
     }
 
     /// <inheritdoc />

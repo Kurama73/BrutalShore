@@ -23,12 +23,16 @@ public sealed class GameHost : IDisposable
 {
     private readonly HostOptions _options;
     private readonly GameWindow _window;
+
+    /// <summary>The script being played, or nothing when a person is at the keyboard.</summary>
+    private readonly ScriptedInput? _scripted;
     private readonly GpuContext _gpu;
     private readonly SwapchainTarget _target;
     private readonly GpuRenderer _renderer;
     private readonly ShaderLibrary _shaders;
     private readonly DebugOverlay _overlay;
     private readonly FrameClock _clock = new();
+    private readonly FrameProfile _profile = new();
 
     /// <summary>Opens a window and brings up a device on it.</summary>
     public GameHost(HostOptions options)
@@ -42,9 +46,20 @@ public sealed class GameHost : IDisposable
         _target = new SwapchainTarget(_gpu, _window);
         _renderer = new GpuRenderer(_gpu, _target);
         _shaders = new ShaderLibrary(_gpu, Path.Combine(AppContext.BaseDirectory, "Shaders"));
-        _overlay = new DebugOverlay(_window, _gpu, _target);
+        _overlay = new DebugOverlay(_window, _gpu, _target, options.ShowOverlay, options.UiScale);
 
-        Context = new GameContext(_window, _gpu, _target, _renderer, _shaders, _clock);
+        _scripted = options.Script is null ? null : new ScriptedInput(_window, options.Script, Console.WriteLine);
+
+        Context = new GameContext(
+            _window,
+            _gpu,
+            _target,
+            _renderer,
+            _shaders,
+            _clock,
+            _profile.Counters,
+            _scripted ?? (IInputSource)_window
+        );
     }
 
     /// <summary>What the host lends to the game.</summary>
@@ -62,24 +77,49 @@ public sealed class GameHost : IDisposable
             _window.PollEvents();
 
             var steps = _clock.BeginFrame();
-            for (var step = 0; step < steps; step++)
-                game.Step(FrameClock.StepSeconds);
 
-            game.Update(Context);
+            // Before anything reads it, so that every system in this frame sees the same input.
+            _scripted?.Advance(_clock.FrameSeconds);
+
+            _profile.Frame.Add((float)(_clock.FrameSeconds * 1000.0));
+
+            using (FrameProfile.Measure(_profile.Simulation))
+            {
+                for (var step = 0; step < steps; step++)
+                    game.Step(FrameClock.StepSeconds);
+            }
+
+            using (FrameProfile.Measure(_profile.Streaming))
+                game.Update(Context);
 
             // A minimised window has a zero-sized framebuffer, which no swapchain can be created
             // for. The game keeps running; only drawing waits.
             if (_window.IsMinimised || !_renderer.BeginFrame())
                 continue;
 
-            game.Draw(Context);
+            using (FrameProfile.Measure(_profile.Recording))
+            {
+                // Off-screen passes first: once the swapchain's render pass is open, no other can be.
+                game.DrawOffscreen(Context);
+                _renderer.BeginSceneRenderPass();
 
-            // The overlay is built after the game has drawn, so it can report what that draw did,
-            // and recorded after it so it ends up on top.
-            _overlay.Draw(_gpu.DeviceName, _clock, game);
-            _overlay.Render(_renderer.Commands);
+                game.Draw(Context);
 
-            _renderer.EndFrame();
+                // One interface frame covers the game's windows and the host's overlay, in that
+                // order, so the overlay lands on top. Both are built after the game has drawn, so
+                // they can report what that draw did.
+                _overlay.BeginFrame();
+                game.DrawUi(Context);
+                _overlay.DrawPanel(_gpu.DeviceName, _clock, _profile, game);
+                _overlay.Render(_renderer.Commands);
+            }
+
+            using (FrameProfile.Measure(_profile.Presenting))
+                _renderer.EndFrame();
+
+            // After everything, so that a counter opened anywhere in the frame — stepping,
+            // updating, drawing — lands in the same frame's window.
+            _profile.Counters.EndFrame();
 
             if (_options.FrameLimit > 0 && _clock.FrameCount >= _options.FrameLimit)
                 _window.Close();
@@ -107,6 +147,12 @@ public sealed class GameHost : IDisposable
             _gpu.WaitIdle();
             FrameCapture.Save(_gpu, _target, _renderer.LastImageIndex, path);
             Console.WriteLine($"Wrote {path}.");
+        }
+
+        if (_options.ProfilePath is { } report)
+        {
+            RunReport.WriteTo(report, _options.Title, _profile, game.Summary);
+            Console.WriteLine($"Wrote {report}.");
         }
 
         // Printed on the way out rather than per frame: a line every frame costs more than some of

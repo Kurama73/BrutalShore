@@ -10,11 +10,17 @@ Everything in this file is binding for code in this repository.
 
 ## What this is trying to be
 
-A Minecraft-like that is worth reading as much as playing: an unbounded voxel
-world, generated rather than stored, streamed around the player, drawn by a
-renderer written here rather than taken whole. The engine parts exist to make
-the game, and when the two goals conflict the game wins — an engine nobody can
-ship a game with has failed, however educational its internals.
+An unbounded voxel world, generated rather than stored, streamed around the
+player, drawn by a renderer written here rather than taken whole — and on top of
+it a game that takes its building from Minecraft, its production chains and its
+hordes from Factorio, and its tiers and its look from Satisfactory. You dig
+down, the ore gets better and the dark gets worse; you smelt what you find into
+what the next tier costs; what you build draws more of what comes out of the
+dark.
+
+The engine parts exist to make the game, and when the two goals conflict the
+game wins — an engine nobody can ship a game with has failed, however
+educational its internals.
 
 ## BRUTAL is a dependency, not a fork
 
@@ -82,13 +88,20 @@ upwards, never sideways between projects of the same layer.**
 src/   the engine — BrutalShore.*, knows nothing about any particular game
   Layer 0  Core      frame clock, render space, the f64/f32 boundary
   Layer 1  Voxel     chunks, block registry, the greedy mesher        (Core)
-           Gpu       window, device, swapchain, frames, shaders       (Core)
-  Layer 2  World     coordinates, noise, streaming, IChunkGenerator   (Core + Voxel)
-  Layer 3  Render    camera, frustum, voxel pipeline, chunk meshes    (Core + Voxel + World + Gpu)
-           Runtime   the window, the device and the frame loop around an IGame  (Core + Gpu)
+           Gpu       window, input and the script that stands in for a person at it, device, swapchain, frames, shaders, depth targets  (Core)
+           Ui        the palette, the ImGui theme, the shared widgets  (Core)
+           Audio     waveforms, a synthesiser, the device                (Core)
+  Layer 2  World     coordinates, noise, streaming, edits, rays, collision, IChunkGenerator  (Core + Voxel)
+  Layer 3  Render    camera, frustum, sun and sky, shadows, the ray marching field, voxel pipeline, chunk meshes  (Core + Voxel + World + Gpu)
+           Runtime   the window, the device and the frame loop around an IGame  (Core + Gpu + Ui)
 
 games/ the games — each one an executable that composes the engine
-  Shorebound  blocks, terrain, controls, spawn, streaming budgets
+  Shorebound  blocks, terrain, biomes, trees, ore seams, the player, controls,
+              breaking, dropping, carrying and crafting, machines, belts,
+              lifts, the power grid and turrets, milestones,
+              animals and the horde, its own sounds, the title and settings
+              screens, saving, the player's settings, the length of a day,
+              budgets
 ```
 
 ### Where the engine stops and a game starts
@@ -132,6 +145,22 @@ place by having two implementations, one of them a test double.
 Specifically, do not introduce a wrapper over BRUTAL's Vulkan layer. It is
 already the abstraction over Vulkan; a second one would only be a second thing
 to keep in step.
+
+### Nothing in this repository is an asset
+
+There are no textures, no models and no audio files, and that is a rule rather
+than a stage. A block's surface is a pattern computed in the fragment shader, a
+creature is six boxes, and a sound is a burst of noise shaped by an envelope and
+built at load from a handful of numbers.
+
+What it buys is the same thing three times: nothing to licence, nothing that can
+drift out of step with the code, and nothing in the repository that cannot be
+read and changed by editing a constant. It also means every one of those things
+can be *tested* — `Synth` and `GameSounds` are asserted about under
+`dotnet test`, with no device open, which is not possible for a recording.
+
+When something genuinely needs to be an asset, that is a decision to write down
+here first, with what it buys.
 
 ### The world is generated, not stored
 
@@ -198,6 +227,18 @@ does, rename something instead.
   factored out into something that can be tested headless. The front-face
   winding bug was found exactly this way, and `CameraTests` pins down the part
   of it that can be asserted without a GPU.
+- A screenshot proves a frame, not a game. What nobody can assert headless —
+  that breaking a block, filling a row and opening a screen all work in the one
+  running process — is checked by `--playtest`, which feeds the game a
+  `SessionScript` through `IInputSource` instead of a keyboard. The script is
+  code rather than a recorded file, so it goes stale the way code does: the
+  build breaks. It found the panel keys not closing their panels, which every
+  unit test in the repository was blind to because the bug was two correct
+  pieces of code reading the same key press in one frame.
+- When a device-bound bug turns out to have a rule inside it, the rule comes out
+  into something headless and the regression test goes there. `Screens.Panel` is
+  that: one function from a screen and two key presses to the next screen, which
+  cannot open and close in the same frame because it only answers once.
 
 ## Quality gates
 

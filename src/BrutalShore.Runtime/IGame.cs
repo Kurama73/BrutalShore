@@ -38,8 +38,30 @@ public interface IGame : IDisposable
     /// </remarks>
     void Update(GameContext context);
 
+    /// <summary>
+    /// Records anything that needs a render pass of its own, before the frame's own pass opens.
+    /// </summary>
+    /// <param name="context">The window, the device and the frame being recorded.</param>
+    /// <remarks>
+    /// A shadow map is why this exists: Vulkan allows no render pass inside another, so a pass
+    /// that renders somewhere else has to be recorded in the gap between the command buffer
+    /// opening and the swapchain's pass beginning. A game with nothing to render off-screen
+    /// leaves this empty.
+    /// </remarks>
+    void DrawOffscreen(GameContext context);
+
     /// <summary>Records the game's draw commands into the frame being built.</summary>
+    /// <param name="context">The window, the device and the frame being recorded.</param>
     void Draw(GameContext context);
+
+    /// <summary>Draws the game's own interface: a crosshair, a hotbar, a menu.</summary>
+    /// <param name="context">The window, the device and the frame being recorded.</param>
+    /// <remarks>
+    /// Called inside the interface's frame, before the debug overlay, so the overlay lands on top.
+    /// This is where a game's windows go; <see cref="DrawOverlay" /> is only for rows inside the
+    /// host's own panel.
+    /// </remarks>
+    void DrawUi(GameContext context);
 
     /// <summary>Adds the game's own rows to the debug overlay.</summary>
     /// <remarks>

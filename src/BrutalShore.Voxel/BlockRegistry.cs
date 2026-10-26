@@ -19,7 +19,20 @@ namespace BrutalShore.Voxel;
 /// </remarks>
 public sealed class BlockRegistry
 {
-    private readonly List<BlockType> _types = [new BlockType { Name = "air", Color = new byte3(0, 0, 0) }];
+    // Air is index zero so that a zeroed chunk is an empty one. It has to say so about itself
+    // too: anything asking the registry what a block does gets a real answer for air as well,
+    // and an air that defaulted to stopping a body would wall the whole world in.
+    private readonly List<BlockType> _types =
+    [
+        new BlockType
+        {
+            Name = "air",
+            Color = new byte3(0, 0, 0),
+            Opacity = 0,
+            Collides = false,
+            LightOpacity = 0,
+        },
+    ];
 
     /// <summary>What a block id that no registered type covers is drawn as: unmistakable magenta.</summary>
     public static BlockType Missing { get; } = new() { Name = "missing", Color = byte3.HexColor(0xFF00FF) };

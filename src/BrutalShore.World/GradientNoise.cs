@@ -133,6 +133,60 @@ public sealed class GradientNoise(int seed)
         return normalisation > 0.0f ? total / normalisation : 0.0f;
     }
 
+    /// <summary>
+    /// Sums several octaves of creases rather than of hills, giving a field whose high ground is
+    /// a network of sharp ridgelines.
+    /// </summary>
+    /// <param name="x">Where to sample, along the first axis.</param>
+    /// <param name="y">Where to sample, along the second.</param>
+    /// <param name="octaves">How many to sum.</param>
+    /// <param name="lacunarity">How much finer each octave is than the one before it.</param>
+    /// <param name="gain">How much quieter each octave is than the one before it.</param>
+    /// <returns>A value in <c>[0, 1]</c>, 1 being the top of a ridge.</returns>
+    /// <remarks>
+    /// <para>
+    /// Three changes to <see cref="Fractal(float, float, int, float, float)" />, each doing one
+    /// job. Folding the field about zero — <c>1 - |sample|</c> — turns the smooth crossing where
+    /// it changes sign into a crease, which is a ridgeline. Squaring the result sharpens that
+    /// crease and flattens everything away from it, so the low ground between ridges becomes
+    /// valley floor rather than more rolling hills. And weighting each octave by the one above it
+    /// keeps the detail on the ridges: without it, the fine octaves put the same crumple into a
+    /// valley floor as onto a summit, and the result reads as noise rather than as mountains.
+    /// </para>
+    /// <para>
+    /// This is Musgrave's ridged multifractal, and the reason it is worth having beside plain
+    /// fractal noise is that the two fail differently. Summed hills have no skyline: every peak
+    /// is the same rounded shape as every valley, which is why terrain built from them alone
+    /// looks like a crumpled sheet however many octaves are added.
+    /// </para>
+    /// </remarks>
+    public float Ridged(float x, float y, int octaves, float lacunarity = 2.0f, float gain = 0.5f)
+    {
+        var total = 0.0f;
+        var amplitude = 1.0f;
+        var normalisation = 0.0f;
+        var frequency = 1.0f;
+        var weight = 1.0f;
+
+        for (var octave = 0; octave < octaves; octave++)
+        {
+            var ridge = 1.0f - float.Abs(Sample(x * frequency, y * frequency));
+            ridge *= ridge;
+            ridge *= weight;
+
+            // The next octave is only as loud as the ridge it is sitting on. Doubling before the
+            // clamp means a crest carries its detail at full strength and a valley carries none.
+            weight = float.Clamp(ridge * 2.0f, 0.0f, 1.0f);
+
+            total += ridge * amplitude;
+            normalisation += amplitude;
+            amplitude *= gain;
+            frequency *= lacunarity;
+        }
+
+        return normalisation > 0.0f ? float.Clamp(total / normalisation, 0.0f, 1.0f) : 0.0f;
+    }
+
     /// <summary>Sums several octaves of the three-dimensional field.</summary>
     public float Fractal(float x, float y, float z, int octaves, float lacunarity = 2.0f, float gain = 0.5f)
     {

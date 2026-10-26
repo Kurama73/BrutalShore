@@ -4,6 +4,8 @@
     <Project Path="src/BrutalShore.Voxel/BrutalShore.Voxel.csproj" />
     <Project Path="src/BrutalShore.World/BrutalShore.World.csproj" />
     <Project Path="src/BrutalShore.Gpu/BrutalShore.Gpu.csproj" />
+    <Project Path="src/BrutalShore.Ui/BrutalShore.Ui.csproj" />
+    <Project Path="src/BrutalShore.Audio/BrutalShore.Audio.csproj" />
     <Project Path="src/BrutalShore.Render/BrutalShore.Render.csproj" />
     <Project Path="src/BrutalShore.Runtime/BrutalShore.Runtime.csproj" />
   </Folder>
@@ -11,9 +13,13 @@
     <Project Path="games/Shorebound/Shorebound.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/BrutalShore.Core.Tests/BrutalShore.Core.Tests.csproj" />
     <Project Path="tests/BrutalShore.Voxel.Tests/BrutalShore.Voxel.Tests.csproj" />
     <Project Path="tests/BrutalShore.World.Tests/BrutalShore.World.Tests.csproj" />
+    <Project Path="tests/BrutalShore.Audio.Tests/BrutalShore.Audio.Tests.csproj" />
+    <Project Path="tests/BrutalShore.Gpu.Tests/BrutalShore.Gpu.Tests.csproj" />
     <Project Path="tests/BrutalShore.Render.Tests/BrutalShore.Render.Tests.csproj" />
+    <Project Path="tests/BrutalShore.Runtime.Tests/BrutalShore.Runtime.Tests.csproj" />
     <Project Path="tests/Shorebound.Tests/Shorebound.Tests.csproj" />
   </Folder>
 </Solution>

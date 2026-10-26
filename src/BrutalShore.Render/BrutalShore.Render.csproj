@@ -11,10 +11,18 @@
     <PackageReference Include="Ahwoo.BRUTAL.Vulkan.Abstractions" />
   </ItemGroup>
 
+  <!-- The uniform block is internal because nothing outside this layer may build one. Its
+       layout still has to be checked against the shaders, and that check is a test. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="BrutalShore.Render.Tests" />
+  </ItemGroup>
+
   <!-- Shaders are compiled at startup from these files, so they have to be next to the
        executable; see ShaderLibrary for why they are text rather than build-time SPIR-V. -->
   <ItemGroup>
     <None Include="Shaders/**" CopyToOutputDirectory="PreserveNewest" LinkBase="Shaders" />
+    <!-- Copied on to anything referencing this project too, so a test can read them. -->
+    <Content Include="Shaders/**" CopyToOutputDirectory="PreserveNewest" LinkBase="Shaders" />
   </ItemGroup>
 
 </Project>

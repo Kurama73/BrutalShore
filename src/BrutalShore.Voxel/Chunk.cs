@@ -32,6 +32,15 @@ public sealed class Chunk
 
     private readonly BlockId[] _blocks = new BlockId[BlockCount];
 
+    // The highest non-air y in each column, or -1 for a column of nothing but air. Kept up to
+    // date rather than scanned for, because the skyline above a chunk is wanted per column and
+    // the alternative is reading a thousand columns of thirty-two blocks every time light is
+    // worked out. A chunk is 32 tall, so a signed byte holds every answer including the empty one.
+    private readonly sbyte[] _columnTop = new sbyte[Size * Size];
+
+    /// <summary>An empty chunk: all air.</summary>
+    public Chunk() => Array.Fill(_columnTop, (sbyte)-1);
+
     /// <summary>How many of the chunk's blocks are not air.</summary>
     /// <remarks>
     /// Kept as a running count so that "is there anything here to draw?" is a comparison rather
@@ -99,9 +108,17 @@ public sealed class Chunk
             SolidCount--;
 
         _blocks[index] = block;
+        UpdateColumnTop(x, y, z, block);
         Revision++;
         return true;
     }
+
+    /// <summary>
+    /// The highest y in a column that holds anything at all, or -1 if the column is all air.
+    /// </summary>
+    /// <param name="x">Chunk-local x.</param>
+    /// <param name="z">Chunk-local z.</param>
+    public int HighestBlock(int x, int z) => _columnTop[x | (z << SizeLog2)];
 
     /// <summary>
     /// Fills the chunk with one block, which is the fast path terrain generation takes for the
@@ -110,6 +127,7 @@ public sealed class Chunk
     public void Fill(BlockId block)
     {
         Array.Fill(_blocks, block);
+        Array.Fill(_columnTop, (sbyte)(block.IsAir ? -1 : Size - 1));
         SolidCount = block.IsAir ? 0 : BlockCount;
         Revision++;
     }
@@ -139,6 +157,67 @@ public sealed class Chunk
                 solid++;
 
         SolidCount = solid;
+        RecountColumnTops();
         Revision++;
+    }
+
+    /// <summary>Raises or lowers one column's top after a single block changed in it.</summary>
+    /// <remarks>
+    /// Raising is a comparison. Lowering is a scan down the column, which only happens when the
+    /// block that <em>was</em> the top is removed — one case of a player digging, against a scan
+    /// of every column whenever anything wanted the skyline.
+    /// </remarks>
+    private void UpdateColumnTop(int x, int y, int z, BlockId block)
+    {
+        var column = x | (z << SizeLog2);
+        var top = _columnTop[column];
+
+        if (block.IsSolid)
+        {
+            if (y > top)
+                _columnTop[column] = (sbyte)y;
+
+            return;
+        }
+
+        if (y != top)
+            return;
+
+        var fallen = (sbyte)-1;
+        for (var below = y - 1; below >= 0; below--)
+        {
+            if (_blocks[IndexOf(x, below, z)].IsSolid)
+            {
+                fallen = (sbyte)below;
+                break;
+            }
+        }
+
+        _columnTop[column] = fallen;
+    }
+
+    /// <summary>Works out every column's top from the blocks, in one pass over the chunk.</summary>
+    /// <remarks>
+    /// Top down, and a column is finished the moment it is answered, so this costs one read per
+    /// column of air above the ground rather than one per block in the chunk.
+    /// </remarks>
+    private void RecountColumnTops()
+    {
+        Array.Fill(_columnTop, (sbyte)-1);
+
+        var remaining = Size * Size;
+        for (var y = Size - 1; y >= 0 && remaining > 0; y--)
+        {
+            for (var z = 0; z < Size; z++)
+            for (var x = 0; x < Size; x++)
+            {
+                var column = x | (z << SizeLog2);
+                if (_columnTop[column] >= 0 || !_blocks[IndexOf(x, y, z)].IsSolid)
+                    continue;
+
+                _columnTop[column] = (sbyte)y;
+                remaining--;
+            }
+        }
     }
 }

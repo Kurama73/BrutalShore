@@ -51,6 +51,9 @@ public sealed unsafe class SwapchainTarget : IDisposable
     /// <summary>The swapchain's colour format.</summary>
     public VkFormat ColorFormat { get; }
 
+    /// <summary>Whether the presented image may be copied out of, as a screenshot needs.</summary>
+    public bool CanBeCopiedFrom { get; private set; }
+
     /// <summary>The swapchain's colour space.</summary>
     public VkColorSpaceKHR ColorSpace { get; }
 
@@ -102,6 +105,14 @@ public sealed unsafe class SwapchainTarget : IDisposable
 
         Extent = ResolveExtent(capabilities);
 
+        // --screenshot copies the presented image into a buffer, and a copy source has to have
+        // been asked for when the image was created. Most surfaces allow it; one that does not
+        // still runs, and FrameCapture is the one thing that stops working.
+        CanBeCopiedFrom = capabilities.SupportedUsageFlags.HasFlag(VkImageUsageFlags.TransferSrcBit);
+        var usage = VkImageUsageFlags.ColorAttachmentBit;
+        if (CanBeCopiedFrom)
+            usage |= VkImageUsageFlags.TransferSrcBit;
+
         _swapchain = _context.Device.CreateSwapchainKHR(
             new VkSwapchainCreateInfoKHR
             {
@@ -111,7 +122,7 @@ public sealed unsafe class SwapchainTarget : IDisposable
                 ImageColorSpace = ColorSpace,
                 ImageExtent = Extent,
                 ImageArrayLayers = 1,
-                ImageUsage = VkImageUsageFlags.ColorAttachmentBit,
+                ImageUsage = usage,
                 ImageSharingMode = VkSharingMode.Exclusive,
                 PreTransform = capabilities.SupportedTransforms.HasFlag(VkSurfaceTransformFlagsKHR.IdentityBitKHR)
                     ? VkSurfaceTransformFlagsKHR.IdentityBitKHR

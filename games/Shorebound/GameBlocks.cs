@@ -16,17 +16,293 @@ public sealed class GameBlocks
     public GameBlocks(BlockRegistry registry)
     {
         Registry = registry;
-        Stone = registry.Register(new BlockType { Name = "stone", Color = byte3.HexColor(0x7F7F84) });
-        Dirt = registry.Register(new BlockType { Name = "dirt", Color = byte3.HexColor(0x6B4A2F) });
-        Grass = registry.Register(new BlockType { Name = "grass", Color = byte3.HexColor(0x5A8F3C) });
-        Sand = registry.Register(new BlockType { Name = "sand", Color = byte3.HexColor(0xD8CB94) });
-        Snow = registry.Register(new BlockType { Name = "snow", Color = byte3.HexColor(0xEDF2F7) });
-        Water = registry.Register(new BlockType { Name = "water", Color = byte3.HexColor(0x2E6FA8) });
-        Bedrock = registry.Register(new BlockType { Name = "bedrock", Color = byte3.HexColor(0x2B2B30) });
+        Stone = registry.Register(
+            new BlockType { Name = "stone", Color = byte3.HexColor(0x7F7F84), Pattern = BlockPattern.Mottled, BreakSeconds = 1.5f }
+        );
+        Dirt = registry.Register(
+            new BlockType { Name = "dirt", Color = byte3.HexColor(0x6B4A2F), Pattern = BlockPattern.Crumbly, BreakSeconds = 0.5f }
+        );
+        Grass = registry.Register(
+            new BlockType { Name = "grass", Color = byte3.HexColor(0x5A8F3C), Pattern = BlockPattern.Bladed, BreakSeconds = 0.6f }
+        );
+        Sand = registry.Register(
+            new BlockType { Name = "sand", Color = byte3.HexColor(0xD8CB94), Pattern = BlockPattern.Grainy, BreakSeconds = 0.4f }
+        );
+        Snow = registry.Register(
+            new BlockType { Name = "snow", Color = byte3.HexColor(0xEDF2F7), Pattern = BlockPattern.Glinting, BreakSeconds = 0.3f }
+        );
+        Water = registry.Register(
+            new BlockType
+            {
+                Name = "water",
+                Color = byte3.HexColor(0x2E6FA8),
+
+                // Enough to read as water rather than as glass: the seabed shows through in the
+                // shallows and is lost in the deep, which is the whole of what makes a coast
+                // legible from above.
+                Opacity = 170,
+                Pattern = BlockPattern.Rippled,
+                Collides = false,
+                IsLiquid = true,
+
+                // Two levels a block, so the sky reaches seven blocks down and no further. That
+                // is what turns depth into darkness and makes a shelf of shallows visible from
+                // the shore as something other than a change of colour.
+                LightOpacity = 2,
+            }
+        );
+        Bedrock = registry.Register(
+            new BlockType
+            {
+                Name = "bedrock",
+                Color = byte3.HexColor(0x2B2B30),
+                Pattern = BlockPattern.Mottled,
+
+                // The floor of the world, and the one block that never comes up. Without it a
+                // player who digs long enough falls out of the bottom of everything.
+                BreakSeconds = float.PositiveInfinity,
+            }
+        );
+        Log = registry.Register(
+            new BlockType { Name = "log", Color = byte3.HexColor(0x5A4228), Pattern = BlockPattern.Grained, BreakSeconds = 1.1f }
+        );
+        Leaves = registry.Register(
+            new BlockType { Name = "leaves", Color = byte3.HexColor(0x3E6B2A), Pattern = BlockPattern.Scattered, BreakSeconds = 0.2f }
+        );
+        Lantern = registry.Register(
+            new BlockType
+            {
+                Name = "lantern",
+                Color = byte3.HexColor(0xFFE2A8),
+                Pattern = BlockPattern.Radiant,
+                BreakSeconds = 0.4f,
+
+                // One below the brightest there is, so a lantern lights fourteen blocks around
+                // itself and a corridor still needs a second one. Full brightness would make a
+                // single lantern enough for any cave anyone digs, which is the same as having no
+                // dark in the game at all.
+                Emission = 14,
+            }
+        );
+
+        // Made things, not found ones: nothing in the world generates these, and the only way to
+        // hold one is to make it. They are what the crafting grid is for.
+        Planks = registry.Register(
+            new BlockType { Name = "planks", Color = byte3.HexColor(0xB08A52), Pattern = BlockPattern.Grained, BreakSeconds = 0.8f }
+        );
+        StoneBrick = registry.Register(
+            new BlockType { Name = "stone brick", Color = byte3.HexColor(0x8C8C92), Pattern = BlockPattern.Mottled, BreakSeconds = 1.6f }
+        );
+        CopperIngot = registry.Register(
+            new BlockType { Name = "copper ingot", Color = byte3.HexColor(0xD9873F), Pattern = BlockPattern.Smooth, BreakSeconds = 1.2f }
+        );
+        IronIngot = registry.Register(
+            new BlockType { Name = "iron ingot", Color = byte3.HexColor(0xBDB5AC), Pattern = BlockPattern.Smooth, BreakSeconds = 1.4f }
+        );
+        Glass = registry.Register(
+            new BlockType
+            {
+                Name = "glass",
+                Color = byte3.HexColor(0xBFD8E4),
+                Pattern = BlockPattern.Smooth,
+                BreakSeconds = 0.5f,
+
+                // See-through but not water: it is in the way of a body and it lets nearly all
+                // the light past, which is the whole of what a window is.
+                Opacity = 70,
+                LightOpacity = 1,
+            }
+        );
+        Cable = registry.Register(
+            new BlockType
+            {
+                Name = "cable",
+                Color = byte3.HexColor(0x3E4044),
+                Pattern = BlockPattern.Smooth,
+                BreakSeconds = 0.3f,
+
+                // Run along a floor or up a wall and walked through, like a belt.
+                Collides = false,
+            }
+        );
+        Generator = registry.Register(
+            new BlockType
+            {
+                Name = "generator",
+                Color = byte3.HexColor(0x6B5A3E),
+                Pattern = BlockPattern.Mottled,
+                BreakSeconds = 2.6f,
+                Emission = 6,
+            }
+        );
+        Turret = registry.Register(
+            new BlockType
+            {
+                Name = "turret",
+                Color = byte3.HexColor(0x7C5248),
+                Pattern = BlockPattern.Smooth,
+                BreakSeconds = 2.8f,
+                Emission = 3,
+            }
+        );
+        Lift = registry.Register(
+            new BlockType
+            {
+                Name = "lift",
+                Color = byte3.HexColor(0x8A7A58),
+                Pattern = BlockPattern.Grained,
+                BreakSeconds = 0.8f,
+                Collides = false,
+            }
+        );
+        Miner = registry.Register(
+            new BlockType
+            {
+                Name = "miner",
+                Color = byte3.HexColor(0x5A5F66),
+                Pattern = BlockPattern.Smooth,
+                BreakSeconds = 2.4f,
+                Emission = 4,
+            }
+        );
+        Conveyor = registry.Register(
+            new BlockType
+            {
+                Name = "conveyor",
+                Color = byte3.HexColor(0x6E6A62),
+                Pattern = BlockPattern.Grained,
+                BreakSeconds = 0.6f,
+
+                // Walked over rather than climbed. A belt that was a full block in the way would
+                // make a factory floor a maze, and nobody builds a line they have to jump along.
+                Collides = false,
+            }
+        );
+        Smelter = registry.Register(
+            new BlockType
+            {
+                Name = "smelter",
+                Color = byte3.HexColor(0x4A4036),
+                Pattern = BlockPattern.Mottled,
+                BreakSeconds = 2f,
+
+                // A little light, so a line of them along a wall is visible from down the tunnel.
+                // Not enough to be a lamp: a player who lit their base with smelters would be
+                // getting light for free out of something built for something else.
+                Emission = 5,
+            }
+        );
+        CopperBlock = registry.Register(
+            new BlockType { Name = "copper block", Color = byte3.HexColor(0xC87F42), Pattern = BlockPattern.Smooth, BreakSeconds = 2.4f }
+        );
+        IronBlock = registry.Register(
+            new BlockType { Name = "iron block", Color = byte3.HexColor(0xA8A099), Pattern = BlockPattern.Smooth, BreakSeconds = 3f }
+        );
+
+        // The ores, appended last because registration order is id order and a saved world holds
+        // the ids. Their names are what the save file and the recipes both refer to.
+        CoalOre = registry.Register(
+            new BlockType
+            {
+                Name = "coal ore",
+                Color = byte3.HexColor(0x3A3A40),
+                Pattern = BlockPattern.Scattered,
+
+                // Softer than the stone it sits in, so a seam gives way faster than the rock
+                // around it and following one reads as following something.
+                BreakSeconds = 1.2f,
+            }
+        );
+        CopperOre = registry.Register(
+            new BlockType
+            {
+                Name = "copper ore",
+                Color = byte3.HexColor(0xB4703C),
+                Pattern = BlockPattern.Mottled,
+                BreakSeconds = 1.8f,
+            }
+        );
+        IronOre = registry.Register(
+            new BlockType
+            {
+                Name = "iron ore",
+                Color = byte3.HexColor(0x9C8C7C),
+                Pattern = BlockPattern.Mottled,
+                BreakSeconds = 2.2f,
+            }
+        );
+        EmberOre = registry.Register(
+            new BlockType
+            {
+                Name = "ember ore",
+                Color = byte3.HexColor(0xE8873C),
+                Pattern = BlockPattern.Radiant,
+                BreakSeconds = 2.8f,
+
+                // It glows, which is the whole reason to go that deep for it: a seam of it is
+                // visible down a tunnel before the tunnel reaches it. Dimmer than a lantern, so
+                // finding one is not the same as lighting the cave.
+                Emission = 9,
+            }
+        );
     }
 
     /// <summary>The registry these ids index.</summary>
     public BlockRegistry Registry { get; }
+
+    /// <summary>Planks, cut from a log and the start of everything else.</summary>
+    public BlockId Planks { get; }
+
+    /// <summary>Stone brick, cut stone, for building with rather than for anything else.</summary>
+    public BlockId StoneBrick { get; }
+
+    /// <summary>A copper ingot, which is what a smelter makes out of copper ore.</summary>
+    public BlockId CopperIngot { get; }
+
+    /// <summary>An iron ingot, which is what a smelter makes out of iron ore.</summary>
+    public BlockId IronIngot { get; }
+
+    /// <summary>Glass, melted out of sand, and the only block worth building a window from.</summary>
+    public BlockId Glass { get; }
+
+    /// <summary>Cable, which joins machines into one grid.</summary>
+    public BlockId Cable { get; }
+
+    /// <summary>A generator, which burns fuel into electricity for everything wired to it.</summary>
+    public BlockId Generator { get; }
+
+    /// <summary>A turret, which shoots what comes out of the dark as long as it has power.</summary>
+    public BlockId Turret { get; }
+
+    /// <summary>A lift, which is a belt that goes up.</summary>
+    public BlockId Lift { get; }
+
+    /// <summary>A miner, which stands on a seam and keeps bringing it up.</summary>
+    public BlockId Miner { get; }
+
+    /// <summary>A conveyor, which carries what is put on it to the block in front.</summary>
+    public BlockId Conveyor { get; }
+
+    /// <summary>A smelter, which burns fuel to turn one block into another.</summary>
+    public BlockId Smelter { get; }
+
+    /// <summary>A block of copper, which is nine ingots packed into one.</summary>
+    public BlockId CopperBlock { get; }
+
+    /// <summary>A block of iron, which is nine ingots packed into one.</summary>
+    public BlockId IronBlock { get; }
+
+    /// <summary>Coal ore, the fuel seam, common and shallow.</summary>
+    public BlockId CoalOre { get; }
+
+    /// <summary>Copper ore, the first metal, found at most depths.</summary>
+    public BlockId CopperOre { get; }
+
+    /// <summary>Iron ore, the structural metal, deeper than copper.</summary>
+    public BlockId IronOre { get; }
+
+    /// <summary>Ember ore, which glows, and is only down where the bedrock starts.</summary>
+    public BlockId EmberOre { get; }
 
     /// <summary>Stone, what the ground is made of below the surface.</summary>
     public BlockId Stone { get; }
@@ -47,12 +323,22 @@ public sealed class GameBlocks
     /// Water, which fills everything below the sea level that terrain did not.
     /// </summary>
     /// <remarks>
-    /// Opaque for now, and the mesher treats it as solid like everything else. Transparency is a
-    /// change to the mesher and the draw order, not to this type, so it stays out until that work
-    /// is done rather than being half-declared here.
+    /// See-through, walked into rather than onto, swum in, and drawn in the pass after everything
+    /// solid. What it is not is a fluid: a placed block of it would be a cube of sea, which is why
+    /// the inventory leaves it out.
     /// </remarks>
     public BlockId Water { get; }
 
     /// <summary>Bedrock, the floor of the world.</summary>
     public BlockId Bedrock { get; }
+
+    /// <summary>A tree's trunk.</summary>
+    public BlockId Log { get; }
+
+    /// <summary>A tree's canopy. Opaque: a forest of see-through leaves would be a forest
+    /// of blended quads, and the blending order between them is not worth what it buys.</summary>
+    public BlockId Leaves { get; }
+
+    /// <summary>A lantern: the one block that gives off light of its own.</summary>
+    public BlockId Lantern { get; }
 }

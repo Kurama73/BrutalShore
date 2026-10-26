@@ -23,9 +23,22 @@ public sealed unsafe class VoxelPipeline : IDisposable
     private readonly GpuContext _context;
 
     /// <summary>Compiles the pipeline for one render pass.</summary>
-    public VoxelPipeline(GpuContext context, ShaderLibrary shaders, VkRenderPass renderPass)
+    /// <param name="context">The device the pipeline belongs to.</param>
+    /// <param name="shaders">Where <c>voxel.vert</c> and <c>voxel.frag</c> are compiled from.</param>
+    /// <param name="scene">The per-frame uniform block the shaders read.</param>
+    /// <param name="renderPass">The render pass chunks are drawn in.</param>
+    /// <param name="pass">Which of the two halves of a chunk's surface this pipeline draws.</param>
+    public VoxelPipeline(
+        GpuContext context,
+        ShaderLibrary shaders,
+        SceneBindings scene,
+        VkRenderPass renderPass,
+        VoxelPass pass
+    )
     {
         _context = context;
+
+        var translucent = pass == VoxelPass.Translucent;
 
         var pushConstantRange = new VkPushConstantRange
         {
@@ -34,7 +47,8 @@ public sealed unsafe class VoxelPipeline : IDisposable
             Size = ByteSize.Of<VoxelPushConstants>(),
         };
 
-        Layout = context.Device.CreatePipelineLayout([], [pushConstantRange], null);
+        var setLayout = scene.Layout;
+        Layout = context.Device.CreatePipelineLayout([setLayout], [pushConstantRange], null);
 
         Span<VkPipelineShaderStageCreateInfo> stages =
         [
@@ -78,10 +92,13 @@ public sealed unsafe class VoxelPipeline : IDisposable
         var inputAssembly = new VkPipelineInputAssemblyStateCreateInfo { Topology = VkPrimitiveTopology.TriangleList };
         var viewportState = new VkPipelineViewportStateCreateInfo { ViewportCount = 1, ScissorCount = 1 };
 
+        // Water is drawn from inside as well as out. The mesher builds only the outward face of a
+        // surface, so culling the back of it would make the sea disappear the moment the player
+        // swims under it.
         var rasterization = new VkPipelineRasterizationStateCreateInfo
         {
             PolygonMode = VkPolygonMode.Fill,
-            CullMode = VkCullModeFlags.BackBit,
+            CullMode = translucent ? VkCullModeFlags.None : VkCullModeFlags.BackBit,
 
             // Counter-clockwise, confirmed against the picture rather than argued from the two
             // conventions involved: the mesher's winding and the camera's negated y both reverse
@@ -93,10 +110,13 @@ public sealed unsafe class VoxelPipeline : IDisposable
 
         var multisample = new VkPipelineMultisampleStateCreateInfo { RasterizationSamples = VkSampleCountFlags._1Bit };
 
+        // Tested against the solid world either way, but a see-through face writes no depth:
+        // two of them overlapping should both show, and whichever happened to be drawn first
+        // would otherwise cut the other out.
         var depthStencil = new VkPipelineDepthStencilStateCreateInfo
         {
             DepthTestEnable = true,
-            DepthWriteEnable = true,
+            DepthWriteEnable = !translucent,
             DepthCompareOp = VkCompareOp.Less,
             MinDepthBounds = 0f,
             MaxDepthBounds = 1f,
@@ -104,7 +124,13 @@ public sealed unsafe class VoxelPipeline : IDisposable
 
         var colorAttachment = new VkPipelineColorBlendAttachmentState
         {
-            BlendEnable = false,
+            BlendEnable = translucent,
+            SrcColorBlendFactor = VkBlendFactor.SrcAlpha,
+            DstColorBlendFactor = VkBlendFactor.OneMinusSrcAlpha,
+            ColorBlendOp = VkBlendOp.Add,
+            SrcAlphaBlendFactor = VkBlendFactor.One,
+            DstAlphaBlendFactor = VkBlendFactor.Zero,
+            AlphaBlendOp = VkBlendOp.Add,
             ColorWriteMask =
                 VkColorComponentFlags.RBit
                 | VkColorComponentFlags.GBit
