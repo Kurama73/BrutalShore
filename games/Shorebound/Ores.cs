@@ -47,25 +47,36 @@ public sealed class Ores
         // makes each one smaller, until the whole ore is a handful of single blocks nobody ever
         // walks into. Rarity therefore comes from the threshold and findability from the scale.
         //
-        // The thresholds are read off the field's own distribution rather than guessed: sampled
-        // over a hundred thousand blocks, a two-octave fractal here reaches 0.37 at its 95th
-        // percentile, 0.51 at its 99th and 0.56 at its 99.5th. Together these come to roughly one
-        // block of rock in forty across the whole depth of the world, which a test pins down.
+        // Both numbers were swept against the only question that matters — what a player meets
+        // digging one shaft straight down — rather than read off the field's own distribution,
+        // which is what the first version did and which answered a different question. At a fixed
+        // density the scale decides the shape of the answer: for one ore over a sixty block band,
+        // a scale of 29 gave three bodies in a sixty-metre square and three shafts in a hundred
+        // met any of it, while a scale of 8 gave two hundred pockets of a dozen blocks each and
+        // half of all shafts met one. Three enormous lumps nobody finds and a scattering of
+        // single blocks nobody bothers with are the two ways to get this wrong, and they are at
+        // opposite ends of the same knob.
         _seams =
         [
             // Coal first, so it is the one a player meets on the way down, and the one that is
-            // still worth something once they have gone past it: everything burns it. Its scale
-            // is the largest, so a coal seam is the one that is worth setting up next to.
-            new Seam(blocks.CoalOre, Field(seed, 0x3C6EF372), Lowest: 6, Highest: 72, Scale: 34f, Threshold: 0.50f),
-            new Seam(blocks.CopperOre, Field(seed, 0x6A09E667), Lowest: 4, Highest: 60, Scale: 29f, Threshold: 0.545f),
-            new Seam(blocks.IronOre, Field(seed, unchecked((int)0xBB67AE85)), Lowest: 2, Highest: 44, Scale: 25f, Threshold: 0.565f),
+            // still worth something once they have gone past it: everything burns it. The widest
+            // band and the largest bodies, so a coal seam is the one worth setting up next to.
+            new Seam(blocks.CoalOre, Field(seed, 0x3C6EF372), Lowest: 6, Highest: 72, Scale: 10f, Threshold: 0.46f),
+
+            // The first metal, and the one the early milestones ask for by the hundred. The
+            // smallest bodies of the four and the most of them: copper is what the player is
+            // looking for before they have any way of looking for it, so it has to be what a
+            // shaft runs into rather than what a shaft might run into.
+            new Seam(blocks.CopperOre, Field(seed, 0x6A09E667), Lowest: 4, Highest: 60, Scale: 8f, Threshold: 0.46f),
+
+            // Below the copper, and a real find rather than a certainty: by the time this matters
+            // the player has lanterns and a reason to tunnel sideways.
+            new Seam(blocks.IronOre, Field(seed, unchecked((int)0xBB67AE85)), Lowest: 2, Highest: 44, Scale: 10f, Threshold: 0.46f),
 
             // Deep, rare and lit. The band stops well short of where a cave system usually
-            // reaches, so the first one is nearly always found by digging rather than by walking.
-            // Its scale is the smallest: many small pockets rather than one body somewhere, which
-            // is the difference between an ore a player can go and look for and one they have to
-            // be lucky about.
-            new Seam(blocks.EmberOre, Field(seed, 0x510E527F), Lowest: 2, Highest: 22, Scale: 15f, Threshold: 0.56f),
+            // reaches, so the first one is nearly always found by digging rather than by walking,
+            // and it is narrow enough that no shaft is likely to cross it by accident.
+            new Seam(blocks.EmberOre, Field(seed, 0x510E527F), Lowest: 2, Highest: 22, Scale: 8f, Threshold: 0.50f),
         ];
     }
 

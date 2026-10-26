@@ -144,9 +144,12 @@ public sealed class OreTests
                 ore++;
         }
 
-        // About one block of rock in forty, measured. Enough that a shaft meets something on
-        // the way down, far too little to mine by removing everything.
-        Assert.InRange(ore / (double)total, 0.01, 0.05);
+        // About one block of rock in seventeen, measured — and the floor matters as much as the
+        // ceiling. At one in forty, which is where this started, only a third of shafts dug
+        // straight down met any ore at all and the median one that did dug sixty-five blocks
+        // first; the first metal the milestones ask for by the hundred was three bodies in a
+        // sixty-metre square. Four in five shafts now meet something.
+        Assert.InRange(ore / (double)total, 0.03, 0.08);
     }
 
     private static int Found(Ores ores, int lowest, int highest)
