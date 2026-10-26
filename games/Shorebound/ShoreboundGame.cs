@@ -756,15 +756,21 @@ public sealed class ShoreboundGame : IGame
     /// <summary>Reads the keys that change which screen is showing.</summary>
     private void ReadScreenKeys(GameContext context)
     {
-        // The inventory closes on the keys that opened it as well as on escape, because a player
-        // who pressed a key to look at something expects the same key to stop looking at it.
-        var closesInventory =
-            _screen == Screen.Inventory
-            && (context.Input.WasKeyPressed(GlfwKey.I) || context.Input.WasKeyPressed(GlfwKey.Tab));
+        // A panel opens and closes on the same key, because a player who pressed a key to look at
+        // something expects the same key to stop looking at it. Both directions are decided in
+        // one place so that closing one cannot be read again this frame as opening it.
+        var panel = _screen.Panel(
+            context.Input.WasKeyPressed(GlfwKey.I) || context.Input.WasKeyPressed(GlfwKey.Tab),
+            context.Input.WasKeyPressed(GlfwKey.M)
+        );
 
-        var closesMilestones = _screen == Screen.Milestones && context.Input.WasKeyPressed(GlfwKey.M);
+        if (panel != _screen)
+        {
+            ShowPanel(panel, context);
+            return;
+        }
 
-        if (!context.Input.WasKeyPressed(GlfwKey.Escape) && !closesInventory && !closesMilestones)
+        if (!context.Input.WasKeyPressed(GlfwKey.Escape))
             return;
 
         switch (_screen)
@@ -794,6 +800,30 @@ public sealed class ShoreboundGame : IGame
                 Enter(context);
                 break;
         }
+    }
+
+    /// <summary>Goes to the screen the panel keys asked for, doing what that move owes.</summary>
+    /// <param name="panel">Where to go.</param>
+    /// <param name="context">The frame, for the mouse.</param>
+    /// <remarks>
+    /// Leaving a panel is not the same as entering one: what is on the cursor has to go back
+    /// somewhere, and the mouse has to be taken back. Going the other way only has to let the
+    /// mouse go.
+    /// </remarks>
+    private void ShowPanel(Screen panel, GameContext context)
+    {
+        if (panel == Screen.Playing)
+        {
+            if (_screen == Screen.Inventory)
+                CloseInventory(context);
+            else
+                Enter(context);
+
+            return;
+        }
+
+        _screen = panel;
+        context.Input.SetMouseCaptured(false);
     }
 
     /// <summary>Puts the inventory away, and whatever was on the cursor back into it.</summary>
@@ -836,17 +866,6 @@ public sealed class ShoreboundGame : IGame
         if (input.WasKeyPressed(GlfwKey.E))
             _inventory.Cycle(1);
 
-        if (input.WasKeyPressed(GlfwKey.I) || input.WasKeyPressed(GlfwKey.Tab))
-        {
-            _screen = Screen.Inventory;
-            input.SetMouseCaptured(false);
-        }
-
-        if (input.WasKeyPressed(GlfwKey.M))
-        {
-            _screen = Screen.Milestones;
-            input.SetMouseCaptured(false);
-        }
 
         // The wheel, the way every game of this kind does it: away from the hand moves left along
         // the row, which is the direction the numbers count down in.

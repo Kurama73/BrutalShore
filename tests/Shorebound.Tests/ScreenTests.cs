@@ -56,4 +56,56 @@ public sealed class ScreenTests
         foreach (var screen in Enum.GetValues<Screen>())
             Assert.True(screen.RunsTheWorld() || !screen.TakesInput());
     }
+
+    [Fact]
+    public void the_key_that_opened_a_panel_closes_it()
+    {
+        // The regression. Opening and closing used to be read in two places, and because closing
+        // puts the player back to playing in the same frame, the second place saw the same press
+        // and opened it again — so the key appeared to do nothing at all.
+        Assert.Equal(Screen.Inventory, Screen.Playing.Panel(carrying: true, milestones: false));
+        Assert.Equal(Screen.Playing, Screen.Inventory.Panel(carrying: true, milestones: false));
+
+        Assert.Equal(Screen.Milestones, Screen.Playing.Panel(carrying: false, milestones: true));
+        Assert.Equal(Screen.Playing, Screen.Milestones.Panel(carrying: false, milestones: true));
+    }
+
+    [Fact]
+    public void a_panel_is_left_alone_by_the_other_panel_s_key()
+    {
+        // Otherwise a player with the inventory open presses the milestones key and lands
+        // somewhere neither key asked for.
+        Assert.Equal(Screen.Inventory, Screen.Inventory.Panel(carrying: false, milestones: true));
+        Assert.Equal(Screen.Milestones, Screen.Milestones.Panel(carrying: true, milestones: false));
+    }
+
+    [Fact]
+    public void a_panel_key_does_nothing_in_a_menu()
+    {
+        foreach (var screen in new[] { Screen.Title, Screen.Paused, Screen.Settings, Screen.Machine })
+            Assert.Equal(screen, screen.Panel(carrying: true, milestones: true));
+    }
+
+    [Fact]
+    public void nothing_pressed_changes_nothing()
+    {
+        foreach (var screen in Enum.GetValues<Screen>())
+            Assert.Equal(screen, screen.Panel(carrying: false, milestones: false));
+    }
+
+    [Fact]
+    public void every_panel_the_keys_open_can_be_closed_again_by_them()
+    {
+        // The claim that keeps a panel from being added that only escape gets out of.
+        foreach (var screen in Enum.GetValues<Screen>())
+        {
+            var opened = screen.Panel(carrying: true, milestones: false);
+            if (opened != screen)
+                Assert.Equal(screen, opened.Panel(carrying: true, milestones: false));
+
+            opened = screen.Panel(carrying: false, milestones: true);
+            if (opened != screen)
+                Assert.Equal(screen, opened.Panel(carrying: false, milestones: true));
+        }
+    }
 }

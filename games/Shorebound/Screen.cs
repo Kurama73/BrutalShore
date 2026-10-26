@@ -65,4 +65,34 @@ public static class Screens
     /// <param name="screen">The screen showing.</param>
     /// <returns><see langword="true" /> only while actually playing.</returns>
     public static bool TakesInput(this Screen screen) => screen is Screen.Playing;
+
+    /// <summary>Where the keys that open and close a panel take the screen.</summary>
+    /// <param name="screen">The screen showing.</param>
+    /// <param name="carrying">Whether the key for what is being carried was pressed.</param>
+    /// <param name="milestones">Whether the key for what the shore asks was pressed.</param>
+    /// <returns>The screen to show, which is the same one when nothing happens.</returns>
+    /// <remarks>
+    /// <para>
+    /// Opening and closing are one function on purpose. They used to be two — the panel key was
+    /// read where a screen was open, and read again where the player was playing — and because
+    /// closing a panel puts the player back to playing within the same frame, the second read saw
+    /// the same key press and opened it straight back up. The panel key did nothing, for months,
+    /// and only escape ever closed anything.
+    /// </para>
+    /// <para>
+    /// Written as one step from one screen to another, that cannot happen: there is one answer
+    /// per frame and it is this one. The pause menu and the settings are not here because where
+    /// they go back to is not a function of the screen showing — it depends on how they were
+    /// opened, which is something only the game knows.
+    /// </para>
+    /// </remarks>
+    public static Screen Panel(this Screen screen, bool carrying, bool milestones) =>
+        screen switch
+        {
+            Screen.Inventory => carrying ? Screen.Playing : screen,
+            Screen.Milestones => milestones ? Screen.Playing : screen,
+            Screen.Playing when carrying => Screen.Inventory,
+            Screen.Playing when milestones => Screen.Milestones,
+            _ => screen,
+        };
 }
