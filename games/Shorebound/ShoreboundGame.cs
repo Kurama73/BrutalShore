@@ -343,7 +343,10 @@ public sealed class ShoreboundGame : IGame
             Enter(context);
         }
 
-        Console.WriteLine("Click to play. WASD to move, space to jump, F to fly, escape for the menu.");
+        Console.WriteLine(
+            "Click to play. WASD to move, space to jump, F to fly, space and shift to rise and drop, "
+                + "escape for the menu."
+        );
     }
 
     /// <inheritdoc />
@@ -735,7 +738,7 @@ public sealed class ShoreboundGame : IGame
             _clock.SetDayFraction(double.Floor(_clock.DayFraction) + (hour / 24.0));
 
         ImGui.SeparatorText("Controls"u8);
-        ImGui.Text("WASD, space, shift to sprint, ctrl to crouch, F to fly"u8);
+        ImGui.Text("WASD, space, shift to sprint, ctrl to crouch, F to fly, shift to drop"u8);
         ImGui.Text("left click breaks, right click places, 1-9 picks"u8);
         ImGui.Text("escape for the menu, F3 hides this"u8);
     }

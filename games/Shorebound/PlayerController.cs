@@ -43,7 +43,11 @@ public sealed class PlayerController
             Forward = Axis(GlfwKey.W, GlfwKey.S),
             Right = Axis(GlfwKey.D, GlfwKey.A),
             Jump = _input.IsKeyDown(GlfwKey.Space),
-            Sink = _input.IsKeyDown(GlfwKey.LeftControl),
+
+            // Shift as well as control, because sinking is only ever read while flying and shift
+            // is the key every voxel game descends with. On the ground it keeps meaning sprint,
+            // and in the air it means both — going down fast is a coherent thing to ask for.
+            Sink = _input.IsKeyDown(GlfwKey.LeftControl) || _input.IsKeyDown(GlfwKey.LeftShift),
             Sprint = _input.IsKeyDown(GlfwKey.LeftShift),
             Crouch = _input.IsKeyDown(GlfwKey.LeftControl),
         };
