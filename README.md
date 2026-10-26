@@ -427,6 +427,34 @@ arrived, and copying a finished mesh into a GPU buffer — which the overlay's
 breakdown puts at a couple of milliseconds against a view of half a million
 triangles.
 
+The height is three questions rather than one field, because one field only
+answers one. *Where is there land* is a very slow field deciding sea floor,
+shelf, coast and interior. *How worn down is it* is slower still and decides how
+much relief a region gets — not its shape. *What shape* is a ridged field, which
+is folded about zero and squared so that its high ground is a network of creases
+rather than a crumpled sheet; summed hills have no skyline, which is why terrain
+made of them alone always looks like terrain made of them alone. Multiplying the
+second into the third is what puts flat country next to mountains instead of one
+uniform roughness everywhere.
+
+All three are sampled through a domain warp: the point itself is moved by a
+coarser field before anything is read from it. Gradient noise is built on a
+square lattice and its contours close into rings around every extremum, so the
+unwarped version of this drew a world of concentric terraces behind a ruler
+straight beach. Bending the plane costs two samples and is the largest single
+difference between terrain that looks generated and terrain that does not.
+
+The last turn of it was a measurement rather than a judgement. With ridges three
+hundred blocks across and seventy blocks of relief, a mountainside climbs seven
+tenths of a block per block — and rounding that to whole blocks draws a contour
+map, not a mountain. Probing the generator said the steepest step anywhere in
+eight kilometres was two blocks, so there were no cliffs in the world at all.
+Tightening the ridges and stretching the middle half of the field across its
+whole range doubled the slope where a mountainside is and flattened what was
+left into valley floor and summit. Whatever climbs three blocks between one
+column and the next is drawn as bare rock, which is also the only thing that
+tells a player at a distance where the stone they want is already exposed.
+
 Trees are the reason the generator's contract is worth reading. A trunk at one
 coordinate puts leaves in chunks the trunk is not in, and no chunk may ask
 another what it contains. So every chunk works out from the seed alone which
