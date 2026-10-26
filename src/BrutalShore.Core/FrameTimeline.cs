@@ -43,6 +43,16 @@ public sealed class FrameTimeline
     /// <summary>How many samples have ever been added.</summary>
     public long Count { get; private set; }
 
+    /// <summary>Every sample since the start, bucketed, for the questions a window cannot answer.</summary>
+    /// <remarks>
+    /// The window is four seconds long because that is what an overlay should show — a number
+    /// that reacts to what is happening now. A report on a run that lasted a minute and a half
+    /// wants the other thing, so both are kept: the window exactly, the whole run in buckets.
+    /// Emptied by <see cref="Clear" /> along with the window, so "the whole run" means since
+    /// whichever of the two happened last.
+    /// </remarks>
+    public Histogram WholeRun { get; } = new();
+
     /// <summary>The most recent sample, or zero if there has not been one.</summary>
     public float Latest => Count == 0 ? 0f : _samples[(_next + Capacity - 1) % Capacity];
 
@@ -63,6 +73,7 @@ public sealed class FrameTimeline
         _samples[_next + Capacity] = value;
         _next = (_next + 1) % Capacity;
         Count++;
+        WholeRun.Add(value);
     }
 
     /// <summary>The mean of the window.</summary>
@@ -126,5 +137,6 @@ public sealed class FrameTimeline
         Array.Clear(_samples);
         _next = 0;
         Count = 0;
+        WholeRun.Clear();
     }
 }
