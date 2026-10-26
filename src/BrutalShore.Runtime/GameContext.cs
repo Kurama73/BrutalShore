@@ -18,10 +18,12 @@ public sealed class GameContext
         GpuRenderer renderer,
         ShaderLibrary shaders,
         FrameClock clock,
-        Profiler counters
+        Profiler counters,
+        IInputSource input
     )
     {
         Window = window;
+        Input = input;
         Gpu = gpu;
         Target = target;
         Renderer = renderer;
@@ -38,7 +40,15 @@ public sealed class GameContext
     /// </remarks>
     public Profiler Counters { get; }
 
-    /// <summary>The window, for input and its framebuffer size.</summary>
+    /// <summary>Where the keyboard and the mouse come from this frame.</summary>
+    /// <remarks>
+    /// Normally the window, and a script when the host was told to run one. A game that reads
+    /// input through this rather than off the window can be driven from top to bottom with
+    /// nobody at the machine, which is what a scripted session is for.
+    /// </remarks>
+    public IInputSource Input { get; }
+
+    /// <summary>The window, for its framebuffer size and for closing it.</summary>
     public GameWindow Window { get; }
 
     /// <summary>The Vulkan device everything is created on.</summary>

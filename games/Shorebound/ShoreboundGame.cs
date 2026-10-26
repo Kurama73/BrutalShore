@@ -302,7 +302,7 @@ public sealed class ShoreboundGame : IGame
             _scene,
             context.Target.RenderPass
         );
-        _controller = new PlayerController(context.Window, _camera);
+        _controller = new PlayerController(context.Input, _camera);
 
         // In the order the work happens, so that a reader going down the overlay is going
         // through a frame.
@@ -434,11 +434,11 @@ public sealed class ShoreboundGame : IGame
             // A swing lands on the click; mining is what a held button does. Testing the swing
             // first means a player with something on them who clicks hits it rather than
             // starting to mine the wall behind it.
-            var swung = context.Window.WasMouseButtonPressed(GlfwMouseButton.Left) && Strike();
+            var swung = context.Input.WasMouseButtonPressed(GlfwMouseButton.Left) && Strike();
 
             // Read here and used by the step, because a button is a thing that is held and a
             // step is where held things are acted on.
-            _isBreaking = !swung && context.Window.IsMouseButtonDown(GlfwMouseButton.Left);
+            _isBreaking = !swung && context.Input.IsMouseButtonDown(GlfwMouseButton.Left);
         }
         else if (_screen == Screen.Title)
         {
@@ -760,18 +760,18 @@ public sealed class ShoreboundGame : IGame
         // who pressed a key to look at something expects the same key to stop looking at it.
         var closesInventory =
             _screen == Screen.Inventory
-            && (context.Window.WasKeyPressed(GlfwKey.I) || context.Window.WasKeyPressed(GlfwKey.Tab));
+            && (context.Input.WasKeyPressed(GlfwKey.I) || context.Input.WasKeyPressed(GlfwKey.Tab));
 
-        var closesMilestones = _screen == Screen.Milestones && context.Window.WasKeyPressed(GlfwKey.M);
+        var closesMilestones = _screen == Screen.Milestones && context.Input.WasKeyPressed(GlfwKey.M);
 
-        if (!context.Window.WasKeyPressed(GlfwKey.Escape) && !closesInventory && !closesMilestones)
+        if (!context.Input.WasKeyPressed(GlfwKey.Escape) && !closesInventory && !closesMilestones)
             return;
 
         switch (_screen)
         {
             case Screen.Playing:
                 _screen = Screen.Paused;
-                context.Window.SetMouseCaptured(false);
+                context.Input.SetMouseCaptured(false);
                 break;
 
             case Screen.Paused:
@@ -819,41 +819,41 @@ public sealed class ShoreboundGame : IGame
     /// <summary>Reads the keys and clicks that only mean something inside the world.</summary>
     private void ReadPlayingKeys(GameContext context)
     {
-        var window = context.Window;
+        var input = context.Input;
 
-        if (window.WasKeyPressed(GlfwKey.F))
+        if (input.WasKeyPressed(GlfwKey.F))
             _player.IsFlying = !_player.IsFlying;
 
         for (var slot = 0; slot < Inventory.RowCount; slot++)
         {
-            if (window.WasKeyPressed(GlfwKey.Number1 + slot))
+            if (input.WasKeyPressed(GlfwKey.Number1 + slot))
                 _inventory.Select(slot);
         }
 
-        if (window.WasKeyPressed(GlfwKey.Q))
+        if (input.WasKeyPressed(GlfwKey.Q))
             _inventory.Cycle(-1);
 
-        if (window.WasKeyPressed(GlfwKey.E))
+        if (input.WasKeyPressed(GlfwKey.E))
             _inventory.Cycle(1);
 
-        if (window.WasKeyPressed(GlfwKey.I) || window.WasKeyPressed(GlfwKey.Tab))
+        if (input.WasKeyPressed(GlfwKey.I) || input.WasKeyPressed(GlfwKey.Tab))
         {
             _screen = Screen.Inventory;
-            window.SetMouseCaptured(false);
+            input.SetMouseCaptured(false);
         }
 
-        if (window.WasKeyPressed(GlfwKey.M))
+        if (input.WasKeyPressed(GlfwKey.M))
         {
             _screen = Screen.Milestones;
-            window.SetMouseCaptured(false);
+            input.SetMouseCaptured(false);
         }
 
         // The wheel, the way every game of this kind does it: away from the hand moves left along
         // the row, which is the direction the numbers count down in.
-        if (window.ScrollDelta != 0.0)
-            _inventory.Cycle(window.ScrollDelta > 0.0 ? -1 : 1);
+        if (input.ScrollDelta != 0.0)
+            _inventory.Cycle(input.ScrollDelta > 0.0 ? -1 : 1);
 
-        if (window.WasMouseButtonPressed(GlfwMouseButton.Right))
+        if (input.WasMouseButtonPressed(GlfwMouseButton.Right))
             UseOrPlace(context);
     }
 
@@ -1259,7 +1259,7 @@ public sealed class ShoreboundGame : IGame
         {
             _openMachine = hit.Block;
             _screen = Screen.Machine;
-            context.Window.SetMouseCaptured(false);
+            context.Input.SetMouseCaptured(false);
             return;
         }
 

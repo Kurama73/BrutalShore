@@ -16,7 +16,7 @@ namespace BrutalShore.Gpu;
 /// question that can be asked at all. Without the snapshot every caller that needs an edge keeps
 /// its own copy of the previous state, which is three copies of the same bug waiting to differ.
 /// </remarks>
-public sealed class GameWindow : IDisposable
+public sealed class GameWindow : IInputSource, IDisposable
 {
     /// <summary>One past the highest key GLFW defines, which is the escape-to-menu hatch's size.</summary>
     private const int KeyCount = 349;

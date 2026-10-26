@@ -17,6 +17,7 @@
     <Project Path="tests/BrutalShore.Voxel.Tests/BrutalShore.Voxel.Tests.csproj" />
     <Project Path="tests/BrutalShore.World.Tests/BrutalShore.World.Tests.csproj" />
     <Project Path="tests/BrutalShore.Audio.Tests/BrutalShore.Audio.Tests.csproj" />
+    <Project Path="tests/BrutalShore.Gpu.Tests/BrutalShore.Gpu.Tests.csproj" />
     <Project Path="tests/BrutalShore.Render.Tests/BrutalShore.Render.Tests.csproj" />
     <Project Path="tests/Shorebound.Tests/Shorebound.Tests.csproj" />
   </Folder>

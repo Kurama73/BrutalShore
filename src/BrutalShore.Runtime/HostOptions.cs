@@ -1,3 +1,5 @@
+using BrutalShore.Gpu;
+
 namespace BrutalShore.Runtime;
 
 /// <summary>How the host should start: the things true of any game, not of one.</summary>
@@ -40,6 +42,14 @@ public sealed record HostOptions
     /// otherwise — it never gets to a keyboard.
     /// </remarks>
     public bool ShowOverlay { get; init; } = true;
+
+    /// <summary>A session to play instead of waiting for a person, or nothing.</summary>
+    /// <remarks>
+    /// What makes an automated playtest possible: the host feeds the script to the game as
+    /// though someone were typing it. Combined with a frame limit and a screenshot, one command
+    /// plays a whole session and leaves a picture of where it got to.
+    /// </remarks>
+    public SessionScript? Script { get; init; }
 
     /// <summary>How large the interface is drawn, 1 being the designed size.</summary>
     /// <remarks>

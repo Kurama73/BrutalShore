@@ -23,6 +23,9 @@ public sealed class GameHost : IDisposable
 {
     private readonly HostOptions _options;
     private readonly GameWindow _window;
+
+    /// <summary>The script being played, or nothing when a person is at the keyboard.</summary>
+    private readonly ScriptedInput? _scripted;
     private readonly GpuContext _gpu;
     private readonly SwapchainTarget _target;
     private readonly GpuRenderer _renderer;
@@ -45,7 +48,18 @@ public sealed class GameHost : IDisposable
         _shaders = new ShaderLibrary(_gpu, Path.Combine(AppContext.BaseDirectory, "Shaders"));
         _overlay = new DebugOverlay(_window, _gpu, _target, options.ShowOverlay, options.UiScale);
 
-        Context = new GameContext(_window, _gpu, _target, _renderer, _shaders, _clock, _profile.Counters);
+        _scripted = options.Script is null ? null : new ScriptedInput(_window, options.Script, Console.WriteLine);
+
+        Context = new GameContext(
+            _window,
+            _gpu,
+            _target,
+            _renderer,
+            _shaders,
+            _clock,
+            _profile.Counters,
+            _scripted ?? (IInputSource)_window
+        );
     }
 
     /// <summary>What the host lends to the game.</summary>
@@ -63,6 +77,10 @@ public sealed class GameHost : IDisposable
             _window.PollEvents();
 
             var steps = _clock.BeginFrame();
+
+            // Before anything reads it, so that every system in this frame sees the same input.
+            _scripted?.Advance(_clock.FrameSeconds);
+
             _profile.Frame.Add((float)(_clock.FrameSeconds * 1000.0));
 
             using (FrameProfile.Measure(_profile.Simulation))
