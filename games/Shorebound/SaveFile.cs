@@ -30,9 +30,12 @@ public sealed record SaveFile
     /// back empty is the worst that can happen, and only to a world saved before smelters.
     /// Version 4 added how far along the milestones the player is; an older world starts the line
     /// again, which costs them the handing-in and nothing they built. Version 5 gave each machine
-    /// a kind, because there is now more than one of them.
+    /// a kind, because there is now more than one of them. Version 6 writes the milestones by
+    /// name, because the progression stopped being a line and a count no longer says which steps
+    /// were taken; a version 4 or 5 world is read as the first that many steps in the order they
+    /// are written down, which is the line that world was played on.
     /// </remarks>
-    private const byte Version = 5;
+    private const byte Version = 6;
 
     /// <summary>The world's seed, which is the world.</summary>
     public required int Seed { get; init; }
@@ -72,12 +75,23 @@ public sealed record SaveFile
     /// </remarks>
     public required IReadOnlyList<SavedMachine> Machines { get; init; }
 
-    /// <summary>How many milestones have been paid for.</summary>
+    /// <summary>How many milestones a world written before they had names recorded.</summary>
     /// <remarks>
-    /// One number, because the progression is a line and everything else about it — what is
-    /// open, what is next, what it costs — is read off a table in the build rather than stored.
+    /// Zero for any world this build writes, which records <see cref="MilestonesDone" /> instead.
+    /// The two are alternatives rather than two halves of one thing: a count only means anything
+    /// against the order the steps are written down in, and that is only the order a world played
+    /// before the progression branched.
     /// </remarks>
-    public required int MilestonesReached { get; init; }
+    public int MilestonesTaken { get; init; }
+
+    /// <summary>Which milestones have been paid for, by name.</summary>
+    /// <remarks>
+    /// By name rather than by count, because the progression branches: two players with four
+    /// steps behind them have not necessarily taken the same four. By name rather than by index
+    /// for the reason everything else here is — a position in a table is not stable across
+    /// builds, and a renamed step should cost its unlock rather than somebody else's.
+    /// </remarks>
+    public required IReadOnlyList<string> MilestonesDone { get; init; }
 
     /// <summary>Writes a world to a file, replacing whatever was there.</summary>
     /// <param name="path">Where to write.</param>
@@ -115,7 +129,9 @@ public sealed record SaveFile
                 writer.Write(count);
             }
 
-            writer.Write(MilestonesReached);
+            writer.Write(MilestonesDone.Count);
+            foreach (var milestone in MilestonesDone)
+                writer.Write(milestone);
 
             writer.Write(Machines.Count);
             foreach (var machine in Machines)
@@ -181,11 +197,32 @@ public sealed record SaveFile
             DayFraction = reader.ReadDouble(),
             RowIndex = reader.ReadInt32(),
             Carried = version >= 2 ? ReadCarried(reader) : [],
-            MilestonesReached = version >= 4 ? reader.ReadInt32() : 0,
+            // Exactly one of the two reads from the stream, because exactly one of them is in
+            // the file. Which is decided by the version, and the initializer runs in the order
+            // it is written, which is the order the fields were put in the file.
+            MilestonesDone = version >= 6 ? ReadMilestoneNames(reader) : [],
+            MilestonesTaken = version is 4 or 5 ? reader.ReadInt32() : 0,
             Machines = version >= 3 ? ReadMachines(reader, version) : [],
         };
 
         return (save, BlockEditFile.Read(stream, into, registry));
+    }
+
+    private static List<string> ReadMilestoneNames(BinaryReader reader)
+    {
+        var count = reader.ReadInt32();
+
+        // The same guard as everywhere else a count comes out of a file: it decides how many
+        // times a loop runs, so it is bounded by something no real world can exceed. A build
+        // with a thousand milestones in it is not this one.
+        if (count is < 0 or > 1_000)
+            throw new InvalidDataException($"A world claiming {count} milestones is not one.");
+
+        var names = new List<string>(count);
+        for (var one = 0; one < count; one++)
+            names.Add(reader.ReadString());
+
+        return names;
     }
 
     private static List<SavedMachine> ReadMachines(BinaryReader reader, byte version)

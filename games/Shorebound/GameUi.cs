@@ -797,16 +797,21 @@ public sealed class GameUi
         return true;
     }
 
-    /// <summary>Draws the line of milestones, and the one that can be paid for now.</summary>
+    /// <summary>Draws the tree of milestones, and a way to pay for any step that is open.</summary>
     /// <param name="progression">How far the player has got, which this hands in against.</param>
-    /// <param name="inventory">What they are carrying, for whether the next step is affordable.</param>
-    /// <returns>Whether the player paid for a step this frame.</returns>
+    /// <param name="inventory">What they are carrying, for whether a step is affordable.</param>
+    /// <returns>The step the player paid for this frame, or nothing.</returns>
     /// <remarks>
     /// <para>
-    /// The whole line at once, with what is done behind and what is coming ahead. A progression
+    /// The whole tree at once, with what is done behind and what is coming ahead. A progression
     /// shown one step at a time is a progression a player cannot plan against, and planning two
     /// steps ahead — mining copper knowing what the iron is for — is most of what makes the
     /// middle of this game worth playing.
+    /// </para>
+    /// <para>
+    /// Every open step carries its own button, because more than one of them is open for most of
+    /// the game and the whole point of that is choosing which. A locked step says which steps it
+    /// is waiting on, so the tree can be read backwards from whatever the player wants.
     /// </para>
     /// <para>
     /// The story line of a step is shown whether it is done or not. Reading it before is a reason
@@ -814,19 +819,28 @@ public sealed class GameUi
     /// unlock.
     /// </para>
     /// </remarks>
-    public bool DrawMilestones(Progression progression, Inventory inventory)
+    public Milestone? DrawMilestones(Progression progression, Inventory inventory)
     {
         var viewport = ImGui.GetMainViewport();
         var scale = ImGui.GetStyle().FontScaleMain;
-        var handedIn = false;
+        Milestone? handedIn = null;
 
         FullScreen("milestones"u8);
         UiCanvas.Scrim(1f);
 
-        var width = float.Min(680f * scale, viewport.Size.X - (80f * scale));
-        var rowHeight = 96f * scale;
+        var width = float.Min(880f * scale, viewport.Size.X - (80f * scale));
         var headingSize = ImGui.GetFontSize() * 1.05f;
-        var height = headingSize + (26f * scale) + (progression.All.Count * rowHeight) + (76f * scale);
+
+        // The rows shrink to fit rather than the panel growing past the window. A tree with one
+        // more step in it must not push the first one off the top of the screen, which is what
+        // a fixed row height does the moment the table outgrows the display it was sized for.
+        var around = headingSize + (90f * scale);
+        var rowHeight = float.Min(
+            104f * scale,
+            float.Max(68f * scale, (viewport.Size.Y - (64f * scale) - around) / progression.All.Count)
+        );
+
+        var height = around + (progression.All.Count * rowHeight);
 
         var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
         var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
@@ -837,12 +851,13 @@ public sealed class GameUi
         var inset = 22f * scale;
         var size = ImGui.GetFontSize() * 0.86f;
         var smallSize = ImGui.GetFontSize() * 0.78f;
+        var buttonWidth = 200f * scale;
 
         for (var index = 0; index < progression.All.Count; index++)
         {
             var milestone = progression.All[index];
-            var done = index < progression.Reached;
-            var current = index == progression.Reached;
+            var done = progression.IsDone(milestone.Name);
+            var open = progression.IsOpen(milestone);
 
             var rowTop = listTop + (index * rowHeight);
             var minimum = new float2(left + inset, rowTop);
@@ -851,26 +866,28 @@ public sealed class GameUi
             UiCanvas.Chamfer(
                 minimum,
                 maximum,
-                current ? UiPalette.Control : UiPalette.Fade(UiPalette.Recess, done ? 0.75f : 0.5f),
+                open ? UiPalette.Control : UiPalette.Fade(UiPalette.Recess, done ? 0.75f : 0.5f),
                 7f * scale
             );
 
             // The marker down the left edge says which of the three states this row is in without
-            // a word: filled for done, accent for the one in hand, dark for what is still ahead.
+            // a word: filled for done, accent for what is open, dark for what is still locked.
             UiCanvas.Chamfer(
                 minimum,
                 new float2(minimum.X + (5f * scale), maximum.Y),
-                done ? UiPalette.Fade(UiPalette.Accent, 0.5f) : current ? UiPalette.Accent : UiPalette.Divider,
+                done ? UiPalette.Fade(UiPalette.Accent, 0.5f) : open ? UiPalette.Accent : UiPalette.Divider,
                 3f * scale
             );
 
-            if (current)
+            if (open)
                 UiCanvas.ChamferOutline(minimum, maximum, UiPalette.Fade(UiPalette.Accent, 0.7f), 7f * scale, scale);
 
             var textLeft = minimum.X + (20f * scale);
+            var textWidth = width - (inset * 2f) - (40f * scale) - buttonWidth;
+
             UiCanvas.TrackedText(
                 new float2(textLeft, rowTop + (12f * scale)),
-                done ? UiPalette.Fade(UiPalette.Text, 0.6f) : current ? UiPalette.Accent : UiPalette.MutedText,
+                done ? UiPalette.Fade(UiPalette.Text, 0.6f) : open ? UiPalette.Accent : UiPalette.MutedText,
                 milestone.Name.ToUpperInvariant(),
                 size,
                 2f * scale
@@ -879,53 +896,67 @@ public sealed class GameUi
             UiCanvas.Text(
                 new float2(textLeft, rowTop + (12f * scale) + size + (8f * scale)),
                 UiPalette.Fade(UiPalette.MutedText, done ? 0.7f : 1f),
-                Wrapped(milestone.Story, width - (inset * 2f) - (40f * scale), smallSize),
+                Wrapped(milestone.Story, textWidth, smallSize),
                 smallSize
             );
 
-            var costText = done
-                ? "done"
+            // What the row says along the bottom is the one thing the player can act on: what it
+            // costs while it is open, what it is waiting for while it is not.
+            var waiting = progression.Waiting(milestone).ToArray();
+            var costText = done ? "done"
+                : waiting.Length > 0 ? "after " + string.Join(" and ", waiting)
                 : string.Join("   ", milestone.Cost.Select(part => $"{inventory.NameOf(part.Block)} ×{part.Count}"));
 
             UiCanvas.Text(
                 new float2(textLeft, maximum.Y - smallSize - (10f * scale)),
-                done ? UiPalette.Fade(UiPalette.Accent, 0.6f) : UiPalette.Text,
+                done ? UiPalette.Fade(UiPalette.Accent, 0.6f)
+                    : waiting.Length > 0 ? UiPalette.MutedText
+                    : UiPalette.Text,
                 costText,
                 smallSize
             );
-        }
 
-        var buttonTop = listTop + (progression.All.Count * rowHeight) + (8f * scale);
-        var buttonWidth = 240f * scale;
+            if (!open)
+                continue;
 
-        if (progression.IsFinished)
-        {
-            UiCanvas.Text(
-                new float2(left + inset, buttonTop + (12f * scale)),
-                UiPalette.Accent,
-                "The shore has nothing else to ask of you.",
-                size
-            );
-        }
-        else if (progression.CanAfford(inventory))
-        {
+            var buttonLeft = maximum.X - (16f * scale) - buttonWidth;
+            var buttonTop = rowTop + ((rowHeight - (10f * scale) - (UiControls.EntryHeight * scale * 1.2f)) * 0.5f);
+
+            if (!progression.CanAfford(milestone, inventory))
+            {
+                UiCanvas.Text(
+                    new float2(
+                        buttonLeft + buttonWidth - UiCanvas.Measure("not enough yet", smallSize).X,
+                        buttonTop + (14f * scale)
+                    ),
+                    UiPalette.MutedText,
+                    "not enough yet",
+                    smallSize
+                );
+
+                continue;
+            }
+
+            // One column per row rather than one for the panel, because the rows are drawn on the
+            // canvas at fixed places and a shared column would put every button in the same one.
             UiControls.BeginColumn(
-                "handin",
-                new float2(left + inset, buttonTop),
+                $"handin{index}",
+                new float2(buttonLeft, buttonTop),
                 new float2(buttonWidth, UiControls.EntryHeight * scale * 1.2f)
             );
 
             if (_controls.Entry("Hand it in", buttonWidth, emphasis: true))
-                handedIn = progression.HandIn(inventory) is not null;
+                handedIn = progression.HandIn(milestone, inventory);
 
             UiControls.EndColumn();
         }
-        else
+
+        if (progression.IsFinished)
         {
             UiCanvas.Text(
-                new float2(left + inset, buttonTop + (12f * scale)),
-                UiPalette.MutedText,
-                "Not enough yet.",
+                new float2(left + inset, listTop + (progression.All.Count * rowHeight) + (6f * scale)),
+                UiPalette.Accent,
+                "The shore has nothing else to ask of you.",
                 size
             );
         }

@@ -26,7 +26,7 @@ public sealed class SaveFileTests
             DayFraction = 3.6,
             RowIndex = 2,
             Machines = [],
-            MilestonesReached = 0,
+            MilestonesDone = [],
             Carried = [("stone", 9), (string.Empty, 0)],
         };
 
@@ -40,8 +40,9 @@ public sealed class SaveFileTests
 
             // Compared member by member rather than as a whole, because what is carried is a
             // list and a record compares a list by which list it is, not by what is in it.
-            Assert.Equal(save with { Carried = [], Machines = [] }, read with { Carried = [], Machines = [] });
+            Assert.Equal(save with { Carried = [], Machines = [], MilestonesDone = [] }, read with { Carried = [], Machines = [], MilestonesDone = [] });
             Assert.Equal(save.Carried, read.Carried);
+            Assert.Equal(save.MilestonesDone, read.MilestonesDone);
 
             Assert.Equal(2, report.Applied);
             Assert.Equal(0, report.Dropped);
@@ -67,7 +68,7 @@ public sealed class SaveFileTests
             DayFraction = 0.0,
             RowIndex = 0,
             Machines = [],
-            MilestonesReached = 0,
+            MilestonesDone = [],
             Carried = [],
         };
 
@@ -80,8 +81,9 @@ public sealed class SaveFileTests
             // it, and that is the whole file.
             var (read, report) = SaveFile.Read(path, new BlockEdits(), blocks.Registry);
 
-            Assert.Equal(save with { Carried = [], Machines = [] }, read with { Carried = [], Machines = [] });
+            Assert.Equal(save with { Carried = [], Machines = [], MilestonesDone = [] }, read with { Carried = [], Machines = [], MilestonesDone = [] });
             Assert.Equal(save.Carried, read.Carried);
+            Assert.Equal(save.MilestonesDone, read.MilestonesDone);
             Assert.Equal(0, report.Applied);
             Assert.True(new FileInfo(path).Length < 128, "an empty world should not need a hundred bytes");
         }
@@ -110,6 +112,49 @@ public sealed class SaveFileTests
     }
 
     [Fact]
+    public void a_half_finished_tree_comes_back_half_finished()
+    {
+        var blocks = new GameBlocks(new BlockRegistry());
+        var path = Path.Combine(Path.GetTempPath(), $"shorebound-{Guid.NewGuid():N}.world");
+        var progression = new Progression(blocks);
+        progression.Restore(["Make landfall", "First smoke", "The line"]);
+
+        var save = new SaveFile
+        {
+            Seed = 11,
+            FeetMeters = new double3(0, 80, 0),
+            Yaw = 0f,
+            Pitch = 0f,
+            IsFlying = false,
+            DayFraction = 0.25,
+            RowIndex = 0,
+            Machines = [],
+            Carried = [],
+            MilestonesDone = progression.DoneNames(),
+        };
+
+        try
+        {
+            save.Write(path, new BlockEdits(), blocks.Registry);
+            var (read, _) = SaveFile.Read(path, new BlockEdits(), blocks.Registry);
+
+            // Which branch the player took, not how many steps they took: two players three
+            // steps in have not necessarily taken the same three.
+            var opened = new Progression(blocks);
+            opened.Restore(read.MilestonesDone);
+
+            Assert.True(opened.IsDone("The line"));
+            Assert.False(opened.IsDone("Into the dark"));
+            Assert.True(opened.IsUnlocked("conveyor"));
+            Assert.False(opened.IsUnlocked("lantern"));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void a_failed_write_leaves_the_previous_world_alone()
     {
         var blocks = new GameBlocks(new BlockRegistry());
@@ -125,7 +170,7 @@ public sealed class SaveFileTests
             DayFraction = 0.5,
             RowIndex = 1,
             Machines = [],
-            MilestonesReached = 0,
+            MilestonesDone = [],
             Carried = [],
         };
 
@@ -137,8 +182,9 @@ public sealed class SaveFileTests
             // Saving twice has to overwrite rather than fail on the file it left behind, which is
             // the thing writing through a temporary file most easily gets wrong.
             var (read, _) = SaveFile.Read(path, new BlockEdits(), blocks.Registry);
-            Assert.Equal(first with { Carried = [], Machines = [] }, read with { Carried = [], Machines = [] });
+            Assert.Equal(first with { Carried = [], Machines = [], MilestonesDone = [] }, read with { Carried = [], Machines = [], MilestonesDone = [] });
             Assert.Equal(first.Carried, read.Carried);
+            Assert.Equal(first.MilestonesDone, read.MilestonesDone);
         }
         finally
         {
@@ -164,7 +210,7 @@ public sealed class SaveFileTests
             IsFlying = false,
             DayFraction = 0.25,
             RowIndex = 0,
-            MilestonesReached = 2,
+            MilestonesDone = ["Make landfall", "First smoke"],
             Machines =
             [
                 new SavedMachine
@@ -216,7 +262,7 @@ public sealed class SaveFileTests
             IsFlying = false,
             DayFraction = 0.5,
             RowIndex = 0,
-            MilestonesReached = 4,
+            MilestonesDone = ["Make landfall", "First smoke", "The line", "Into the dark"],
             Machines =
             [
                 new SavedMachine

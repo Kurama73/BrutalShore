@@ -50,7 +50,7 @@ public sealed class WholeLoopTests
     {
         // ---- 1. Ashore with nothing. ------------------------------------
         Assert.False(_inventory.HasSelection);
-        Assert.Equal(0, _progression.Reached);
+        Assert.Equal(0, _progression.DoneCount);
         Assert.False(_progression.IsUnlocked("smelter"));
 
         // ---- 2. Cut wood and break stone, and make the first two things. --
@@ -64,7 +64,7 @@ public sealed class WholeLoopTests
         Assert.True(_inventory.CountOf(_blocks.StoneBrick) >= 24, "not enough brick for the first milestone");
 
         // ---- 3. Make landfall, which opens the smelter. -------------------
-        Assert.Equal("Make landfall", HandIn());
+        Assert.Equal("Make landfall", HandIn("Make landfall"));
         Assert.True(_progression.IsUnlocked("smelter"));
 
         // ---- 4. Build one, feed it copper, and get metal out of it. -------
@@ -80,11 +80,11 @@ public sealed class WholeLoopTests
         Assert.True(_inventory.CountOf(_blocks.CopperIngot) >= 20, "the smelter did not keep up");
 
         // ---- 5. First smoke, then the belt, then the lift. ----------------
-        Assert.Equal("First smoke", HandIn());
+        Assert.Equal("First smoke", HandIn("First smoke"));
         Assert.True(_progression.IsUnlocked("copper block"));
 
         Gather(_blocks.EmberOre, 8);
-        Assert.Equal("Into the dark", HandIn());
+        Assert.Equal("Into the dark", HandIn("Into the dark"));
         Assert.True(_progression.IsUnlocked("lantern"));
 
         // The lantern is the thing the whole resource layer was built for: it exists, it lights
@@ -113,21 +113,21 @@ public sealed class WholeLoopTests
         Gather(_blocks.Log, 20);
         Craft("planks", times: 5);
 
-        Assert.Equal("The line", HandIn());
+        Assert.Equal("The line", HandIn("The line"));
         Assert.True(_progression.IsUnlocked("conveyor"));
 
-        Assert.Equal("Ironworks", HandIn());
+        Assert.Equal("Ironworks", HandIn("Ironworks"));
         Assert.True(_progression.IsUnlocked("iron block"));
 
         Gather(_blocks.Log, 12);
         Craft("planks", times: 8);
-        Assert.Equal("The long way up", HandIn());
+        Assert.Equal("The long way up", HandIn("The long way up"));
         Assert.True(_progression.IsUnlocked("lift"));
 
         // ---- 7. A drill, so the shore works without anyone at the rock. ---
         Gather(_blocks.Stone, 140);
         Craft("stone brick", times: 34);
-        Assert.Equal("Hands off", HandIn());
+        Assert.Equal("Hands off", HandIn("Hands off"));
         Assert.True(_progression.IsUnlocked("miner"));
 
         Craft("conveyor", times: 1);
@@ -153,7 +153,7 @@ public sealed class WholeLoopTests
 
         // ---- 8. Current, so one fire feeds the lot. ----------------------
         Craft("iron block", times: 4);
-        Assert.Equal("Current", HandIn());
+        Assert.Equal("Current", HandIn("Current"));
         Assert.True(_progression.IsUnlocked("generator") && _progression.IsUnlocked("cable"));
 
         Craft("cable", times: 1);
@@ -176,7 +176,7 @@ public sealed class WholeLoopTests
         // Nine, not eight: the shore wants eight and the turret itself is built around a ninth.
         Craft("iron block", times: 9);
         Craft("copper block", times: 4);
-        Assert.Equal("Stand watch", HandIn());
+        Assert.Equal("Stand watch", HandIn("Stand watch"));
         Assert.True(_progression.IsUnlocked("turret"));
         Assert.True(_progression.IsFinished, "the shore still wants something");
 
@@ -267,19 +267,23 @@ public sealed class WholeLoopTests
         _bench.ReturnTo(_inventory);
     }
 
-    /// <summary>Hands in whatever the shore is asking for next.</summary>
-    private string HandIn()
+    /// <summary>Hands in one named step, which has to be open and has to be payable.</summary>
+    /// <remarks>
+    /// Named rather than taken off the top, because the progression branches: calling this in
+    /// order is the test asserting that this order through the tree is one a player can take.
+    /// </remarks>
+    private string HandIn(string name)
     {
-        var milestone = _progression.Next;
-        Assert.NotNull(milestone);
+        var milestone = _progression.All.SingleOrDefault(step => step.Name == name);
+        Assert.True(_progression.IsOpen(milestone), $"'{name}' is not open yet");
 
-        var paid = _progression.HandIn(_inventory);
+        var paid = _progression.HandIn(milestone, _inventory);
         Assert.True(
             paid is not null,
-            $"could not pay for '{milestone.Value.Name}': "
+            $"could not pay for '{milestone.Name}': "
                 + string.Join(
                     ", ",
-                    milestone.Value.Cost.Select(part =>
+                    milestone.Cost.Select(part =>
                         $"{_blocks.Registry[part.Block].Name} {_inventory.CountOf(part.Block)}/{part.Count}")
                 )
         );

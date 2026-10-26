@@ -22,7 +22,7 @@ public sealed class RecipeTests
     {
         _recipes = new Recipes(_blocks);
         _open = new Progression(_blocks);
-        _open.Restore(_open.All.Count);
+        _open.Restore(_open.All.Select(step => step.Name).ToArray());
     }
 
     [Fact]

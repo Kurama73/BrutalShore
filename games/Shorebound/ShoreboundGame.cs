@@ -598,9 +598,9 @@ public sealed class ShoreboundGame : IGame
                 break;
 
             case Screen.Milestones:
-                if (_ui.DrawMilestones(_progression, _inventory))
+                if (_ui.DrawMilestones(_progression, _inventory) is { } reached)
                 {
-                    Say(_progression.All[_progression.Reached - 1].Name);
+                    Say(reached.Name);
                     _sounds?.Advanced();
                 }
                 break;
@@ -1585,7 +1585,7 @@ public sealed class ShoreboundGame : IGame
         _inventory.Clear();
         _bench.Grid.Clear();
         _machines.Clear();
-        _progression.Restore(0);
+        _progression.Restore([]);
         _held = Stack.Nothing;
 
 
@@ -1619,7 +1619,11 @@ public sealed class ShoreboundGame : IGame
             _inventory.Select(save.RowIndex);
             _inventory.Restore(save.Carried, _blocks.Registry);
             RestoreMachines(save.Machines);
-            _progression.Restore(save.MilestonesReached);
+            // A world written before the progression branched holds a count instead of names.
+            if (save.MilestonesTaken > 0)
+                _progression.RestoreCount(save.MilestonesTaken);
+            else
+                _progression.Restore(save.MilestonesDone);
             _bench.Grid.Clear();
             _held = Stack.Nothing;
             _drops.Clear();
@@ -1656,7 +1660,7 @@ public sealed class ShoreboundGame : IGame
             RowIndex = _inventory.SelectedIndex,
             Carried = _inventory.Carried(_blocks.Registry),
             Machines = SavedMachines(),
-            MilestonesReached = _progression.Reached,
+            MilestonesDone = _progression.DoneNames(),
         };
 
         try

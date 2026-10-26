@@ -70,7 +70,7 @@ public static class Playtest
 
             .Mark("reading what the shore asks")
             .Tap(GlfwKey.M)
-            .Wait(4.0)
+            .Wait(8.0)
             .Mark("closing it")
             .Tap(GlfwKey.M)
             .Wait(2.0)

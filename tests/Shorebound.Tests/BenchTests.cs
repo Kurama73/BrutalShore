@@ -21,7 +21,7 @@ public sealed class BenchTests
 
         // Everything unlocked: these are claims about the grid, not about the progression.
         var progression = new Progression(_blocks);
-        progression.Restore(progression.All.Count);
+        progression.Restore(progression.All.Select(step => step.Name).ToArray());
         _bench = new Bench(_recipes, progression);
     }
 
