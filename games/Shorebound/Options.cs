@@ -120,6 +120,13 @@ public sealed record Options
                     options = options with { Viewpoint = ReadViewpoint(arguments, ref index) };
                     break;
 
+                case "--playtest":
+                    options = options with
+                    {
+                        Host = options.Host with { Script = Playtest.Session() },
+                    };
+                    break;
+
                 case "--no-overlay":
                     options = options with { HideOverlay = true };
                     break;
