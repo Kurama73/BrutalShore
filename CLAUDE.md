@@ -88,7 +88,7 @@ upwards, never sideways between projects of the same layer.**
 src/   the engine — BrutalShore.*, knows nothing about any particular game
   Layer 0  Core      frame clock, render space, the f64/f32 boundary
   Layer 1  Voxel     chunks, block registry, the greedy mesher        (Core)
-           Gpu       window, input, device, swapchain, frames, shaders, depth targets  (Core)
+           Gpu       window, input and the script that stands in for a person at it, device, swapchain, frames, shaders, depth targets  (Core)
            Ui        the palette, the ImGui theme, the shared widgets  (Core)
            Audio     waveforms, a synthesiser, the device                (Core)
   Layer 2  World     coordinates, noise, streaming, edits, rays, collision, IChunkGenerator  (Core + Voxel)
@@ -227,6 +227,12 @@ does, rename something instead.
   factored out into something that can be tested headless. The front-face
   winding bug was found exactly this way, and `CameraTests` pins down the part
   of it that can be asserted without a GPU.
+- A screenshot proves a frame, not a game. What nobody can assert headless —
+  that breaking a block, filling a row and opening a screen all work in the one
+  running process — is checked by `--playtest`, which feeds the game a
+  `SessionScript` through `IInputSource` instead of a keyboard. The script is
+  code rather than a recorded file, so it goes stale the way code does: the
+  build breaks.
 
 ## Quality gates
 

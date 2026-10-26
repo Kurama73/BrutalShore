@@ -165,6 +165,7 @@ inside the game. Anything the command line mentions beats what is in that file.
 | `--frames <n>`                     | Close after this many frames.                    |
 | `--camera <x> <y> <z> <yaw> <pitch>` | Start the camera here, angles in degrees.      |
 | `--screenshot <path>`              | Save the last frame as a PNG.                    |
+| `--playtest`                       | Play the game from a script instead of a keyboard. |
 
 Passing `--frames` or `--camera` goes straight into the world rather than
 stopping at the title screen: a run with a fixed frame count is a render check,
@@ -203,6 +204,31 @@ class of mistake that works anyway on one driver and corrupts memory on the
 next, and they found a real one here — a swapchain image being copied from
 without having asked for the usage that allows it.
 
+### Playing it with nobody there
+
+A screenshot proves that a frame came out right. It says nothing about whether
+breaking a block puts it in the row, or whether the inventory opens. `--playtest`
+covers that: it drives the real game through a script — click play, land, look
+down, break six blocks, open every screen, walk, pause, resume — and prints
+where it has got to as it goes.
+
+```bash
+dotnet run --project games/Shorebound -c Release -- \
+    --playtest --frames 900 --screenshot playtest.png
+```
+
+```
+[   6.1s] clicking play
+[  24.1s] breaking block 1
+[  54.2s] opening what I am carrying
+[  85.1s] done
+```
+
+The script is a `SessionScript`, which is engine-side and holds no file format:
+a step is a method call, so a control that is renamed breaks the build instead
+of silently doing nothing. `ScriptedInput` merges with the real window rather
+than replacing it, so a person watching can still take over mid-run.
+
 ## Layout
 
 `src/` is the engine and `games/` is what is built with it. **Nothing in `src/`
@@ -213,7 +239,7 @@ were deleted.
 | --------------------- | ----------------------------------------------------------- |
 | `BrutalShore.Core`    | The frame clock and the f64 world to f32 render-space boundary |
 | `BrutalShore.Voxel`   | Chunks, the block registry, the greedy mesher                 |
-| `BrutalShore.Gpu`     | Window, Vulkan device, swapchain, frames in flight, shaders   |
+| `BrutalShore.Gpu`     | Window, Vulkan device, swapchain, frames in flight, shaders, and `IInputSource` so a script can play in a person's place |
 | `BrutalShore.Ui`      | What every panel looks like: the palette, the ImGui theme, the shared widgets |
 | `BrutalShore.Audio`   | Waveforms, a synthesiser that makes them out of arithmetic, and the device they play through |
 | `BrutalShore.World`   | Coordinates, gradient noise, streaming, block edits, ray casting and collision, `IChunkGenerator` |
