@@ -975,30 +975,45 @@ public sealed class GameUi
 
     /// <summary>Breaks a line of prose onto as many lines as it needs.</summary>
     /// <remarks>
+    /// <para>
     /// Measured word by word rather than counted by characters, because the font is proportional
     /// and a column counted in characters is a column that is ragged on one side and overflowing
     /// on the other.
+    /// </para>
+    /// <para>
+    /// Each word is measured once and the widths are added up, rather than measuring the line as
+    /// it grows. Measuring the growing line hands the interface the first word, then the first
+    /// two, then the first three — which is a quadratic number of characters for a linear amount
+    /// of prose, and a wide enough column eventually overran the string buffer behind the
+    /// measuring and took the whole program down with it. Adding a space's width between words
+    /// ignores kerning across the gap, which is a fraction of a pixel in a column this wide.
+    /// </para>
     /// </remarks>
     private static string Wrapped(string text, float width, float size)
     {
         var lines = new List<string>();
-        var line = string.Empty;
+        var line = new List<string>();
+        var spaceWidth = UiCanvas.Measure(" ", size).X;
+        var lineWidth = 0f;
 
         foreach (var word in text.Split(' '))
         {
-            var candidate = line.Length == 0 ? word : $"{line} {word}";
-            if (line.Length > 0 && UiCanvas.Measure(candidate, size).X > width)
+            var wordWidth = UiCanvas.Measure(word, size).X;
+            var together = line.Count == 0 ? wordWidth : lineWidth + spaceWidth + wordWidth;
+
+            if (line.Count > 0 && together > width)
             {
-                lines.Add(line);
-                line = word;
-                continue;
+                lines.Add(string.Join(' ', line));
+                line.Clear();
+                together = wordWidth;
             }
 
-            line = candidate;
+            line.Add(word);
+            lineWidth = together;
         }
 
-        if (line.Length > 0)
-            lines.Add(line);
+        if (line.Count > 0)
+            lines.Add(string.Join(' ', line));
 
         return string.Join('\n', lines);
     }
