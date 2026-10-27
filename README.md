@@ -315,6 +315,15 @@ were deleted.
 | --------------- | ---------------------------------------------------- |
 | `Shorebound`    | Its blocks, its terrain, caves and biomes, its trees, the player and how they move, breaking and dropping, the controls, what they carry and craft, ore seams, machines, belts, lifts, power and turrets, milestones, its own sounds, the animals and the horde, the title and settings screens, the save and settings files, how long a day lasts, how much work a frame may spend loading and meshing |
 
+Shorebound keeps the engine boundary above and groups its own code by DDD
+responsibility. `Domain/` is split into `World`, `Player`, `Movement`,
+`Creatures`, `Production`, `Progression` and `Time`; `Application/` holds
+configuration and scripted runs; `Infrastructure/` holds persistence,
+asset lookup and audio; `Presentation/` holds the host, input, UI, camera and
+creature rendering. Tests mirror those boundaries under
+`tests/Shorebound.Tests/`. These are folders and namespaces in the game project,
+not new engine projects or dependencies.
+
 A game is an `IGame` the runtime runs, and an `IChunkGenerator` the world asks
 for blocks. Those two interfaces are the whole of the engine's knowledge of it.
 
