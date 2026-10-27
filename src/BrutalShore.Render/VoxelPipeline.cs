@@ -79,6 +79,13 @@ public sealed unsafe class VoxelPipeline : IDisposable
                 Format = VkFormat.R32UInt,
                 Offset = ByteSize.OffsetOf<VoxelVertex>(nameof(VoxelVertex.Packed1)),
             },
+            new()
+            {
+                Location = 2,
+                Binding = 0,
+                Format = VkFormat.R32UInt,
+                Offset = ByteSize.OffsetOf<VoxelVertex>(nameof(VoxelVertex.Packed2)),
+            },
         ];
 
         var vertexInput = new VkPipelineVertexInputStateCreateInfo

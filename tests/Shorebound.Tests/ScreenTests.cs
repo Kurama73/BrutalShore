@@ -21,7 +21,10 @@ public sealed class ScreenTests
 
     [Theory]
     [InlineData(Screen.Title)]
+    [InlineData(Screen.Saves)]
+    [InlineData(Screen.CreateWorld)]
     [InlineData(Screen.Paused)]
+    [InlineData(Screen.Terminal)]
     [InlineData(Screen.Settings)]
     public void a_menu_stops_the_world(Screen screen)
     {
@@ -30,7 +33,10 @@ public sealed class ScreenTests
 
     [Theory]
     [InlineData(Screen.Title)]
+    [InlineData(Screen.Saves)]
+    [InlineData(Screen.CreateWorld)]
     [InlineData(Screen.Paused)]
+    [InlineData(Screen.Terminal)]
     [InlineData(Screen.Settings)]
     [InlineData(Screen.Inventory)]
     [InlineData(Screen.Machine)]
@@ -82,7 +88,11 @@ public sealed class ScreenTests
     [Fact]
     public void a_panel_key_does_nothing_in_a_menu()
     {
-        foreach (var screen in new[] { Screen.Title, Screen.Paused, Screen.Settings, Screen.Machine })
+        foreach (var screen in new[]
+                 {
+                     Screen.Title, Screen.Saves, Screen.CreateWorld, Screen.Paused, Screen.Terminal, Screen.Settings,
+                     Screen.Machine
+                 })
             Assert.Equal(screen, screen.Panel(carrying: true, milestones: true));
     }
 

@@ -17,6 +17,48 @@
 
   <ItemGroup>
     <PackageReference Include="Ahwoo.BRUTAL.ImGui" />
+    <PackageReference Include="Ahwoo.BRUTAL.Stb" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Shorebound.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Assets\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Assets/Faithful/LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/stone.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/dirt.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/grass_block_side.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/grass_block_top.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/sand.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/snow.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/water_still.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/bedrock.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/oak_log.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/oak_log_top.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/oak_leaves.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/lantern.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/oak_planks.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/stone_bricks.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/copper_block.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/iron_block.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/glass.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/blast_furnace_side.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/dispenser_front.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/scaffolding_side.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/stonecutter_side.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/coal_ore.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/copper_ore.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/iron_ore.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/magma.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/block/stonecutter_top.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/entity/cow/cow_temperate.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/entity/wolf/wolf_angry.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets/Faithful/assets/minecraft/textures/entity/player/wide/steve.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

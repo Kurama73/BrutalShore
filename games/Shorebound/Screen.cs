@@ -1,6 +1,6 @@
 namespace Shorebound;
 
-/// <summary>Which of the game's three states it is in.</summary>
+/// <summary>Which screen the game is showing.</summary>
 /// <remarks>
 /// The state decides three things at once, which is why it is one value rather than a handful of
 /// flags: whether the world is simulated, whether the mouse is captured, and what the interface
@@ -11,11 +11,20 @@ public enum Screen
     /// <summary>The title screen, before a world has been entered.</summary>
     Title,
 
+    /// <summary>The list of saved worlds opened from the title screen.</summary>
+    Saves,
+
+    /// <summary>Choosing the name and generation settings for a new world.</summary>
+    CreateWorld,
+
     /// <summary>In the world, mouse captured, time passing.</summary>
     Playing,
 
     /// <summary>In the world, mouse free, everything stopped.</summary>
     Paused,
+
+    /// <summary>A command prompt over a stopped world.</summary>
+    Terminal,
 
     /// <summary>The settings, which the title screen and the pause menu both open.</summary>
     /// <remarks>

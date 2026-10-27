@@ -41,6 +41,53 @@ public class ChunkMesherTests
     }
 
     [Fact]
+    public void each_face_keeps_the_texture_layer_for_its_orientation()
+    {
+        var textured = _registry.Register(
+            new BlockType
+            {
+                Name = "textured",
+                Color = byte3.HexColor(0xFFFFFF),
+                SideTextureLayer = 3,
+                TopTextureLayer = 7,
+                BottomTextureLayer = 11,
+                SideTextureTint = byte3.HexColor(0x112233),
+                TopTextureTint = byte3.HexColor(0x445566),
+                BottomTextureTint = byte3.HexColor(0x778899),
+            }
+        );
+        var chunk = new Chunk();
+        chunk[8, 8, 8] = textured;
+
+        Mesh(new TestWorld(chunk));
+
+        Assert.All(
+            Opaque.Vertices.ToArray(),
+            vertex =>
+            {
+                Assert.Equal(
+                    vertex.Face switch
+                    {
+                        VoxelFace.PositiveY => 7,
+                        VoxelFace.NegativeY => 11,
+                        _ => 3,
+                    },
+                    vertex.TextureLayer
+                );
+                Assert.Equal(
+                    vertex.Face switch
+                    {
+                        VoxelFace.PositiveY => byte3.HexColor(0x445566),
+                        VoxelFace.NegativeY => byte3.HexColor(0x778899),
+                        _ => byte3.HexColor(0x112233),
+                    },
+                    vertex.TextureTint
+                );
+            }
+        );
+    }
+
+    [Fact]
     public void a_solid_chunk_merges_down_to_one_quad_per_side()
     {
         // The headline number for greedy merging. Culling alone leaves 2,048 quads per side; the

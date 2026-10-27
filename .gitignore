@@ -6,3 +6,6 @@ artifacts/
 
 # Dear ImGui writes its window layout next to the executable.
 imgui.ini
+
+# Local, non-commercial Faithful texture pack; not redistributed in this repository.
+games/Shorebound/Assets/Faithful/

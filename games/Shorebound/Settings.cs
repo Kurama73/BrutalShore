@@ -71,7 +71,7 @@ public sealed record Settings
     public float UiScale { get; init; } = 1f;
 
     /// <summary>Whether the debug overlay is shown; F3 toggles it too.</summary>
-    public bool ShowOverlay { get; init; } = true;
+    public bool ShowOverlay { get; init; }
 
     /// <summary>How long a whole day takes in real seconds; zero stops the sun where it is.</summary>
     public double DayLengthSeconds { get; init; } = DayClock.DefaultDayLengthSeconds;

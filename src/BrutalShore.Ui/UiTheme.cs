@@ -39,13 +39,18 @@ public static class UiTheme
         var style = ImGui.GetStyle();
 
         style.WindowPadding = new float2(18f, 16f) * scale;
-        style.FramePadding = new float2(12f, 7f) * scale;
-        style.ItemSpacing = new float2(10f, 8f) * scale;
+        style.FramePadding = new float2(14f, 8f) * scale;
+        style.ItemSpacing = new float2(10f, 9f) * scale;
         style.ItemInnerSpacing = new float2(8f, 6f) * scale;
-        style.CellPadding = new float2(8f, 4f) * scale;
+        style.CellPadding = new float2(8f, 5f) * scale;
         style.IndentSpacing = 18f * scale;
         style.ScrollbarSize = 12f * scale;
         style.GrabMinSize = 14f * scale;
+
+        // No collapse arrow in a window's title bar. Nothing in this game is collapsible, and the
+        // arrow is a tool affordance that only ever gets clicked by accident.
+        style.WindowMenuButtonPosition = ImGuiDir.None;
+        style.SelectableTextAlign = new float2(0f, 0.5f);
 
         // Square, everywhere. The drawn panels are chamfered rather than rounded, and a rounded
         // corner anywhere else — on the debug overlay, on a tooltip — would be the one moulded
@@ -59,6 +64,7 @@ public static class UiTheme
         style.TabRounding = 0f;
 
         style.WindowBorderSize = 1f;
+        style.ChildBorderSize = 1f;
         style.FrameBorderSize = 1f;
         style.PopupBorderSize = 1f;
         style.SeparatorTextBorderSize = 1f * scale;
@@ -73,6 +79,12 @@ public static class UiTheme
         style.FontScaleMain = scale;
 
         style.DisabledAlpha = 0.45f;
+
+        // Anti-aliased lines and fills, which the drawn controls are entirely made of: a chamfer
+        // is a polygon, and a polygon without it is a staircase at every cut corner.
+        style.AntiAliasedLines = true;
+        style.AntiAliasedLinesUseTex = true;
+        style.AntiAliasedFill = true;
 
         ApplyColors(style);
     }
@@ -94,6 +106,10 @@ public static class UiTheme
         colors[(int)ImGuiCol.FrameBgHovered] = UiPalette.Hovered;
         colors[(int)ImGuiCol.FrameBgActive] = UiPalette.Pressed;
 
+        // The strip along the top of the screen. One step up from the panel so the bar reads as
+        // the frame around the game rather than as another window in front of it.
+        colors[(int)ImGuiCol.MenuBarBg] = UiPalette.Header;
+
         colors[(int)ImGuiCol.TitleBg] = UiPalette.Header;
         colors[(int)ImGuiCol.TitleBgActive] = UiPalette.Header;
         colors[(int)ImGuiCol.TitleBgCollapsed] = UiPalette.Fade(UiPalette.Header, 0.6f);
@@ -102,9 +118,12 @@ public static class UiTheme
         colors[(int)ImGuiCol.ButtonHovered] = UiPalette.Hovered;
         colors[(int)ImGuiCol.ButtonActive] = UiPalette.Pressed;
 
-        colors[(int)ImGuiCol.Header] = UiPalette.Hovered;
-        colors[(int)ImGuiCol.HeaderHovered] = UiPalette.Pressed;
-        colors[(int)ImGuiCol.HeaderActive] = UiPalette.Pressed;
+        // What a menu row and a selected list entry are filled with. Hovering takes the accent
+        // at low opacity rather than another grey: on a dark list, a grey a step lighter is a row
+        // nobody can tell is the one the pointer is on.
+        colors[(int)ImGuiCol.Header] = UiPalette.Fade(UiPalette.Accent, 0.22f);
+        colors[(int)ImGuiCol.HeaderHovered] = UiPalette.Fade(UiPalette.Accent, 0.34f);
+        colors[(int)ImGuiCol.HeaderActive] = UiPalette.Fade(UiPalette.Accent, 0.48f);
 
         colors[(int)ImGuiCol.Separator] = UiPalette.Divider;
         colors[(int)ImGuiCol.SeparatorHovered] = UiPalette.Accent;

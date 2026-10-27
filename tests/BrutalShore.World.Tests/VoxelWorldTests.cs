@@ -192,4 +192,23 @@ public class VoxelWorldTests
 
         Assert.Equal(19, world.HighestBlock(3, 5));
     }
+
+    [Fact]
+    public void resetting_a_world_discards_its_chunks_and_edits_before_using_the_new_generator()
+    {
+        var registry = new BlockRegistry();
+        var oldGround = registry.Register(new BlockType { Name = "old ground", Color = byte3.HexColor(0x808080) });
+        var newGround = registry.Register(new BlockType { Name = "new ground", Color = byte3.HexColor(0xA08060) });
+        using var world = new VoxelWorld(registry, new FlatGenerator(oldGround, surfaceHeight: 40));
+        world.Load(new int3(0, 1, 0));
+        world.SetBlock(new int3(3, 41, 5), BlockId.Air);
+
+        world.Reset(new FlatGenerator(newGround, surfaceHeight: 10), streamer: null);
+        world.Load(new int3(0, 0, 0));
+
+        Assert.Equal(0, world.Edits.Count);
+        Assert.Equal(1, world.LoadedChunkCount);
+        Assert.Equal(newGround, world.BlockAt(3, 10, 5));
+        Assert.True(world.BlockAt(3, 40, 5).IsAir);
+    }
 }

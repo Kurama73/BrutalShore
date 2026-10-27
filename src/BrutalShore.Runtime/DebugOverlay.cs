@@ -47,6 +47,10 @@ public sealed unsafe class DebugOverlay : IDisposable
 
         ImGui.CreateContext();
 
+        // Before the drawing backend, which builds the font atlas from whatever the context has
+        // by then. After it, the faces would be added to an atlas nobody rebuilds.
+        UiFont.Load();
+
         // The context exists exactly once and the style belongs to it, so this is the only place
         // the look of the whole interface can be set from — the game's menus included.
         UiTheme.Apply(uiScale);
@@ -76,6 +80,10 @@ public sealed unsafe class DebugOverlay : IDisposable
     /// <summary>Whether the overlay is being drawn.</summary>
     public bool IsVisible { get; private set; }
 
+    /// <summary>Shows or hides the floating performance panel.</summary>
+    /// <param name="visible">Whether to draw the panel.</param>
+    public void SetVisible(bool visible) => IsVisible = visible;
+
     /// <summary>Opens the interface's frame and handles the key that hides the overlay.</summary>
     /// <remarks>
     /// Separate from <see cref="DrawPanel" /> because everything drawn through ImGui this frame —
@@ -102,7 +110,7 @@ public sealed unsafe class DebugOverlay : IDisposable
     /// </remarks>
     public void DrawPanel(string deviceName, FrameClock clock, FrameProfile profile, IGame game)
     {
-        if (!IsVisible)
+        if (!IsVisible || _window.IsMouseCaptured)
             return;
 
         var viewport = ImGui.GetMainViewport();
@@ -250,5 +258,4 @@ public sealed unsafe class DebugOverlay : IDisposable
         ImPlot.DestroyContext(_plots);
         ImGui.DestroyContext();
     }
-
 }

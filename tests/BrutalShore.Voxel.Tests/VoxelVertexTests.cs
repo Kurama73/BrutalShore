@@ -15,6 +15,7 @@ public class VoxelVertexTests
         foreach (var opacity in new byte[] { 0, 16, 176, 255 })
         foreach (var light in new[] { 0, 1, 14, 15 })
         foreach (var pattern in Enum.GetValues<BlockPattern>())
+        foreach (var textureLayer in new byte[] { 0, 1, 127, 255 })
         {
             var vertex = new VoxelVertex(
                 x,
@@ -26,7 +27,9 @@ public class VoxelVertexTests
                 LightVolume.MaxLevel - light,
                 new byte3(200, 7, 255),
                 opacity,
-                pattern
+                pattern,
+                textureLayer,
+                byte3.HexColor(0x7FB238)
             );
 
             Assert.Equal(new int3(x, 32 - x, 17), vertex.Position);
@@ -36,6 +39,8 @@ public class VoxelVertexTests
             Assert.Equal(LightVolume.MaxLevel - light, vertex.BlockLight);
             Assert.Equal(new byte3(200, 7, 255), vertex.Color);
             Assert.Equal(pattern, vertex.Pattern);
+            Assert.Equal(textureLayer, vertex.TextureLayer);
+            Assert.Equal(byte3.HexColor(0x7FB238), vertex.TextureTint);
 
             // Sixteenths, so what comes back is the opacity rounded down to one of sixteen
             // steps. Everything that reads it divides by fifteen, and nothing compares it to
@@ -45,11 +50,9 @@ public class VoxelVertexTests
     }
 
     [Fact]
-    public void a_vertex_is_eight_bytes()
+    public void a_vertex_is_twelve_bytes()
     {
-        // Stated as a test because the whole point of packing is the size, and a field quietly
-        // added to the struct would double a streamed world's vertex bandwidth without any other
-        // symptom.
-        Assert.Equal(8, System.Runtime.InteropServices.Marshal.SizeOf<VoxelVertex>());
+        // The extra word carries one texture layer without inflating the remaining packed fields.
+        Assert.Equal(12, System.Runtime.InteropServices.Marshal.SizeOf<VoxelVertex>());
     }
 }

@@ -7,6 +7,7 @@ using BrutalShore.Runtime;
 using BrutalShore.Ui;
 using BrutalShore.Voxel;
 using BrutalShore.World;
+using System.Globalization;
 
 namespace Shorebound;
 
@@ -130,7 +131,7 @@ public sealed class ShoreboundGame : IGame
 
     private readonly Options _options;
     private readonly GameBlocks _blocks;
-    private readonly TerrainGenerator _generator;
+    private TerrainGenerator _generator;
     private readonly VoxelWorld _world;
     private readonly Camera _camera = new();
     private readonly Player _player = new();
@@ -147,13 +148,17 @@ public sealed class ShoreboundGame : IGame
 
     /// <summary>Where the smelter the player has open stands, or nothing.</summary>
     private int3? _openMachine;
+
     private readonly GameUi _ui = new();
     private readonly DayClock _clock;
     private readonly TitleCamera _titleCamera;
     private readonly Mining _mining = new();
-    private readonly Drops _drops;
-    private readonly Grazers _grazers;
-    private readonly Stalkers _stalkers;
+
+    /// <summary>The colour an arm is drawn in where there is no sheet to draw it from.</summary>
+    private static readonly float3 ArmColor = new(0.85f, 0.68f, 0.52f);
+    private Drops _drops;
+    private Grazers _grazers;
+    private Stalkers _stalkers;
     private readonly Vitality _vitality = new();
     private readonly AudioDevice _audio = new();
 
@@ -193,6 +198,7 @@ public sealed class ShoreboundGame : IGame
     private PlayerController _controller = null!;
     private DepthTarget _shadowMap = null!;
     private VoxelField _field = null!;
+    private TextureArray _blockTextures = null!;
     private SceneBindings _scene = null!;
     private VoxelPipeline _opaquePipeline = null!;
     private VoxelPipeline _translucentPipeline = null!;
@@ -202,12 +208,19 @@ public sealed class ShoreboundGame : IGame
     private ChunkRenderer _chunks = null!;
     private CubeRenderer _cubes = null!;
 
+    /// <summary>Whether the texture pack was found, and so whether creatures have sheets.</summary>
+    private bool _skinned;
+
     private Settings _settings;
     private Screen _screen = Screen.Title;
 
     // Where the settings were opened from, so closing them goes back rather than always to one
     // of the two: the same screen is reached from the title and from a paused world.
     private Screen _screenBehindSettings = Screen.Title;
+
+    private Screen _screenBehindCreation = Screen.Title;
+    private Screen _screenBehindTerminal = Screen.Playing;
+    private Screen _screenBehindSaves = Screen.Title;
 
     private int3 _centre;
     private double _playedSeconds;
@@ -218,6 +231,16 @@ public sealed class ShoreboundGame : IGame
     private float4 _submerged;
     private string _notice = string.Empty;
     private double _noticeLeftSeconds;
+    private string _savePath;
+    private string _worldName;
+    private string _creationName = "New World";
+    private int _creationSeed;
+    private int _creationViewRadiusChunks;
+    private float _creationDayLengthSeconds;
+    private string _terminalCommand = string.Empty;
+    private readonly List<string> _terminalOutput = [];
+    private string? _selectedSavePath;
+    private string? _saveCatalogError;
 
     /// <summary>Builds the world, which needs nothing from the GPU.</summary>
     /// <param name="options">What the command line asked for.</param>
@@ -225,8 +248,13 @@ public sealed class ShoreboundGame : IGame
     public ShoreboundGame(Options options, Settings settings)
     {
         _options = options;
+        _savePath = options.SavePath;
+        _worldName = Path.GetFileNameWithoutExtension(options.SavePath);
         _settings = settings.Clamped();
-        _blocks = new GameBlocks(new BlockRegistry());
+        _creationSeed = options.Seed;
+        _creationViewRadiusChunks = _settings.ViewRadiusChunks;
+        _creationDayLengthSeconds = (float)_settings.DayLengthSeconds;
+        _blocks = new GameBlocks(new BlockRegistry(), FaithfulTextures.IsInstalled);
         _generator = new TerrainGenerator(_blocks, options.Seed);
         _world = new VoxelWorld(
             _blocks.Registry,
@@ -263,7 +291,18 @@ public sealed class ShoreboundGame : IGame
     {
         _shadowMap = new DepthTarget(context.Gpu, ShadowResolution);
         _field = new VoxelField(context.Gpu, _world);
-        _scene = new SceneBindings(context.Gpu, _shadowMap, _field);
+        _skinned = FaithfulTextures.IsInstalled;
+        if (!_skinned)
+            Console.WriteLine("Faithful textures not found; using procedural block surfaces.");
+        var texturePixels = FaithfulTextures.Load(FaithfulTextures.DirectoryPath);
+        _blockTextures = new TextureArray(
+            context.Gpu,
+            width: FaithfulTextures.LayerSize,
+            height: FaithfulTextures.LayerSize,
+            layers: FaithfulTextures.LayerCount,
+            rgbaPixels: texturePixels
+        );
+        _scene = new SceneBindings(context.Gpu, _shadowMap, _field, _blockTextures);
         _opaquePipeline = new VoxelPipeline(
             context.Gpu,
             context.Shaders,
@@ -341,9 +380,13 @@ public sealed class ShoreboundGame : IGame
         else if (_options.Host.FrameLimit > 0)
         {
             Enter(context);
+            if (Environment.GetEnvironmentVariable("SHOT") == "paused") { _screen = Screen.Paused; context.Window.SetMouseCaptured(false); }
+            if (Environment.GetEnvironmentVariable("SHOT") == "terminal") { OpenTerminal(context); RunTerminalCommand("help", context); RunTerminalCommand("where", context); }
+            if (Environment.GetEnvironmentVariable("SHOT") == "settings") { _screen = Screen.Settings; context.Window.SetMouseCaptured(false); }
         }
 
-        Console.WriteLine("Click to play. WASD to move, space to jump, F to fly, escape for the menu.");
+        Console.WriteLine(
+            "Click to play. WASD to move, T opens the terminal, escape pauses, F3 toggles the performance overlay.");
     }
 
     /// <inheritdoc />
@@ -392,6 +435,7 @@ public sealed class ShoreboundGame : IGame
             if (_drops.Step(_world, _world.Registry, seconds, _player.FeetMeters, _inventory) > 0)
                 _sounds?.PickedUp();
         }
+
         using var creatures = Time(_creatureCounter);
 
         _grazers.Step(_world, _world.Registry, seconds, _player.FeetMeters);
@@ -507,6 +551,8 @@ public sealed class ShoreboundGame : IGame
 
         // Before the shadow pass, because a transfer cannot be recorded inside a render pass and
         // this is the gap between the command buffer opening and the first one beginning.
+        if (!_blockTextures.HasBeenUploaded)
+            _blockTextures.Upload(context.Renderer.Commands);
         using (Time(_fieldCounter))
             _field.Update(context.Renderer.Commands, WorldCoordinates.ToBlock(_camera.Position));
 
@@ -522,9 +568,11 @@ public sealed class ShoreboundGame : IGame
         _sky.Draw();
         _chunks.Draw(_camera, _viewProjection);
 
-        if (_drops.Count > 0 || _grazers.Count > 0 || _stalkers.Count > 0 || _machines.Count > 0)
+        if (_drops.Count > 0 || _grazers.Count > 0 || _stalkers.Count > 0 || _machines.Count > 0 || InHand())
         {
             _cubes.Begin();
+
+            DrawInHand();
 
             DrawCarried();
 
@@ -533,14 +581,14 @@ public sealed class ShoreboundGame : IGame
             {
                 GrazerShape.Lay(grazer, parts);
                 foreach (var part in parts)
-                    _cubes.Draw(part.MiddleMeters, part.SizeMeters, part.Color, grazer.Yaw, _camera.Position);
+                    DrawPart(part, grazer.Yaw);
             }
 
             foreach (var stalker in _stalkers.All)
             {
                 StalkerShape.Lay(stalker, parts);
                 foreach (var part in parts)
-                    _cubes.Draw(part.MiddleMeters, part.SizeMeters, part.Color, stalker.Yaw, _camera.Position);
+                    DrawPart(part, stalker.Yaw);
             }
 
             foreach (var drop in _drops.All)
@@ -551,7 +599,9 @@ public sealed class ShoreboundGame : IGame
                     new float3(Drops.SizeMeters, Drops.SizeMeters, Drops.SizeMeters),
                     new float3(color.X / 255f, color.Y / 255f, color.Z / 255f),
                     drop.TurnRadians,
-                    _camera.Position
+                    _camera.Position,
+                    _world.Registry[drop.Block].SideTextureLayer,
+                    TextureTint(_world.Registry[drop.Block].SideTextureTint)
                 );
             }
         }
@@ -567,13 +617,27 @@ public sealed class ShoreboundGame : IGame
         if (_noticeLeftSeconds > 0.0)
             _ui.DrawNotice(_notice, (float)(_noticeLeftSeconds / NoticeSeconds));
 
+        if (!context.Window.IsMouseCaptured)
+        {
+            var choice = _ui.DrawMenuBar(HasWorldContext(), context.DebugOverlay.IsVisible, out var overlayVisibility);
+            if (overlayVisibility is { } visible)
+            {
+                context.DebugOverlay.SetVisible(visible);
+                _settings = _settings with { ShowOverlay = visible };
+                WriteSettings();
+            }
+
+            Choose(context, choice);
+        }
+
         switch (_screen)
         {
             case Screen.Title:
-                Choose(
-                    context,
-                    _ui.DrawTitle(File.Exists(_options.SavePath), $"seed {_generator.Seed}")
-                );
+                Choose(context, _ui.DrawTitle(ListSaves().Length > 0, $"{_worldName}  ·  seed {_generator.Seed}"));
+                break;
+
+            case Screen.Saves:
+                DrawSaveBrowser(context);
                 break;
 
             case Screen.Playing:
@@ -584,7 +648,19 @@ public sealed class ShoreboundGame : IGame
 
             case Screen.Paused:
                 _ui.DrawRow(_inventory);
-                Choose(context, _ui.DrawPause(_options.SavePath));
+                Choose(context, _ui.DrawPause(_worldName));
+                break;
+
+            case Screen.CreateWorld:
+                Choose(
+                    context,
+                    _ui.DrawWorldCreation(
+                        ref _creationName,
+                        ref _creationSeed,
+                        ref _creationViewRadiusChunks,
+                        ref _creationDayLengthSeconds
+                    )
+                );
                 break;
 
             case Screen.Settings:
@@ -607,6 +683,21 @@ public sealed class ShoreboundGame : IGame
                     Say(reached.Name);
                     _sounds?.Advanced();
                 }
+
+                break;
+
+            case Screen.Terminal:
+                if (_ui.DrawTerminal(ref _terminalCommand, _terminalOutput))
+                {
+                    var command = _terminalCommand.Trim();
+                    _terminalCommand = string.Empty;
+                    if (command.Length > 0)
+                    {
+                        AddTerminalLine($"> {command}");
+                        RunTerminalCommand(command, context);
+                    }
+                }
+
                 break;
         }
     }
@@ -625,7 +716,10 @@ public sealed class ShoreboundGame : IGame
         var choice = _ui.DrawSettings(ref settings, out var changed);
 
         if (changed)
+        {
             Apply(settings);
+            context.DebugOverlay.SetVisible(_settings.ShowOverlay);
+        }
 
         if (choice == MenuChoice.Back)
             LeaveSettings();
@@ -706,7 +800,7 @@ public sealed class ShoreboundGame : IGame
         ImGui.Text($"{_machines.Count} machines, {_machines.LitCount} alight, {_machines.CarriedCount} on belts");
         ImGui.Text(
             $"{_machines.Power.NetworkCount} grids, "
-                + $"{_machines.Power.DeliveredWatts:F0} of {_machines.Power.DemandedWatts:F0} W"
+            + $"{_machines.Power.DeliveredWatts:F0} of {_machines.Power.DemandedWatts:F0} W"
         );
         ImGui.Text($"{_stalkers.Count} stalking of {Stalkers.Allowed(_machines.LitCount)} allowed");
 
@@ -735,9 +829,9 @@ public sealed class ShoreboundGame : IGame
             _clock.SetDayFraction(double.Floor(_clock.DayFraction) + (hour / 24.0));
 
         ImGui.SeparatorText("Controls"u8);
-        ImGui.Text("WASD, space, shift to sprint, ctrl to crouch, F to fly"u8);
+        ImGui.Text("WASD, space, shift to sprint, ctrl to crouch, F to fly, T opens terminal"u8);
         ImGui.Text("left click breaks, right click places, 1-9 picks"u8);
-        ImGui.Text("escape for the menu, F3 hides this"u8);
+        ImGui.Text("escape pauses, F3 toggles the performance overlay"u8);
     }
 
     /// <inheritdoc />
@@ -751,6 +845,7 @@ public sealed class ShoreboundGame : IGame
         _translucentPipeline.Dispose();
         _opaquePipeline.Dispose();
         _scene.Dispose();
+        _blockTextures.Dispose();
         _field.Dispose();
         _shadowMap.Dispose();
         _world.Dispose();
@@ -760,6 +855,22 @@ public sealed class ShoreboundGame : IGame
     /// <summary>Reads the keys that change which screen is showing.</summary>
     private void ReadScreenKeys(GameContext context)
     {
+        if (_screen == Screen.Terminal)
+        {
+            if (context.Input.WasKeyPressed(GlfwKey.Escape))
+                CloseTerminal(context);
+            return;
+        }
+
+        if (
+            context.Input.WasKeyPressed(GlfwKey.T)
+            && _screen is Screen.Playing or Screen.Paused or Screen.Inventory or Screen.Machine or Screen.Milestones
+        )
+        {
+            OpenTerminal(context);
+            return;
+        }
+
         // A panel opens and closes on the same key, because a player who pressed a key to look at
         // something expects the same key to stop looking at it. Both directions are decided in
         // one place so that closing one cannot be read again this frame as opening it.
@@ -790,6 +901,14 @@ public sealed class ShoreboundGame : IGame
 
             case Screen.Settings:
                 LeaveSettings();
+                break;
+
+            case Screen.CreateWorld:
+                ReturnFromWorldCreation(context);
+                break;
+
+            case Screen.Saves:
+                ReturnFromSaveBrowser(context);
                 break;
 
             case Screen.Inventory:
@@ -932,8 +1051,8 @@ public sealed class ShoreboundGame : IGame
             1f
             - (FlickerAmount * 0.5f)
             + (FlickerAmount
-                * 0.5f
-                * (float)(double.Sin(_playedSeconds * 11.3) * double.Sin(_playedSeconds * 7.1)));
+               * 0.5f
+               * (float)(double.Sin(_playedSeconds * 11.3) * double.Sin(_playedSeconds * 7.1)));
 
         var strength = emission / (float)LightVolume.MaxLevel * flicker;
         var right = _camera.Right;
@@ -1043,6 +1162,125 @@ public sealed class ShoreboundGame : IGame
         }
     }
 
+    /// <summary>Draws one box of a creature, from its own sheet where the pack is installed.</summary>
+    /// <param name="part">The box: where it is, how large, and which patch of which sheet.</param>
+    /// <param name="yawRadians">How far the creature it belongs to is turned.</param>
+    /// <remarks>
+    /// Falls back to the flat colour the shape also carries, rather than to a transparent layer.
+    /// Without the pack every creature would otherwise be invisible — the shader discards a
+    /// transparent texel — and a world whose animals cannot be seen is a worse failure than a
+    /// world whose animals are untextured boxes.
+    /// </remarks>
+    private void DrawPart(in GrazerShape.Part part, float yawRadians) =>
+        _cubes.Draw(
+            part.MiddleMeters,
+            part.SizeMeters,
+            part.Color,
+            yawRadians,
+            _camera.Position,
+            _skinned ? part.TextureLayer : (byte)0,
+            null,
+            part.Skin
+        );
+
+    /// <summary>Whether there is anything to draw in front of the camera.</summary>
+    private bool InHand() => _screen == Screen.Playing;
+
+    /// <summary>Draws the player's own arm, and whatever it is holding, in front of the camera.</summary>
+    /// <remarks>
+    /// <para>
+    /// The one part of the player that is ever on screen. A first-person game with nothing in the
+    /// bottom corner of the frame is a camera flying through a world; an arm there is a person
+    /// standing in one, and it costs two boxes.
+    /// </para>
+    /// <para>
+    /// Placed from the camera's own axes and turned only about the upright one, because that is
+    /// all a loose box can be turned about. What that costs is that the arm stays level while the
+    /// view tilts, which is visible looking straight down and nowhere else; what it saves is a
+    /// second way of orienting a box, for one object.
+    /// </para>
+    /// </remarks>
+    private void DrawInHand()
+    {
+        if (!InHand())
+            return;
+
+        var forward = new double3(_camera.Forward.X, 0.0, _camera.Forward.Z);
+        var length = double.Sqrt((forward.X * forward.X) + (forward.Z * forward.Z));
+        if (length < 1e-6)
+            return;
+
+        forward /= length;
+        var right = new double3(forward.Z, 0.0, -forward.X);
+
+        // Swung forward while breaking, which is the only animation the arm has and the only one
+        // it needs: the question it answers is whether the button is doing anything.
+        var swing = _mining.Progress > 0f ? double.Sin(_mining.Progress * 18.0) * 0.05 : 0.0;
+        var drop = _camera.Pitch * 0.18;
+
+        // Nosed up so that it comes into frame from the bottom corner rather than lying flat
+        // across it, and nosed a little further while the view tilts, which is what keeps it in
+        // the corner instead of swinging across the middle of the screen.
+        var tilt = 0.62f - (_camera.Pitch * 0.35f);
+
+        // Where the arm's own length runs, which is what the two boxes are strung along: the
+        // camera's forward, nosed down by the same tilt the boxes are drawn with.
+        const double ArmLength = 0.34;
+        var along = (forward * double.Cos(tilt)) + new double3(0.0, -double.Sin(tilt), 0.0);
+        var shoulder =
+            _camera.Position
+            + (forward * (0.34 + swing))
+            - (right * 0.24)
+            + new double3(0.0, -0.28 + drop, 0.0);
+
+        var sleeveLength = ArmLength * MobSkins.Player.SleeveShare;
+        var layer = _skinned ? MobSkins.Player.Layer : (byte)0;
+
+        _cubes.Draw(
+            shoulder + (along * (sleeveLength * 0.5)),
+            new float3(0.085f, 0.085f, (float)sleeveLength),
+            ArmColor,
+            _camera.Yaw,
+            _camera.Position,
+            layer,
+            null,
+            MobSkins.Player.Sleeve,
+            tilt
+        );
+
+        _cubes.Draw(
+            shoulder + (along * (sleeveLength + ((ArmLength - sleeveLength) * 0.5))),
+            new float3(0.085f, 0.085f, (float)(ArmLength - sleeveLength)),
+            ArmColor,
+            _camera.Yaw,
+            _camera.Position,
+            layer,
+            null,
+            MobSkins.Player.Forearm,
+            tilt
+        );
+
+        if (!_inventory.HasSelection)
+            return;
+
+        var block = _world.Registry[_inventory.Selected];
+        var color = block.Color;
+        _cubes.Draw(
+            _camera.Position
+                + (forward * (0.52 + swing))
+                - (right * 0.19)
+                + new double3(0.0, -0.26 + drop, 0.0),
+            new float3(0.17f, 0.17f, 0.17f),
+            new float3(Channel(color.X), Channel(color.Y), Channel(color.Z)),
+            _camera.Yaw + 0.5f,
+            _camera.Position,
+            block.SideTextureLayer,
+            TextureTint(block.SideTextureTint),
+            null,
+            0.3f
+        );
+    }
+
     /// <summary>Draws one thing riding on something, in its block's own colour.</summary>
     private void DrawItem(double3 middleMeters, float3 sizeMeters, BlockId block)
     {
@@ -1052,9 +1290,14 @@ public sealed class ShoreboundGame : IGame
             sizeMeters,
             new float3(Channel(color.X), Channel(color.Y), Channel(color.Z)),
             0f,
-            _camera.Position
+            _camera.Position,
+            _world.Registry[block].SideTextureLayer,
+            TextureTint(_world.Registry[block].SideTextureTint)
         );
     }
+
+    private static float3 TextureTint(byte3 tint) =>
+        new(tint.X / 255f, tint.Y / 255f, tint.Z / 255f);
 
     /// <summary>Draws what is riding on every belt near enough to see.</summary>
     /// <remarks>
@@ -1540,14 +1783,27 @@ public sealed class ShoreboundGame : IGame
     {
         switch (choice)
         {
-            case MenuChoice.NewWorld:
-                StartFreshWorld();
-                Enter(context);
+            case MenuChoice.CreateWorld:
+                if (_screen == Screen.CreateWorld)
+                    break;
+                _screenBehindCreation = _screen;
+                _creationName = "New World";
+                _creationSeed = _generator.Seed;
+                _creationViewRadiusChunks = _settings.ViewRadiusChunks;
+                _creationDayLengthSeconds = (float)_settings.DayLengthSeconds;
+                _screen = Screen.CreateWorld;
+                context.Window.SetMouseCaptured(false);
+                break;
+
+            case MenuChoice.StartWorld:
+                CreateWorld(context);
                 break;
 
             case MenuChoice.Continue:
-                LoadWorld();
-                Enter(context);
+            case MenuChoice.LoadSaves:
+                _selectedSavePath = null;
+                _screenBehindSaves = _screen;
+                _screen = Screen.Saves;
                 break;
 
             case MenuChoice.Resume:
@@ -1555,8 +1811,14 @@ public sealed class ShoreboundGame : IGame
                 break;
 
             case MenuChoice.Settings:
-                _screenBehindSettings = _screen;
+                if (_screen == Screen.Settings)
+                    break;
+                _screenBehindSettings = _screen == Screen.CreateWorld ? _screenBehindCreation : _screen;
                 _screen = Screen.Settings;
+                break;
+
+            case MenuChoice.Back when _screen == Screen.CreateWorld:
+                ReturnFromWorldCreation(context);
                 break;
 
             case MenuChoice.Save:
@@ -1564,12 +1826,47 @@ public sealed class ShoreboundGame : IGame
                 break;
 
             case MenuChoice.SaveAndQuit:
-                SaveWorld();
-                context.Window.Close();
+                if (SaveWorld())
+                    context.Window.Close();
                 break;
 
             case MenuChoice.Quit:
                 context.Window.Close();
+                break;
+
+            case MenuChoice.MainMenu:
+                ReturnToMainMenu(context);
+                break;
+
+            case MenuChoice.Terminal:
+                if (_screen == Screen.Terminal)
+                    CloseTerminal(context);
+                else
+                    OpenTerminal(context);
+                break;
+
+            case MenuChoice.TeleportToSpawn:
+                TeleportToSpawn();
+                break;
+
+            case MenuChoice.RestoreHealth:
+                _vitality.Restore();
+                Say("Health restored.");
+                break;
+
+            case MenuChoice.ToggleFlight:
+                _player.IsFlying = !_player.IsFlying;
+                Say(_player.IsFlying ? "Flight enabled." : "Flight disabled.");
+                break;
+
+            case MenuChoice.ToggleTime:
+                _clock.IsFrozen = !_clock.IsFrozen;
+                Say(_clock.IsFrozen ? "Time frozen." : "Time resumed.");
+                break;
+
+            case MenuChoice.SetNoon:
+                _clock.SetDayFraction(double.Floor(_clock.DayFraction) + 0.5);
+                Say("Time set to noon.");
                 break;
         }
     }
@@ -1606,9 +1903,14 @@ public sealed class ShoreboundGame : IGame
     }
 
     /// <summary>Puts the player on the surface above the origin, with nothing changed.</summary>
-    private void StartFreshWorld()
+    private void StartFreshWorld(int? seed = null, string? savePath = null, string? worldName = null)
     {
-        _world.Edits.Clear();
+        _generator = new TerrainGenerator(_blocks, seed ?? _options.Seed);
+        _world.Reset(_generator, new ChunkStreamer(_generator, WorkerCount, StreamingQueueCapacity));
+        _savePath = savePath ?? _options.SavePath;
+        _worldName = worldName ?? Path.GetFileNameWithoutExtension(_savePath);
+        _controller.AimAt(0f, 0f);
+        _clock.SetDayFraction(0.0);
         _inventory.Clear();
         _bench.Grid.Clear();
         _machines.Clear();
@@ -1616,9 +1918,9 @@ public sealed class ShoreboundGame : IGame
         _held = Stack.Nothing;
 
 
-        _drops.Clear();
-        _grazers.Clear();
-        _stalkers.Clear();
+        _drops = new Drops(_generator.Seed);
+        _grazers = new Grazers(_generator.Seed);
+        _stalkers = new Stalkers(_generator.Seed);
         _vitality.Restore();
 
         // One block above the surface, so the first step is a short fall rather than a long one
@@ -1628,54 +1930,132 @@ public sealed class ShoreboundGame : IGame
         _camera.Position = _player.EyeMeters;
     }
 
-    private void LoadWorld()
+    private bool LoadWorld(string path)
     {
         try
         {
-            _world.Edits.Clear();
-            var (save, edits) = SaveFile.Read(_options.SavePath, _world.Edits, _world.Registry);
-
-            // Every loaded chunk was generated before the edits arrived, so each has to be made
-            // again; unloading is how a chunk is asked for a second time.
-            foreach (var coordinate in _world.LoadedCoordinates.ToArray())
-                _world.Unload(coordinate);
+            var loadedEdits = new BlockEdits();
+            var (save, edits) = SaveFile.Read(path, loadedEdits, _world.Registry);
+            _generator = new TerrainGenerator(_blocks, save.Seed);
+            _world.Reset(_generator, new ChunkStreamer(_generator, WorkerCount, StreamingQueueCapacity));
+            foreach (var coordinate in loadedEdits.TouchedChunks)
+            foreach (var (index, block) in loadedEdits.InChunk(coordinate))
+                _world.Edits.RecordAt(coordinate, index, block);
 
             _player.TeleportTo(save.FeetMeters);
             _player.IsFlying = save.IsFlying;
             _controller.AimAt(save.Yaw, save.Pitch);
             _inventory.Select(save.RowIndex);
             _inventory.Restore(save.Carried, _blocks.Registry);
-            RestoreMachines(save.Machines);
             // A world written before the progression branched holds a count instead of names.
             if (save.MilestonesTaken > 0)
                 _progression.RestoreCount(save.MilestonesTaken);
             else
                 _progression.Restore(save.MilestonesDone);
             _bench.Grid.Clear();
+            RestoreMachines(save.Machines);
             _held = Stack.Nothing;
             _drops.Clear();
             _grazers.Clear();
             _stalkers.Clear();
+            _drops = new Drops(save.Seed);
+            _grazers = new Grazers(save.Seed);
+            _stalkers = new Stalkers(save.Seed);
             _vitality.Restore();
             _clock.SetDayFraction(save.DayFraction);
+            _savePath = path;
+            _worldName = Path.GetFileNameWithoutExtension(path);
 
             Say(
                 edits.Dropped == 0
-                    ? $"Loaded {_options.SavePath}: {edits.Applied} blocks changed."
-                    : $"Loaded {_options.SavePath}: {edits.Applied} blocks changed, {edits.Dropped} dropped."
+                    ? $"Loaded {Path.GetFileNameWithoutExtension(path)}: {edits.Applied} blocks changed."
+                    : $"Loaded {Path.GetFileNameWithoutExtension(path)}: {edits.Applied} blocks changed, {edits.Dropped} dropped."
             );
+            return true;
         }
-        catch (Exception failure) when (failure is IOException or InvalidDataException)
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            // A world that cannot be read is a thing to say, not a thing to crash over: the
-            // player is standing in a perfectly good fresh one.
-            Say($"Could not load {_options.SavePath}: {failure.Message}");
-            StartFreshWorld();
+            Say($"Could not load {Path.GetFileName(path)}: {failure.Message}");
+            return false;
         }
     }
 
-    private void SaveWorld()
+    private void DrawSaveBrowser(GameContext context)
     {
+        var savePaths = ListSaves();
+        var choice = _ui.DrawSaveBrowser(savePaths, _selectedSavePath);
+        switch (choice.Action)
+        {
+            case SaveBrowserAction.Select:
+                _selectedSavePath = choice.Path;
+                break;
+
+            case SaveBrowserAction.Load when choice.Path is { } path:
+                if (ScreenContainsWorld(_screenBehindSaves, 0) && !SaveWorld())
+                    break;
+                if (LoadWorld(path))
+                    Enter(context);
+                break;
+
+            case SaveBrowserAction.Rename when choice.Path is { } path && choice.Name is { } name:
+                try
+                {
+                    _selectedSavePath = SaveCatalog.Rename(path, name);
+                    Say($"Renamed save to {Path.GetFileNameWithoutExtension(_selectedSavePath)}.");
+                }
+                catch (Exception failure) when (failure is IOException or UnauthorizedAccessException
+                                                    or ArgumentException)
+                {
+                    Say($"Could not rename {Path.GetFileName(path)}: {failure.Message}");
+                }
+
+                break;
+
+            case SaveBrowserAction.Delete when choice.Path is { } path:
+                try
+                {
+                    SaveCatalog.Delete(path);
+                    _selectedSavePath = null;
+                    Say($"Deleted {Path.GetFileName(path)}.");
+                }
+                catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+                {
+                    Say($"Could not delete {Path.GetFileName(path)}: {failure.Message}");
+                }
+
+                break;
+
+            case SaveBrowserAction.Back:
+                _selectedSavePath = null;
+                ReturnFromSaveBrowser(context);
+                break;
+        }
+    }
+
+    private string[] ListSaves()
+    {
+        try
+        {
+            var savePaths = SaveCatalog.List(_savePath);
+            _saveCatalogError = null;
+            return savePaths;
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            var message = $"Could not list saves: {failure.Message}";
+            if (!string.Equals(_saveCatalogError, message, StringComparison.Ordinal))
+            {
+                _saveCatalogError = message;
+                Say(message);
+            }
+
+            return [];
+        }
+    }
+
+    private bool SaveWorld()
+    {
+        StashHeldStack();
         var save = new SaveFile
         {
             Seed = _generator.Seed,
@@ -1692,19 +2072,338 @@ public sealed class ShoreboundGame : IGame
 
         try
         {
-            save.Write(_options.SavePath, _world.Edits, _world.Registry);
-            Say($"Saved {_world.Edits.Count} changed blocks to {_options.SavePath}.");
+            save.Write(_savePath, _world.Edits, _world.Registry);
+            Say($"Saved {_world.Edits.Count} changed blocks in {_worldName}.");
+            return true;
         }
-        catch (IOException failure)
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
         {
-            Say($"Could not save to {_options.SavePath}: {failure.Message}");
+            Say($"Could not save {_worldName}: {failure.Message}");
+            return false;
         }
+    }
+
+    private void CreateWorld(GameContext context)
+    {
+        string path;
+        try
+        {
+            path = SaveCatalog.PathForName(_options.SavePath, _creationName);
+        }
+        catch (ArgumentException failure)
+        {
+            Say(failure.Message);
+            return;
+        }
+
+        if (File.Exists(path))
+        {
+            Say($"A world named '{Path.GetFileNameWithoutExtension(path)}' already exists.");
+            return;
+        }
+
+        if (ScreenContainsWorld(_screenBehindCreation, 0) && !SaveWorld())
+            return;
+
+        var cleanName = Path.GetFileNameWithoutExtension(path);
+        _settings = _settings with
+        {
+            ViewRadiusChunks = _creationViewRadiusChunks,
+            DayLengthSeconds = _creationDayLengthSeconds,
+        };
+        Apply(_settings);
+        WriteSettings();
+        StartFreshWorld(_creationSeed, path, cleanName);
+        _screenBehindCreation = Screen.Title;
+        Enter(context);
+        Say($"Created world '{cleanName}' with seed {_creationSeed}.");
+    }
+
+    private void ReturnToMainMenu(GameContext context)
+    {
+        if (HasWorldContext() && !SaveWorld())
+            return;
+
+        _screen = Screen.Title;
+        _screenBehindSettings = Screen.Title;
+        _screenBehindCreation = Screen.Title;
+        _screenBehindTerminal = Screen.Title;
+        context.Window.SetMouseCaptured(false);
+    }
+
+    private void OpenTerminal(GameContext context)
+    {
+        if (!HasWorldContext())
+            return;
+
+        _screenBehindTerminal = _screen;
+        _screen = Screen.Terminal;
+        context.Window.SetMouseCaptured(false);
+        AddTerminalLine("Shorebound terminal. Type help for commands.");
+    }
+
+    private void CloseTerminal(GameContext context)
+    {
+        var returnTo = _screenBehindTerminal;
+        if (returnTo == Screen.Playing)
+        {
+            Enter(context);
+            return;
+        }
+
+        _screen = returnTo;
+        context.Window.SetMouseCaptured(false);
+    }
+
+    private bool HasWorldContext() => ScreenContainsWorld(_screen, 0);
+
+    private bool ScreenContainsWorld(Screen screen, int depth)
+    {
+        if (depth > 4)
+            return false;
+
+        return screen switch
+        {
+            Screen.Playing or Screen.Paused or Screen.Inventory or Screen.Machine or Screen.Milestones => true,
+            Screen.Settings => ScreenContainsWorld(_screenBehindSettings, depth + 1),
+            Screen.Terminal => ScreenContainsWorld(_screenBehindTerminal, depth + 1),
+            Screen.CreateWorld => ScreenContainsWorld(_screenBehindCreation, depth + 1),
+            Screen.Saves => ScreenContainsWorld(_screenBehindSaves, depth + 1),
+            _ => false,
+        };
+    }
+
+    private void ReturnFromSaveBrowser(GameContext context)
+    {
+        var returnTo = _screenBehindSaves;
+        if (returnTo == Screen.Playing)
+        {
+            Enter(context);
+            return;
+        }
+
+        _screen = returnTo;
+        context.Window.SetMouseCaptured(false);
+    }
+
+    private void ReturnFromWorldCreation(GameContext context)
+    {
+        var returnTo = _screenBehindCreation;
+        if (returnTo == Screen.Playing)
+        {
+            Enter(context);
+            return;
+        }
+
+        _screen = returnTo;
+        context.Window.SetMouseCaptured(false);
+    }
+
+    private void TeleportToSpawn()
+    {
+        _player.TeleportTo(new double3(0.5, _generator.SurfaceHeight(0, 0) + 2.0, 0.5));
+        _camera.Position = _player.EyeMeters;
+        Say("Teleported to spawn.");
+    }
+
+    private void StashHeldStack()
+    {
+        if (_held.IsNothing)
+            return;
+
+        _inventory.Add(_held.Block, _held.Count);
+        _held = Stack.Nothing;
+    }
+
+    private void RunTerminalCommand(string command, GameContext context)
+    {
+        var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        switch (parts[0].ToLowerInvariant())
+        {
+            case "help":
+                AddTerminalLine(
+                    "help, save, menu, seed, time <hour|freeze|run>, tp <x> <y> <z>, spawn, fly [on|off], heal, give <block> [count], clear");
+                break;
+
+            case "save":
+                SaveWorld();
+                break;
+
+            case "menu":
+                ReturnToMainMenu(context);
+                break;
+
+            case "seed":
+                AddTerminalLine($"Seed: {_generator.Seed}.");
+                break;
+
+            case "time":
+                RunTimeCommand(parts);
+                break;
+
+            case "tp" or "teleport":
+                RunTeleportCommand(parts);
+                break;
+
+            case "spawn":
+                TeleportToSpawn();
+                break;
+
+            case "fly":
+                RunFlightCommand(parts);
+                break;
+
+            case "heal":
+                _vitality.Restore();
+                Say("Health restored.");
+                break;
+
+            case "give":
+                RunGiveCommand(parts);
+                break;
+
+            case "clear":
+                _terminalOutput.Clear();
+                break;
+
+            default:
+                AddTerminalLine($"Unknown command '{parts[0]}'. Type help for commands.");
+                break;
+        }
+    }
+
+    private void RunTimeCommand(string[] parts)
+    {
+        if (parts.Length != 2)
+        {
+            AddTerminalLine("Usage: time <hour 0-24|freeze|run>");
+            return;
+        }
+
+        if (string.Equals(parts[1], "freeze", StringComparison.OrdinalIgnoreCase))
+        {
+            _clock.IsFrozen = true;
+            Say("Time frozen.");
+            return;
+        }
+
+        if (string.Equals(parts[1], "run", StringComparison.OrdinalIgnoreCase))
+        {
+            _clock.IsFrozen = false;
+            Say("Time resumed.");
+            return;
+        }
+
+        if (
+            !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var hour)
+            || !double.IsFinite(hour)
+            || hour is < 0 or > 24
+        )
+        {
+            AddTerminalLine("Enter a time from 0 to 24, freeze, or run.");
+            return;
+        }
+
+        _clock.SetDayFraction(double.Floor(_clock.DayFraction) + (hour / 24.0));
+        Say($"Time set to {_clock}.");
+    }
+
+    private void RunTeleportCommand(string[] parts)
+    {
+        if (parts.Length != 4
+            || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var x)
+            || !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var y)
+            || !double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var z)
+            || !double.IsFinite(x) || !double.IsFinite(y) || !double.IsFinite(z))
+        {
+            AddTerminalLine("Usage: tp <finite x> <finite y> <finite z>");
+            return;
+        }
+
+        _player.TeleportTo(new double3(x, y, z));
+        _camera.Position = _player.EyeMeters;
+        Say($"Teleported to {x:F1}, {y:F1}, {z:F1}.");
+    }
+
+    private void RunFlightCommand(string[] parts)
+    {
+        if (
+            parts.Length > 2
+            || (parts.Length == 2
+                && !parts[1].Equals("on", StringComparison.OrdinalIgnoreCase)
+                && !parts[1].Equals("off", StringComparison.OrdinalIgnoreCase))
+        )
+        {
+            AddTerminalLine("Usage: fly [on|off]");
+            return;
+        }
+
+        _player.IsFlying = parts.Length == 1
+            ? !_player.IsFlying
+            : parts[1].Equals("on", StringComparison.OrdinalIgnoreCase);
+        Say(_player.IsFlying ? "Flight enabled." : "Flight disabled.");
+    }
+
+    private void RunGiveCommand(string[] parts)
+    {
+        if (parts.Length < 2)
+        {
+            AddTerminalLine("Usage: give <block name> [count]");
+            return;
+        }
+
+        var count = 1;
+        var end = parts.Length;
+        if (parts.Length > 2 &&
+            int.TryParse(parts[^1], NumberStyles.None, CultureInfo.InvariantCulture, out var requested))
+        {
+            count = requested;
+            end--;
+        }
+
+        if (count is < 1 or > Inventory.StackSize)
+        {
+            AddTerminalLine($"Count must be between 1 and {Inventory.StackSize}.");
+            return;
+        }
+
+        var blockName = string.Join(" ", parts[1..end]);
+        if (_blocks.Registry.Find(blockName) is not { } block)
+        {
+            AddTerminalLine($"Unknown block '{blockName}'.");
+            return;
+        }
+
+        var added = _inventory.Add(block, count);
+        Say(added == count
+            ? $"Added {added} {blockName}."
+            : $"Added {added} of {count} {blockName}; inventory is full.");
+    }
+
+    private void WriteSettings()
+    {
+        try
+        {
+            SettingsFile.Write(_options.SettingsPath, _settings);
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            Say($"Could not write settings: {failure.Message}");
+        }
+    }
+
+    private void AddTerminalLine(string message)
+    {
+        _terminalOutput.Add(message);
+        if (_terminalOutput.Count > 64)
+            _terminalOutput.RemoveAt(0);
     }
 
     private void Say(string message)
     {
         _notice = message;
         _noticeLeftSeconds = NoticeSeconds;
+        AddTerminalLine(message);
         Console.WriteLine(message);
     }
 }

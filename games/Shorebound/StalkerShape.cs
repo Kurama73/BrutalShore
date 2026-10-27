@@ -43,13 +43,21 @@ public static class StalkerShape
         var legMiddle = LegSize.Y / 2.0;
         var bodyMiddle = LegSize.Y + (BodySize.Y / 2.0);
 
-        into[0] = new GrazerShape.Part(feet + new double3(0.0, bodyMiddle, 0.0), BodySize, Hide);
+        into[0] = new GrazerShape.Part(
+            feet + new double3(0.0, bodyMiddle, 0.0),
+            BodySize,
+            Hide,
+            MobSkins.Stalker.Layer,
+            MobSkins.Stalker.Body
+        );
 
         // The head out in front and barely above the body, which is the whole of the silhouette.
         into[1] = new GrazerShape.Part(
             feet + (forward * 0.62) + new double3(0.0, bodyMiddle - 0.04, 0.0),
             HeadSize,
-            Maw
+            Maw,
+            MobSkins.Stalker.Layer,
+            MobSkins.Stalker.Head
         );
 
         // Diagonal pairs swing together, the way a four-legged thing actually walks.
@@ -67,7 +75,9 @@ public static class StalkerShape
             into[2 + leg] = new GrazerShape.Part(
                 feet + (forward * (along + legSwing)) + (right * across) + new double3(0.0, legMiddle, 0.0),
                 LegSize,
-                Hide
+                Hide,
+                MobSkins.Stalker.Layer,
+                MobSkins.Stalker.Leg
             );
         }
     }

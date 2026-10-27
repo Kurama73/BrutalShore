@@ -146,21 +146,23 @@ Specifically, do not introduce a wrapper over BRUTAL's Vulkan layer. It is
 already the abstraction over Vulkan; a second one would only be a second thing
 to keep in step.
 
-### Nothing in this repository is an asset
+### Assets are exceptional, not forbidden
 
-There are no textures, no models and no audio files, and that is a rule rather
-than a stage. A block's surface is a pattern computed in the fragment shader, a
-creature is six boxes, and a sound is a burst of noise shaped by an envelope and
-built at load from a handful of numbers.
+The world and creatures remain procedural, and audio remains synthesised. Shorebound
+now has one deliberate texture exception: selected block textures from the Faithful
+Resource Pack are used to make the terrain and built blocks more legible at a glance.
+Only the textures actually mapped to game blocks are copied to the build output.
 
-What it buys is the same thing three times: nothing to licence, nothing that can
-drift out of step with the code, and nothing in the repository that cannot be
-read and changed by editing a constant. It also means every one of those things
-can be *tested* — `Synth` and `GameSounds` are asserted about under
-`dotnet test`, with no device open, which is not possible for a recording.
+Faithful is non-commercial under its included license. Keep its license file intact,
+credit Faithful Resource Pack and link to https://faithfulpack.net/ in the game, and
+do not monetize any build containing these textures. The full pack may be retained
+under `games/Shorebound/Assets/Faithful` as the source, but unused files must not be
+shipped. Any further asset source needs its own license review and an explicit
+addition here before use.
 
-When something genuinely needs to be an asset, that is a decision to write down
-here first, with what it buys.
+This exception does not make the game depend on assets for its simulation: voxel
+generation, collisions, and headless tests must continue to work without opening a
+graphics device.
 
 ### The world is generated, not stored
 

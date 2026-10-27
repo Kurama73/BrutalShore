@@ -345,7 +345,7 @@ public sealed class Player
     private void EaseEyeHeight(double seconds)
     {
         var target = IsCrouching ? CrouchDropMeters : 0.0;
-        var caught = CrouchEaseSeconds <= 0.0 ? 1.0 : 1.0 - double.Exp(-seconds / (CrouchEaseSeconds / 3.0));
+        var caught = 1.0 - double.Exp(-seconds / (CrouchEaseSeconds / 3.0));
         _eyeDrop = double.Lerp(_eyeDrop, target, double.Clamp(caught, 0.0, 1.0));
     }
 

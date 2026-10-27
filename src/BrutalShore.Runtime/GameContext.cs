@@ -19,7 +19,8 @@ public sealed class GameContext
         ShaderLibrary shaders,
         FrameClock clock,
         Profiler counters,
-        IInputSource input
+        IInputSource input,
+        DebugOverlay debugOverlay
     )
     {
         Window = window;
@@ -30,6 +31,7 @@ public sealed class GameContext
         Shaders = shaders;
         Clock = clock;
         Counters = counters;
+        DebugOverlay = debugOverlay;
     }
 
     /// <summary>Where the game times its own work, for the overlay to show.</summary>
@@ -47,6 +49,9 @@ public sealed class GameContext
     /// nobody at the machine, which is what a scripted session is for.
     /// </remarks>
     public IInputSource Input { get; }
+
+    /// <summary>The host's floating performance panel, which the game can expose from its menus.</summary>
+    public DebugOverlay DebugOverlay { get; }
 
     /// <summary>The window, for its framebuffer size and for closing it.</summary>
     public GameWindow Window { get; }

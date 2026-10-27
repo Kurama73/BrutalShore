@@ -41,7 +41,7 @@ public sealed record HostOptions
     /// rather than of the numbers over it, which a fixed-frame run has no way to ask for
     /// otherwise — it never gets to a keyboard.
     /// </remarks>
-    public bool ShowOverlay { get; init; } = true;
+    public bool ShowOverlay { get; init; }
 
     /// <summary>Where to write a table of what the run cost, or nothing.</summary>
     /// <remarks>

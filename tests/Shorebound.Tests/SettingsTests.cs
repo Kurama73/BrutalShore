@@ -24,7 +24,7 @@ public sealed class SettingsTests : IDisposable
     {
         var written = new Settings
         {
-            ViewRadiusChunks = 12,
+            ViewRadiusChunks = 24,
             FieldOfViewDegrees = 92f,
             LookSensitivity = 85f,
             Shadows = false,
@@ -45,6 +45,12 @@ public sealed class SettingsTests : IDisposable
     public void a_settings_file_that_is_not_there_gives_the_defaults()
     {
         Assert.Equal(Settings.Default, SettingsFile.Read(_path));
+    }
+
+    [Fact]
+    public void the_debug_overlay_starts_hidden_by_default()
+    {
+        Assert.False(Settings.Default.ShowOverlay);
     }
 
     [Fact]
@@ -82,7 +88,7 @@ public sealed class SettingsTests : IDisposable
 
         // An interface scale of ninety-nine would be a single letter filling the window, which is
         // the one setting a player cannot undo from inside the game.
-        Assert.InRange(read.ViewRadiusChunks, 2, 24);
+        Assert.InRange(read.ViewRadiusChunks, 10, 256);
         Assert.InRange(read.FieldOfViewDegrees, 50f, 110f);
         Assert.InRange(read.UiScale, 0.75f, 2f);
     }

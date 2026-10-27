@@ -3,15 +3,14 @@ using System.Runtime.InteropServices;
 namespace BrutalShore.Voxel;
 
 /// <summary>
-/// One corner of one meshed quad, packed into eight bytes.
+/// One corner of one meshed quad, packed into twelve bytes.
 /// </summary>
 /// <remarks>
 /// <para>
 /// A voxel surface is the one case where packing a vertex by hand is clearly worth it. The
-/// quantities are all small integers — a position on a 33-point lattice, one of six face
-/// directions, one of four occlusion levels, a colour — and there are millions of them, so the
-/// difference between eight bytes and a comfortable thirty-two is the difference between a view
-/// distance that fits in memory and bandwidth and one that does not.
+/// quantities are small integers, and there are millions of them. Twelve bytes carries the
+/// texture layer alongside the existing packed data without expanding to a conventional
+/// thirty-two-byte vertex.
 /// </para>
 /// <para>
 /// Two things are deliberately <em>not</em> in here. The texture coordinate is not, because the
@@ -19,8 +18,8 @@ namespace BrutalShore.Voxel;
 /// components that are not along the face's normal already are the coordinate across it, which is
 /// also what makes a merged quad tile per cell instead of stretching. And the block id is not,
 /// because the mesh is geometry: what the surface looks like has already been resolved from the
-/// registry into a colour and a pattern, and anything that needs to know which block it is asks
-/// the chunk, which is where the answer is authoritative.
+/// registry into a colour, a pattern and a texture layer, and anything that needs to know which
+/// block it is asks the chunk, which is where the answer is authoritative.
 /// </para>
 /// <para>
 /// The opacity is kept in sixteenths rather than in bytes, which is what makes room for the
@@ -43,6 +42,10 @@ namespace BrutalShore.Voxel;
 ///           bits 16..23  blue
 ///           bits 24..27  opacity in sixteenths, 15 for a solid block
 ///           bits 28..31  the surface's <see cref="BlockPattern"/>
+/// Packed2:  bits  0..7   texture-array layer, 0 for procedural surfaces
+///           bits  8..15  texture tint red, sRGB
+///           bits 16..23  texture tint green
+///           bits 24..31  texture tint blue
 /// </code>
 /// </para>
 /// </remarks>
@@ -55,6 +58,9 @@ public readonly struct VoxelVertex
     /// <summary>Colour.</summary>
     public readonly uint Packed1;
 
+    /// <summary>Texture layer and texture tint.</summary>
+    public readonly uint Packed2;
+
     /// <summary>Packs one corner.</summary>
     /// <param name="x">Chunk-local x in voxel units, 0 to <see cref="Chunk.Size"/> inclusive.</param>
     /// <param name="y">Chunk-local y in voxel units, 0 to <see cref="Chunk.Size"/> inclusive.</param>
@@ -66,6 +72,8 @@ public readonly struct VoxelVertex
     /// <param name="color">The block's colour in sRGB bytes.</param>
     /// <param name="opacity">How much of what is behind the face it hides; 255 is solid.</param>
     /// <param name="pattern">What the surface looks like closer than a whole block.</param>
+    /// <param name="textureLayer">Texture-array layer, or zero to use the pattern.</param>
+    /// <param name="textureTint">The sRGB colour multiplied into the sampled texture.</param>
     public VoxelVertex(
         int x,
         int y,
@@ -76,7 +84,9 @@ public readonly struct VoxelVertex
         int blockLight,
         byte3 color,
         byte opacity,
-        BlockPattern pattern
+        BlockPattern pattern,
+        byte textureLayer = 0,
+        byte3? textureTint = null
     )
     {
         Packed0 =
@@ -94,6 +104,9 @@ public readonly struct VoxelVertex
             | ((uint)color.Z << 16)
             | ((uint)(opacity >> 4) << 24)
             | ((uint)pattern << 28);
+
+        var tint = textureTint ?? byte3.HexColor(0xFFFFFF);
+        Packed2 = textureLayer | ((uint)tint.X << 8) | ((uint)tint.Y << 16) | ((uint)tint.Z << 24);
     }
 
     /// <summary>The chunk-local position this corner was packed with.</summary>
@@ -120,4 +133,11 @@ public readonly struct VoxelVertex
 
     /// <summary>The pattern this corner was packed with.</summary>
     public BlockPattern Pattern => (BlockPattern)((Packed1 >> 28) & 0xF);
+
+    /// <summary>The texture-array layer this corner was packed with, or zero for a pattern.</summary>
+    public byte TextureLayer => (byte)(Packed2 & 0xFF);
+
+    /// <summary>The sRGB texture tint this corner was packed with.</summary>
+    public byte3 TextureTint =>
+        new((byte)((Packed2 >> 8) & 0xFF), (byte)((Packed2 >> 16) & 0xFF), (byte)((Packed2 >> 24) & 0xFF));
 }

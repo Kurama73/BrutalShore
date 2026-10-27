@@ -26,6 +26,7 @@ public sealed class GameHost : IDisposable
 
     /// <summary>The script being played, or nothing when a person is at the keyboard.</summary>
     private readonly ScriptedInput? _scripted;
+
     private readonly GpuContext _gpu;
     private readonly SwapchainTarget _target;
     private readonly GpuRenderer _renderer;
@@ -58,7 +59,8 @@ public sealed class GameHost : IDisposable
             _shaders,
             _clock,
             _profile.Counters,
-            _scripted ?? (IInputSource)_window
+            _scripted ?? (IInputSource)_window,
+            _overlay
         );
     }
 

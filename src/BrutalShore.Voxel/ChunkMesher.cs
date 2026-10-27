@@ -25,10 +25,10 @@ namespace BrutalShore.Voxel;
 /// </item>
 /// <item>
 /// <description>
-/// <b>Greedy merging.</b> Adjacent faces on the same plane, facing the same way, of the same
-/// colour, with the same occlusion at every corner, become one rectangle. A merged rectangle is
-/// flat, one colour and one normal, so nothing is lost. A solid 32³ chunk falls from 12,288
-/// triangles to 12.
+/// <b>Greedy merging.</b> Adjacent faces on the same plane, facing the same way, with the same
+/// colour, opacity, pattern, texture layer and occlusion at every corner become one rectangle.
+/// Texture coordinates come from the position, so a merged rectangle still tiles once per block.
+/// A solid 32³ chunk falls from 12,288 triangles to 12.
 /// </description>
 /// </item>
 /// </list>
@@ -63,6 +63,8 @@ public sealed class ChunkMesher
     /// <param name="Color">The owning block's colour.</param>
     /// <param name="Opacity">The owning block's opacity, which keeps the two passes apart.</param>
     /// <param name="Pattern">What the owning block's surface looks like closer than a block.</param>
+    /// <param name="TextureLayer">The owning block's texture on this face, or zero for a pattern.</param>
+    /// <param name="TextureTint">The owning block's colour tint for this face's texture.</param>
     /// <param name="Corner0">The corner at (i, j).</param>
     /// <param name="Corner1">The corner at (i + 1, j).</param>
     /// <param name="Corner2">The corner at (i + 1, j + 1).</param>
@@ -71,6 +73,8 @@ public sealed class ChunkMesher
         byte3 Color,
         byte Opacity,
         BlockPattern Pattern,
+        byte TextureLayer,
+        byte3 TextureTint,
         CornerShade Corner0,
         CornerShade Corner1,
         CornerShade Corner2,
@@ -232,6 +236,8 @@ public sealed class ChunkMesher
                     ownerType.Color,
                     ownerType.Opacity,
                     ownerType.Pattern,
+                    TextureLayer(ownerType, (VoxelFace)(axis * 2 + (facingPositive ? 0 : 1))),
+                    TextureTint(ownerType, (VoxelFace)(axis * 2 + (facingPositive ? 0 : 1))),
                     Shade(source, light, u, v, facingWorldX, facingWorldY, facingWorldZ, -1, -1),
                     Shade(source, light, u, v, facingWorldX, facingWorldY, facingWorldZ, +1, -1),
                     Shade(source, light, u, v, facingWorldX, facingWorldY, facingWorldZ, +1, +1),
@@ -243,6 +249,22 @@ public sealed class ChunkMesher
             }
         }
     }
+
+    private static byte TextureLayer(BlockType type, VoxelFace face) =>
+        face switch
+        {
+            VoxelFace.PositiveY => type.TopTextureLayer,
+            VoxelFace.NegativeY => type.BottomTextureLayer,
+            _ => type.SideTextureLayer,
+        };
+
+    private static byte3 TextureTint(BlockType type, VoxelFace face) =>
+        face switch
+        {
+            VoxelFace.PositiveY => type.TopTextureTint,
+            VoxelFace.NegativeY => type.BottomTextureTint,
+            _ => type.SideTextureTint,
+        };
 
     /// <summary>Whether the block in front of a face hides it well enough not to build it.</summary>
     /// <remarks>
@@ -477,7 +499,9 @@ public sealed class ChunkMesher
             shade.BlockLight,
             cell.Color,
             cell.Opacity,
-            cell.Pattern
+            cell.Pattern,
+            cell.TextureLayer,
+            cell.TextureTint
         );
     }
 }

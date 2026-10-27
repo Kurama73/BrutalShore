@@ -25,6 +25,7 @@ layout(push_constant) uniform Push {
 
 layout(location = 0) in uint inPacked0;
 layout(location = 1) in uint inPacked1;
+layout(location = 2) in uint inPacked2;
 
 layout(location = 0) out vec3 outColor;
 layout(location = 1) out vec3 outNormal;
@@ -35,6 +36,8 @@ layout(location = 5) out float outOpacity;
 layout(location = 6) out vec3 outWorldPosition;
 layout(location = 7) out vec2 outLight;
 layout(location = 8) flat out uint outPattern;
+layout(location = 9) flat out uint outTextureLayer;
+layout(location = 10) flat out vec3 outTextureTint;
 
 const vec3 NORMALS[6] = vec3[6](
     vec3( 1.0,  0.0,  0.0),
@@ -76,6 +79,12 @@ void main() {
     // Sixteenths rather than bytes, which is what made room for the pattern beside it.
     outOpacity = float((inPacked1 >> 24) & 0xFu) / 15.0;
     outPattern = (inPacked1 >> 28) & 0xFu;
+    outTextureLayer = inPacked2 & 0xFFu;
+    outTextureTint = vec3(
+        float((inPacked2 >> 8) & 0xFFu),
+        float((inPacked2 >> 16) & 0xFFu),
+        float((inPacked2 >> 24) & 0xFFu)
+    ) / 255.0;
     outNormal = NORMALS[face];
     outOcclusion = float(occlusion) / 3.0;
     outLight = vec2(float(skyLight), float(blockLight)) / 15.0;

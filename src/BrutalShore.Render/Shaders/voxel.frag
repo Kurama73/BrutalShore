@@ -36,6 +36,8 @@ layout(location = 7) in vec2 inLight;
 // Which of BlockPattern's surfaces this face is. Flat, because a pattern belongs to a whole quad
 // and interpolating between two of them would mean a surface that is half stone and half wood.
 layout(location = 8) flat in uint inPattern;
+layout(location = 9) flat in uint inTextureLayer;
+layout(location = 10) flat in vec3 inTextureTint;
 
 // Compares rather than reads: each fetch answers "is this fragment nearer the light than what
 // was stored", and with a linear filter the hardware averages four of those answers for free.
@@ -44,6 +46,7 @@ layout(set = 0, binding = 1) uniform sampler2DShadow shadowMap;
 // The world around the camera, one texel a block: rgb is the block's colour and a says what kind
 // it is — nothing, see-through, or solid. This is what a ray walks through. See VoxelField.
 layout(set = 0, binding = 2) uniform sampler3D voxelField;
+layout(set = 0, binding = 3) uniform sampler2DArray blockTextures;
 
 layout(location = 0) out vec4 outColor;
 
@@ -433,9 +436,24 @@ void main() {
     // large a block is on screen.
     float onScreen = max(fwidth(inSurface).x, fwidth(inSurface).y);
     float detail = clamp(1.0 - (onScreen * 7.0), 0.0, 1.0);
-    shade *= mix(1.0, patternShade(inPattern, inSurface, cell), detail);
+    vec3 surfaceColor = inColor;
+    float surfaceOpacity = inOpacity;
+    if (inTextureLayer > 0u) {
+        vec2 textureCoordinate = fract(inSurface);
+        if (abs(inNormal.y) < 0.5) {
+            textureCoordinate.y = fract(-inSurface.y);
+        }
+        vec4 texel = texture(blockTextures, vec3(textureCoordinate, float(inTextureLayer)));
+        if (texel.a < 0.1) {
+            discard;
+        }
+        surfaceColor = srgbToLinear(texel.rgb) * srgbToLinear(inTextureTint);
+        surfaceOpacity *= texel.a;
+    } else {
+        shade *= mix(1.0, patternShade(inPattern, inSurface, cell), detail);
+    }
 
-    vec3 lit = inColor * light * occlusion * shade;
+    vec3 lit = surfaceColor * light * occlusion * shade;
 
     lit *= 1.0 - breakingShade(cell, inSurface);
 
@@ -450,7 +468,7 @@ void main() {
     // it, and how much of each depends on the angle it is looked at from. Only upward faces:
     // what reads as a mirror is a lake seen from above it, and the side of a block of water seen
     // edge on is both a sliver and a surface no one expects anything of.
-    if (inOpacity < 1.0 && inNormal.y > 0.5) {
+    if (surfaceOpacity < 1.0 && inNormal.y > 0.5) {
         float reflected;
         vec3 mirrored = reflectionOn(inViewOffset, inNormal, reflected);
         lit = mix(lit, mirrored * scene.shadow.w, reflected);
@@ -465,5 +483,5 @@ void main() {
 
     // Fog has to reach the alpha too, or a see-through surface stays sharp against a sky the
     // solid world has already faded into.
-    outColor = vec4(lit, mix(inOpacity, 1.0, fog));
+    outColor = vec4(lit, mix(surfaceOpacity, 1.0, fog));
 }

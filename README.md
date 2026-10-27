@@ -391,21 +391,19 @@ its whole 3×3×3 neighbourhood is loaded; and the faces that survive are merged
 greedily into the largest rectangles that share a colour, an opacity **and** an
 ambient occlusion pattern. A solid chunk goes from 196,608 triangles to 12.
 
-Each corner is eight bytes: position on a 33-point lattice, one of six face
-directions, two bits of ambient occlusion, two light levels, a colour, an
-opacity in sixteenths and a surface pattern. There is no texture coordinate,
-because the shader derives one from the position — which is also what makes a
-merged quad tile per block instead of stretching.
+Each corner carries its position, face direction, ambient occlusion, light,
+colour, opacity, surface pattern and texture layer. Surface coordinates still
+come from the position, so greedy-merged faces tile once per block rather than
+stretching one texel over the whole rectangle.
 
-Nothing has a texture at all, and nothing is going to. What a surface looks like
-closer than a block is a function of where the fragment is: stone is mottled in
-patches a few shades apart, grass is short upright strokes each starting at its
-own height, wood is bent lines with knots in them, a canopy is clumps with gaps
-between them, snow is flat with the odd bright fleck. There is no image to load,
-no atlas to pack, nothing in memory, and the detail is as fine as the screen
-rather than as fine as a texel — and it fades out once a block is small on
-screen, because a pattern finer than a pixel is noise that crawls, and a
-function has no mip levels to fall back on.
+Terrain and built blocks use selected 64× textures from the Faithful Resource
+Pack; untextured surfaces retain their procedural shader patterns. Only mapped
+textures are copied to the game output. Faithful's unmodified license is shipped
+with the game and its textures are credited in the title screen. Builds containing
+them must not be monetized; see `games/Shorebound/Assets/Faithful/LICENSE.txt`.
+The pack itself is local and git-ignored: place it at
+`games/Shorebound/Assets/Faithful/`. Without it, Shorebound uses its procedural
+block surfaces and remains playable.
 
 A frame is three passes. The sun's shadow map first, off-screen, with the solid
 half of every chunk the light can see — snapped to a texel grid so the shadows

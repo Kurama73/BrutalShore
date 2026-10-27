@@ -26,16 +26,19 @@ public sealed unsafe class SceneBindings : IDisposable
     private readonly VkDescriptorPool _pool;
     private readonly DepthTarget _shadowMap;
     private readonly VoxelField _field;
+    private readonly TextureArray _textures;
 
     /// <summary>Creates the layout, the pool and one buffer and set per frame in flight.</summary>
     /// <param name="context">The device everything is allocated from.</param>
     /// <param name="shadowMap">The depth target the fragment shaders sample for shadows.</param>
     /// <param name="field">The cube of world a fragment shader sends rays through.</param>
-    public SceneBindings(GpuContext context, DepthTarget shadowMap, VoxelField field)
+    /// <param name="textures">The texture layers used by voxel surfaces.</param>
+    public SceneBindings(GpuContext context, DepthTarget shadowMap, VoxelField field, TextureArray textures)
     {
         _context = context;
         _shadowMap = shadowMap;
         _field = field;
+        _textures = textures;
 
         // Both stages read the block: the vertex shader needs the view-projection, the fragment
         // shader needs the lighting. Splitting it in two would cost a second binding to save
@@ -69,6 +72,14 @@ public sealed unsafe class SceneBindings : IDisposable
                 DescriptorCount = 1,
                 StageFlags = VkShaderStageFlags.FragmentBit,
             },
+
+            new()
+            {
+                Binding = 3,
+                DescriptorType = VkDescriptorType.CombinedImageSampler,
+                DescriptorCount = 1,
+                StageFlags = VkShaderStageFlags.FragmentBit,
+            },
         ];
 
         Layout = context.Device.CreateDescriptorSetLayout(
@@ -86,7 +97,7 @@ public sealed unsafe class SceneBindings : IDisposable
             new()
             {
                 Type = VkDescriptorType.CombinedImageSampler,
-                DescriptorCount = GpuRenderer.MaxFramesInFlight * 2,
+                DescriptorCount = GpuRenderer.MaxFramesInFlight * 3,
             },
         ];
 
@@ -215,6 +226,13 @@ public sealed unsafe class SceneBindings : IDisposable
             ImageLayout = VkImageLayout.ShaderReadOnlyOptimal,
         };
 
+        var textureInfo = new VkDescriptorImageInfo
+        {
+            Sampler = _textures.Sampler,
+            ImageView = _textures.View,
+            ImageLayout = VkImageLayout.ShaderReadOnlyOptimal,
+        };
+
         _context.Device.UpdateDescriptorSets(
             [
                 new VkWriteDescriptorSet
@@ -240,6 +258,14 @@ public sealed unsafe class SceneBindings : IDisposable
                     DescriptorCount = 1,
                     DescriptorType = VkDescriptorType.CombinedImageSampler,
                     ImageInfo = &fieldInfo,
+                },
+                new VkWriteDescriptorSet
+                {
+                    DstSet = set,
+                    DstBinding = 3,
+                    DescriptorCount = 1,
+                    DescriptorType = VkDescriptorType.CombinedImageSampler,
+                    ImageInfo = &textureInfo,
                 },
             ],
             []

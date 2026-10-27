@@ -120,15 +120,21 @@ public sealed class UiControls
         }
 
         var textColor = emphasis ? UiPalette.Scrim : LerpColor(UiPalette.MutedText, UiPalette.Text, lit);
-        var size = ImGui.GetFontSize() * 0.92f;
-        var slide = 5f * scale * lit;
+        var tracking = 1.6f * scale;
+        var margin = 22f * scale;
+        var size = Fitted(label, ImGui.GetFontSize() * 0.92f, tracking, width - (margin * 2f));
 
+        // The label does not move when the pointer crosses it. It used to slide a few pixels to
+        // the right, which reads as a nudge on one button and as the whole menu shivering when a
+        // pointer sweeps down a column of them — and it makes the word unreadable for exactly as
+        // long as it takes to read. What animates instead is the plate under it and the marker
+        // beside it, neither of which anybody is trying to read.
         UiCanvas.TrackedText(
-            new float2(minimum.X + (20f * scale) + slide, origin.Y + (height * 0.5f) - (size * 0.5f)),
+            new float2(minimum.X + margin, origin.Y + (height * 0.5f) - (size * 0.5f)),
             textColor,
             label.ToUpperInvariant(),
             size,
-            1.6f * scale
+            tracking
         );
 
         return pressed;
@@ -408,7 +414,26 @@ public sealed class UiControls
         var bandMaximum = new float2(bandRight, bandTop + (8f * scale));
 
         UiCanvas.Rect(bandMinimum, bandMaximum, UiPalette.Fade(UiPalette.Recess, 0.8f));
-        UiCanvas.HazardStripes(bandMinimum, bandMaximum, UiPalette.Fade(UiPalette.Accent, 0.5f), 18f * scale);
+        UiCanvas.HazardStripes(bandMinimum, bandMaximum, UiPalette.Fade(UiPalette.Accent, 0.3f), 18f * scale);
+    }
+
+    /// <summary>
+    /// The largest size at or below the one asked for at which the label still fits the plate.
+    /// </summary>
+    /// <remarks>
+    /// Shrunk rather than clipped or ellipsised. A menu entry is one phrase chosen by whoever
+    /// wrote the screen, and the two honest answers to one that is a word too long are to set it
+    /// smaller or to rename it — where an ellipsis hides which of the two happened. The floor is
+    /// three quarters, below which the entry would be visibly a different size from its
+    /// neighbours and renaming it is the only real answer.
+    /// </remarks>
+    private static float Fitted(string label, float size, float tracking, float room)
+    {
+        if (room <= 0f)
+            return size;
+
+        var width = UiCanvas.MeasureTracked(label.ToUpperInvariant(), size, tracking);
+        return width <= room ? size : float.Max(size * room / width, size * 0.75f);
     }
 
     private static float4 LerpColor(float4 from, float4 to, float amount) =>

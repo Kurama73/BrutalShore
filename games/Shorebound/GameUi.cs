@@ -1,5 +1,6 @@
 using Brutal.ImGuiApi;
 using BrutalShore.Ui;
+using System.Text;
 
 namespace Shorebound;
 
@@ -61,6 +62,11 @@ public sealed class GameUi
 
     private readonly UiControls _controls = new();
     private SettingsSection _section = SettingsSection.World;
+    private string? _renamingPath;
+    private string _renameName = string.Empty;
+    private string? _confirmDeletePath;
+    private int _terminalFrame = -2;
+    private int _terminalLines = -1;
 
     /// <summary>Which group of settings the panel is showing.</summary>
     private enum SettingsSection
@@ -73,6 +79,156 @@ public sealed class GameUi
 
     /// <summary>Forgets every animation, so a screen opens already settled rather than mid-move.</summary>
     public void Reset() => _controls.Reset();
+
+    /// <summary>Draws the top menu bar while the pointer is available.</summary>
+    /// <param name="worldAvailable">Whether a world has been entered.</param>
+    /// <param name="overlayVisible">Whether the host's performance panel is shown.</param>
+    /// <param name="overlayVisibility">A requested overlay state, or <see langword="null" />.</param>
+    /// <returns>The selected action, if any.</returns>
+    public MenuChoice DrawMenuBar(bool worldAvailable, bool overlayVisible, out bool? overlayVisibility)
+    {
+        overlayVisibility = null;
+        var choice = MenuChoice.None;
+        var scale = ImGui.GetStyle().FontScaleMain;
+
+        // Roomier than a tool's menu bar, in both directions. The default is sized so that a
+        // dozen menus fit across a small window, which is the right trade for an editor and the
+        // wrong one here: there are five, and what they should look like is the trim along the
+        // top of the machine rather than a row of words crammed into a strip.
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new float2(16f, 11f) * scale);
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new float2(14f, 9f) * scale);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new float2(10f, 10f) * scale);
+
+        if (!ImGui.BeginMainMenuBar())
+        {
+            ImGui.PopStyleVar(3);
+            return choice;
+        }
+
+        DrawMenuBarTrim(scale);
+        DrawWordmark(scale);
+
+        if (ImGui.BeginMenu("Game"u8))
+        {
+            if (ImGui.MenuItem("Main menu"u8, ""u8, false, worldAvailable))
+                choice = MenuChoice.MainMenu;
+            if (ImGui.MenuItem("Settings"u8))
+                choice = MenuChoice.Settings;
+            ImGui.Separator();
+            if (ImGui.MenuItem("Quit"u8))
+                choice = MenuChoice.Quit;
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("World"u8))
+        {
+            if (ImGui.MenuItem("Create world..."u8))
+                choice = MenuChoice.CreateWorld;
+            if (ImGui.MenuItem("Load world..."u8))
+                choice = MenuChoice.LoadSaves;
+            ImGui.Separator();
+            if (ImGui.MenuItem("Save world"u8, "Ctrl+S"u8, false, worldAvailable))
+                choice = MenuChoice.Save;
+            if (ImGui.MenuItem("Save and return to main menu"u8, ""u8, false, worldAvailable))
+                choice = MenuChoice.MainMenu;
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("View"u8))
+        {
+            if (ImGui.MenuItem("Terminal"u8, "T"u8, false, worldAvailable))
+                choice = MenuChoice.Terminal;
+            if (ImGui.MenuItem("Performance overlay"u8, "F3"u8, overlayVisible))
+                overlayVisibility = !overlayVisible;
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("Debug"u8, worldAvailable))
+        {
+            if (ImGui.MenuItem("Teleport to spawn"u8))
+                choice = MenuChoice.TeleportToSpawn;
+            if (ImGui.MenuItem("Restore health"u8))
+                choice = MenuChoice.RestoreHealth;
+            ImGui.Separator();
+            if (ImGui.MenuItem("Toggle flight"u8))
+                choice = MenuChoice.ToggleFlight;
+            if (ImGui.MenuItem("Toggle time"u8))
+                choice = MenuChoice.ToggleTime;
+            if (ImGui.MenuItem("Set time to noon"u8))
+                choice = MenuChoice.SetNoon;
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("Help"u8))
+        {
+            ImGui.MenuItem("Move"u8, "WASD"u8, false, false);
+            ImGui.MenuItem("Pause"u8, "Esc"u8, false, false);
+            ImGui.MenuItem("Carrying"u8, "I"u8, false, false);
+            ImGui.MenuItem("Terminal"u8, "T"u8, false, false);
+            ImGui.MenuItem("Performance overlay"u8, "F3"u8, false, false);
+            ImGui.EndMenu();
+        }
+
+        ImGui.EndMainMenuBar();
+        ImGui.PopStyleVar(3);
+        return choice;
+    }
+
+    /// <summary>The lit edge and hazard band that close the bottom of the menu bar.</summary>
+    /// <remarks>
+    /// Drawn inside the bar rather than under it so that it is clipped by the bar's own rectangle
+    /// and lands over whatever the world is doing behind it. The same pair closes every panel in
+    /// the game, which is what makes the bar read as part of the same machine.
+    /// </remarks>
+    private static void DrawMenuBarTrim(float scale)
+    {
+        var position = ImGui.GetWindowPos();
+        var size = ImGui.GetWindowSize();
+        var bottom = position.Y + size.Y;
+        var band = 5f * scale;
+
+        UiCanvas.Line(
+            new float2(position.X, bottom - band - (1f * scale)),
+            new float2(position.X + size.X, bottom - band - (1f * scale)),
+            UiPalette.Fade(UiPalette.Edge, 0.55f),
+            scale
+        );
+
+        var bandMinimum = new float2(position.X, bottom - band);
+        var bandMaximum = new float2(position.X + size.X, bottom);
+        UiCanvas.Rect(bandMinimum, bandMaximum, UiPalette.Recess);
+        UiCanvas.HazardStripes(bandMinimum, bandMaximum, UiPalette.Fade(UiPalette.Accent, 0.32f), 16f * scale);
+    }
+
+    /// <summary>The game's name at the left end of the bar, which is not a menu.</summary>
+    /// <remarks>
+    /// A label rather than the first menu. It used to be one, and a menu called Shorebound that
+    /// holds Quit is a menu whose name says nothing about what is inside it — the word is the
+    /// game's mark, and a mark that opens a list is a mark nobody trusts to be only a mark.
+    /// </remarks>
+    private static void DrawWordmark(float scale)
+    {
+        var size = ImGui.GetFontSize() * 0.86f;
+        var position = ImGui.GetCursorScreenPos();
+        var middleY = position.Y + (ImGui.GetFrameHeight() * 0.5f);
+
+        UiCanvas.Rect(
+            new float2(position.X, middleY - (size * 0.55f)),
+            new float2(position.X + (3f * scale), middleY + (size * 0.55f)),
+            UiPalette.Accent
+        );
+
+        var width = UiCanvas.TrackedText(
+            new float2(position.X + (11f * scale), middleY - (size * 0.5f)),
+            UiPalette.Text,
+            "SHOREBOUND",
+            size,
+            2.4f * scale
+        );
+
+        ImGui.Dummy(new float2(width + (24f * scale), ImGui.GetFrameHeight()));
+        ImGui.SameLine();
+    }
 
     /// <summary>
     /// Draws the crosshair, which grows and takes the accent when something is in reach.
@@ -97,10 +253,14 @@ public sealed class GameUi
         var thickness = 1.6f * scale;
         var color = aiming ? UiPalette.Accent : UiPalette.Fade(UiPalette.Text, 0.78f);
 
-        UiCanvas.Line(new float2(middle.X - gap - arm, middle.Y), new float2(middle.X - gap, middle.Y), color, thickness);
-        UiCanvas.Line(new float2(middle.X + gap, middle.Y), new float2(middle.X + gap + arm, middle.Y), color, thickness);
-        UiCanvas.Line(new float2(middle.X, middle.Y - gap - arm), new float2(middle.X, middle.Y - gap), color, thickness);
-        UiCanvas.Line(new float2(middle.X, middle.Y + gap), new float2(middle.X, middle.Y + gap + arm), color, thickness);
+        UiCanvas.Line(new float2(middle.X - gap - arm, middle.Y), new float2(middle.X - gap, middle.Y), color,
+            thickness);
+        UiCanvas.Line(new float2(middle.X + gap, middle.Y), new float2(middle.X + gap + arm, middle.Y), color,
+            thickness);
+        UiCanvas.Line(new float2(middle.X, middle.Y - gap - arm), new float2(middle.X, middle.Y - gap), color,
+            thickness);
+        UiCanvas.Line(new float2(middle.X, middle.Y + gap), new float2(middle.X, middle.Y + gap + arm), color,
+            thickness);
         UiCanvas.Circle(middle, 1.2f * scale, color);
 
         ImGui.End();
@@ -184,7 +344,8 @@ public sealed class GameUi
             maximum.Y - countSize - (5f * scale)
         );
 
-        UiCanvas.Chamfer(plateMinimum, maximum - new float2(scale, scale), UiPalette.Fade(UiPalette.Scrim, 0.82f), cut * 0.5f);
+        UiCanvas.Chamfer(plateMinimum, maximum - new float2(scale, scale), UiPalette.Fade(UiPalette.Scrim, 0.82f),
+            cut * 0.5f);
         UiCanvas.Text(
             new float2(plateMinimum.X + (4f * scale), plateMinimum.Y + (1.5f * scale)),
             UiPalette.Text,
@@ -366,7 +527,11 @@ public sealed class GameUi
         var left = viewport.Pos.X + float.Max(72f * scale, viewport.Size.X * 0.09f);
         var top = viewport.Pos.Y + (viewport.Size.Y * 0.3f);
 
-        var markSize = TitleSize * scale;
+        var availableWidth = float.Max(120f * scale, viewport.Size.X - (left - viewport.Pos.X) - (48f * scale));
+        var nominalMarkSize = TitleSize * scale;
+        var nominalMarkWidth =
+            UiCanvas.Measure("SHOREBOUND", nominalMarkSize).X + (TitleTracking * scale * ("SHOREBOUND".Length - 1));
+        var markSize = nominalMarkSize * float.Min(1f, availableWidth / nominalMarkWidth);
         var markHeight = UiCanvas.Measure("SHOREBOUND", markSize).Y;
         var markWidth = UiCanvas.TrackedText(
             new float2(left, top),
@@ -387,8 +552,14 @@ public sealed class GameUi
         UiCanvas.Outline(bandMinimum, bandMaximum, UiPalette.Fade(UiPalette.Edge, 0.5f));
 
         var subtitleSize = ImGui.GetFontSize() * 0.86f;
+        var subtitleText = "A VOXEL WORLD ON BRUTAL";
+        var subtitleTracking = 2.2f * scale;
+        var subtitleTextWidth =
+            UiCanvas.Measure(subtitleText, subtitleSize).X + (subtitleTracking * (subtitleText.Length - 1));
+        if (subtitleTextWidth > availableWidth - (28f * scale))
+            subtitleSize *= (availableWidth - (28f * scale)) / subtitleTextWidth;
         var subtitleY = bandY + bandHeight + (18f * scale);
-        var subtitleWidth = UiCanvas.Measure("A VOXEL WORLD ON BRUTAL", subtitleSize).X + (44f * scale);
+        var subtitleWidth = subtitleTextWidth + (28f * scale);
 
         // The subtitle on a plate of its own, because a line of small capitals floating over a
         // field is the one thing on this screen with nothing holding it down.
@@ -407,12 +578,12 @@ public sealed class GameUi
         UiCanvas.TrackedText(
             new float2(left + (14f * scale), subtitleY),
             UiPalette.Text,
-            "A VOXEL WORLD ON BRUTAL",
+            subtitleText,
             subtitleSize,
-            2.2f * scale
+            subtitleTracking
         );
 
-        var width = MenuWidth * scale;
+        var width = float.Min(MenuWidth * scale, availableWidth);
         UiControls.BeginColumn(
             "titlemenu",
             new float2(left, subtitleY + (56f * scale)),
@@ -421,15 +592,14 @@ public sealed class GameUi
 
         if (hasSave)
         {
-            if (_controls.Entry("Continue", width, emphasis: true))
-                choice = MenuChoice.Continue;
-
+            if (_controls.Entry("Load worlds", width, emphasis: true))
+                choice = MenuChoice.LoadSaves;
             if (_controls.Entry("New world", width))
-                choice = MenuChoice.NewWorld;
+                choice = MenuChoice.CreateWorld;
         }
         else if (_controls.Entry("Play", width, emphasis: true))
         {
-            choice = MenuChoice.NewWorld;
+            choice = MenuChoice.CreateWorld;
         }
 
         if (_controls.Entry("Settings", width))
@@ -444,9 +614,154 @@ public sealed class GameUi
         UiCanvas.Text(
             new float2(left, viewport.Pos.Y + viewport.Size.Y - footerSize - (28f * scale)),
             UiPalette.MutedText,
-            footer,
+            FitText(footer, availableWidth, footerSize),
             footerSize
         );
+        UiCanvas.Text(
+            new float2(left, viewport.Pos.Y + viewport.Size.Y - (18f * scale)),
+            UiPalette.MutedText,
+            FitText("Block textures: Faithful Resource Pack (faithfulpack.net).", availableWidth, footerSize),
+            footerSize
+        );
+
+        ImGui.End();
+        return choice;
+    }
+
+    /// <summary>Draws the saved-world list and reports a load or file-management action.</summary>
+    /// <param name="savePaths">The world files found beside the configured save path.</param>
+    /// <param name="selectedPath">The currently selected file, if it is still present.</param>
+    /// <returns>The action the game should perform.</returns>
+    internal SaveBrowserChoice DrawSaveBrowser(IReadOnlyList<string> savePaths, string? selectedPath)
+    {
+        var viewport = ImGui.GetMainViewport();
+        var scale = ImGui.GetStyle().FontScaleMain;
+        var width = float.Min(700f * scale, viewport.Size.X - (40f * scale));
+        var height = float.Min(560f * scale, viewport.Size.Y - (40f * scale));
+        var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
+        var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
+        var minimum = new float2(left, top);
+        var maximum = minimum + new float2(width, height);
+        var inset = 24f * scale;
+        var choice = new SaveBrowserChoice(SaveBrowserAction.None);
+
+        FullScreen("savebrowser"u8);
+        UiCanvas.Scrim(1f);
+        UiCanvas.Panel(minimum, maximum, PanelCut * scale, scale);
+        var listTop = UiCanvas.PanelHeading(minimum, width, "Saved worlds", scale) + (14f * scale);
+        var listHeight = float.Max(96f * scale, height - (268f * scale));
+        var listWidth = width - (inset * 2f);
+        var rowHeight = UiControls.EntryHeight * scale;
+
+        ImGui.SetCursorScreenPos(new float2(left + inset, listTop));
+        ImGui.BeginChild("save-list"u8, new float2(listWidth, listHeight), ImGuiChildFlags.Borders,
+            ImGuiWindowFlags.None);
+        if (savePaths.Count == 0)
+        {
+            UiCanvas.Text(
+                ImGui.GetCursorScreenPos() + new float2(12f * scale, 12f * scale),
+                UiPalette.MutedText,
+                "No saves found in this folder.",
+                ImGui.GetFontSize() * 0.88f
+            );
+        }
+        else
+        {
+            for (var index = 0; index < savePaths.Count; index++)
+            {
+                var path = savePaths[index];
+                var name = Path.GetFileNameWithoutExtension(path);
+                var origin = ImGui.GetCursorScreenPos();
+                ImGui.InvisibleButton($"save:{index}", new float2(listWidth - (12f * scale), rowHeight));
+                var hovered = ImGui.IsItemHovered();
+                if (ImGui.IsItemClicked())
+                    choice = new SaveBrowserChoice(SaveBrowserAction.Select, path);
+
+                var selected = string.Equals(selectedPath, path, StringComparison.OrdinalIgnoreCase);
+                UiCanvas.Chamfer(
+                    origin,
+                    origin + new float2(listWidth - (12f * scale), rowHeight - (3f * scale)),
+                    selected ? UiPalette.Fade(UiPalette.Accent, 0.8f) : hovered ? UiPalette.Hovered : UiPalette.Control,
+                    UiControls.Cut * scale
+                );
+                UiCanvas.Text(
+                    origin + new float2(14f * scale, (rowHeight - ImGui.GetFontSize()) * 0.5f),
+                    selected ? UiPalette.Text : UiPalette.MutedText,
+                    FitText(name, listWidth - (44f * scale), ImGui.GetFontSize()),
+                    ImGui.GetFontSize()
+                );
+            }
+        }
+
+        ImGui.EndChild();
+
+        var actionTop = listTop + listHeight + (14f * scale);
+        if (_renamingPath is { } renamingPath)
+        {
+            Span<byte> nameBuffer = stackalloc byte[256];
+            nameBuffer.Clear();
+            var byteCount = Encoding.UTF8.GetBytes(_renameName, nameBuffer);
+            UiCanvas.Text(
+                new float2(left + inset, actionTop + (5f * scale)),
+                UiPalette.MutedText,
+                "New name",
+                ImGui.GetFontSize() * 0.8f
+            );
+            ImGui.SetCursorScreenPos(new float2(left + inset, actionTop + (20f * scale)));
+            ImGui.SetNextItemWidth(width - (inset * 2f));
+            _ = ImGui.InputText("save-name"u8, nameBuffer);
+            var nullIndex = nameBuffer.IndexOf((byte)0);
+            _renameName = Encoding.UTF8.GetString(nameBuffer[..(nullIndex < 0 ? byteCount : nullIndex)]);
+            actionTop += 58f * scale;
+            if (SaveActionButton("Confirm rename", left + inset, actionTop, (width - (inset * 2f)) * 0.58f, scale))
+                choice = new SaveBrowserChoice(SaveBrowserAction.Rename, renamingPath, _renameName);
+            if (SaveActionButton("Cancel", left + inset + ((width - (inset * 2f)) * 0.62f), actionTop,
+                    (width - (inset * 2f)) * 0.38f, scale))
+                _renamingPath = null;
+        }
+        else if (_confirmDeletePath is { } deletingPath)
+        {
+            UiCanvas.Text(
+                new float2(left + inset, actionTop + (5f * scale)),
+                UiPalette.Warning,
+                FitText($"Delete {Path.GetFileNameWithoutExtension(deletingPath)}?", width - (inset * 2f),
+                    ImGui.GetFontSize() * 0.88f),
+                ImGui.GetFontSize() * 0.88f
+            );
+            actionTop += 38f * scale;
+            if (SaveActionButton("Confirm delete", left + inset, actionTop, (width - (inset * 2f)) * 0.58f, scale))
+            {
+                choice = new SaveBrowserChoice(SaveBrowserAction.Delete, deletingPath);
+                _confirmDeletePath = null;
+            }
+
+            if (SaveActionButton("Cancel", left + inset + ((width - (inset * 2f)) * 0.62f), actionTop,
+                    (width - (inset * 2f)) * 0.38f, scale))
+                _confirmDeletePath = null;
+        }
+        else if (selectedPath is not null && savePaths.Contains(selectedPath, StringComparer.OrdinalIgnoreCase))
+        {
+            var buttonWidth = (width - (inset * 2f) - (12f * scale)) / 3f;
+            if (SaveActionButton("Load", left + inset, actionTop, buttonWidth, scale, emphasis: true))
+                choice = new SaveBrowserChoice(SaveBrowserAction.Load, selectedPath);
+            if (SaveActionButton("Rename", left + inset + buttonWidth + (6f * scale), actionTop, buttonWidth, scale))
+            {
+                _renamingPath = selectedPath;
+                _renameName = Path.GetFileNameWithoutExtension(selectedPath);
+            }
+
+            if (SaveActionButton("Delete", left + inset + ((buttonWidth + (6f * scale)) * 2f), actionTop, buttonWidth,
+                    scale))
+                _confirmDeletePath = selectedPath;
+        }
+
+        var backTop = maximum.Y - inset - (UiControls.EntryHeight * scale);
+        if (SaveActionButton("Back", left + inset, backTop, width - (inset * 2f), scale))
+        {
+            choice = new SaveBrowserChoice(SaveBrowserAction.Back);
+            _renamingPath = null;
+            _confirmDeletePath = null;
+        }
 
         ImGui.End();
         return choice;
@@ -514,9 +829,9 @@ public sealed class GameUi
         // Bench, a rule, the pack, a gap wide enough to read as a division, then the row in hand.
         var height =
             headingSize + (30f * scale)
-            + benchHeight + (30f * scale)
-            + packHeight + (24f * scale)
-            + slot + (26f * scale);
+                        + benchHeight + (30f * scale)
+                        + packHeight + (24f * scale)
+                        + slot + (26f * scale);
 
         var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
         var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
@@ -529,7 +844,8 @@ public sealed class GameUi
         var named = string.Empty;
         var benchTop = top + headingSize + (30f * scale);
 
-        var made = DrawBench(inventory, bench, recipes, progression, ref held, new float2(left, benchTop), slot, gap, ref named);
+        var made = DrawBench(inventory, bench, recipes, progression, ref held, new float2(left, benchTop), slot, gap,
+            ref named);
 
         var ruleY = benchTop + benchHeight + (15f * scale);
         UiCanvas.Line(new float2(left, ruleY), new float2(left + width, ruleY), UiPalette.Divider);
@@ -764,7 +1080,8 @@ public sealed class GameUi
             );
 
             UiCanvas.Text(
-                new float2(minimum.X + inset + swatch + (8f * scale), minimum.Y + ((rowHeight - size) * 0.5f) - (2f * scale)),
+                new float2(minimum.X + inset + swatch + (8f * scale),
+                    minimum.Y + ((rowHeight - size) * 0.5f) - (2f * scale)),
                 affordable ? UiPalette.Text : UiPalette.Fade(UiPalette.MutedText, unlocked ? 0.55f : 0.32f),
                 unlocked ? recipe.Name : "locked",
                 size
@@ -910,8 +1227,8 @@ public sealed class GameUi
             UiCanvas.Text(
                 new float2(textLeft, maximum.Y - smallSize - (10f * scale)),
                 done ? UiPalette.Fade(UiPalette.Accent, 0.6f)
-                    : waiting.Length > 0 ? UiPalette.MutedText
-                    : UiPalette.Text,
+                : waiting.Length > 0 ? UiPalette.MutedText
+                : UiPalette.Text,
                 costText,
                 smallSize
             );
@@ -963,7 +1280,8 @@ public sealed class GameUi
 
         var footSize = ImGui.GetFontSize() * 0.82f;
         UiCanvas.Text(
-            new float2(left + width - inset - UiCanvas.Measure("M or escape to close", footSize).X, top + height - footSize - (16f * scale)),
+            new float2(left + width - inset - UiCanvas.Measure("M or escape to close", footSize).X,
+                top + height - footSize - (16f * scale)),
             UiPalette.MutedText,
             "M or escape to close",
             footSize
@@ -1041,9 +1359,9 @@ public sealed class GameUi
 
         var height =
             headingSize + (30f * scale)
-            + machineHeight + (30f * scale)
-            + packHeight + (24f * scale)
-            + slot + (26f * scale);
+                        + machineHeight + (30f * scale)
+                        + packHeight + (24f * scale)
+                        + slot + (26f * scale);
 
         var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
         var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
@@ -1402,8 +1720,8 @@ public sealed class GameUi
 
         UiCanvas.Scrim(1f);
 
-        var width = MenuWidth * scale;
-        var height = 356f * scale;
+        var width = float.Min(MenuWidth * scale, viewport.Size.X - (80f * scale));
+        var height = 350f * scale;
         var padding = 26f * scale;
         var left = viewport.Pos.X + ((viewport.Size.X - width) * 0.5f);
         var top = viewport.Pos.Y + ((viewport.Size.Y - height) * 0.5f);
@@ -1425,7 +1743,7 @@ public sealed class GameUi
         UiControls.BeginColumn(
             "pausemenu",
             new float2(left, entriesTop),
-            new float2(width, UiControls.EntryHeight * scale * 5.4f)
+            new float2(width, UiControls.EntryHeight * scale * 6.4f)
         );
 
         if (_controls.Entry("Resume", width, emphasis: true))
@@ -1440,18 +1758,290 @@ public sealed class GameUi
         if (_controls.Entry("Save and quit", width))
             choice = MenuChoice.SaveAndQuit;
 
+        if (_controls.Entry("Save and return to main menu", width))
+            choice = MenuChoice.MainMenu;
+
         UiControls.EndColumn();
 
         var noteSize = ImGui.GetFontSize() * 0.84f;
         UiCanvas.Text(
             new float2(left, cardMaximum.Y - padding - noteSize),
             UiPalette.MutedText,
-            savePath,
+            FitText(savePath, width, noteSize),
             noteSize
         );
 
         ImGui.End();
         return choice;
+    }
+
+    /// <summary>Draws the new-world form and reports whether to create it or cancel.</summary>
+    /// <param name="name">The player-facing world and save name.</param>
+    /// <param name="seed">The seed used to generate the world.</param>
+    /// <param name="viewRadiusChunks">How far chunks are kept loaded.</param>
+    /// <param name="dayLengthSeconds">How long a day takes, or zero to hold the sun.</param>
+    /// <returns>The action the game should perform.</returns>
+    public MenuChoice DrawWorldCreation(
+        ref string name,
+        ref int seed,
+        ref int viewRadiusChunks,
+        ref float dayLengthSeconds
+    )
+    {
+        var scale = ImGui.GetStyle().FontScaleMain;
+        var viewport = ImGui.GetMainViewport();
+        var size = new float2(520f * scale, 390f * scale);
+        ImGui.SetNextWindowPos(viewport.Pos + ((viewport.Size - size) * 0.5f), ImGuiCond.Always);
+        ImGui.SetNextWindowSize(size, ImGuiCond.Always);
+
+        if (!ImGui.Begin("Create a world"u8, ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoMove))
+        {
+            ImGui.End();
+            return MenuChoice.None;
+        }
+
+        ImGui.TextWrapped("Choose a name and generation settings before the world is created."u8);
+        ImGui.Separator();
+        ImGui.SetNextItemWidth(-1f);
+        TextInput("World name"u8, ref name);
+        ImGui.SetNextItemWidth(-1f);
+        ImGui.InputInt("Seed"u8, ref seed);
+        ImGui.SetNextItemWidth(-1f);
+        ImGui.SliderInt("View distance"u8, ref viewRadiusChunks, 2, 24, "%d chunks"u8);
+        ImGui.SetNextItemWidth(-1f);
+        ImGui.SliderFloat("Day length"u8, ref dayLengthSeconds, 0f, 3600f, "%.0f seconds"u8);
+        ImGui.TextDisabled(dayLengthSeconds <= 0f
+            ? "The sun will remain fixed."u8
+            : "Seconds from sunrise to sunrise."u8);
+
+        var choice = MenuChoice.None;
+        if (ImGui.Button("Create world"u8, new float2(250f * scale, 0f)))
+            choice = MenuChoice.StartWorld;
+        ImGui.SameLine();
+        if (ImGui.Button("Cancel"u8, new float2(170f * scale, 0f)))
+            choice = MenuChoice.Back;
+
+        ImGui.End();
+        return choice;
+    }
+
+    /// <summary>Draws the in-game console and reports a submitted line.</summary>
+    /// <param name="command">The command being edited.</param>
+    /// <param name="output">Recent command results to display.</param>
+    /// <returns><see langword="true" /> when the player submits the command.</returns>
+    /// <remarks>
+    /// <para>
+    /// Pulled down from the top edge of the screen rather than floating in the middle of it. A
+    /// draggable window with a title bar is a tool's console: it can be moved off the screen, it
+    /// can be resized until the output is two lines tall, and it looks like the debug overlay it
+    /// is not. A console that is always the same shape in the same place is one the hand finds
+    /// without the eye, which is the whole of what makes a command prompt quick to use.
+    /// </para>
+    /// <para>
+    /// The output is monospaced because half of what this prints is columns — coordinates, a
+    /// seed, counts of what is loaded — and a column set in a proportional face is not a column.
+    /// </para>
+    /// </remarks>
+    public bool DrawTerminal(ref string command, IReadOnlyList<string> output)
+    {
+        var viewport = ImGui.GetMainViewport();
+        var scale = ImGui.GetStyle().FontScaleMain;
+
+        // Whether this is the frame the console came up on, which is when the caret has to be put
+        // in the prompt. ImGui counts frames and this is drawn only while the console is open, so
+        // a gap in the count is an opening.
+        var frame = ImGui.GetFrameCount();
+        var opening = frame != _terminalFrame + 1;
+        _terminalFrame = frame;
+
+        FullScreen("terminal"u8);
+        UiCanvas.Scrim(0.5f);
+
+        var height = float.Round(viewport.Size.Y * 0.5f);
+        var minimum = viewport.Pos;
+        var maximum = viewport.Pos + new float2(viewport.Size.X, height);
+        var margin = 18f * scale;
+        var rowHeight = float.Round((ImGui.GetFontSize() * 1.1f) + (14f * scale));
+
+        // No chamfer and no shadow: three of its four edges are the screen's own, and a corner
+        // cut against the edge of the display is a corner cut out of nothing.
+        UiCanvas.Rect(minimum, maximum, UiPalette.Panel);
+
+        var headingBottom = UiCanvas.PanelHeading(minimum, viewport.Size.X, "Terminal", scale);
+
+        // The keys, at the far end of the heading strip. In the strip rather than under the
+        // prompt because the prompt is where the player is looking while typing, and a hint
+        // under the caret is a hint the text being typed runs into.
+        var hintSize = ImGui.GetFontSize() * 0.84f;
+        const string Hint = "ENTER RUNS    ESC CLOSES";
+        UiCanvas.TrackedText(
+            new float2(
+                maximum.X - UiCanvas.MeasureTracked(Hint, hintSize, 1.6f * scale) - (18f * scale),
+                minimum.Y + ((headingBottom - (8f * scale) - minimum.Y - hintSize) * 0.5f)
+            ),
+            UiPalette.MutedText,
+            Hint,
+            hintSize,
+            1.6f * scale
+        );
+
+        var outputTop = headingBottom + margin;
+        var outputBottom = maximum.Y - margin - rowHeight - (8f * scale);
+        var outputLeft = minimum.X + margin;
+        var outputRight = maximum.X - margin;
+
+        UiCanvas.Rect(
+            new float2(outputLeft, outputTop),
+            new float2(outputRight, outputBottom),
+            UiPalette.Recess
+        );
+
+        DrawTerminalOutput(
+            output,
+            new float2(outputLeft, outputTop),
+            new float2(outputRight, outputBottom),
+            scale
+        );
+
+        var submitted = DrawTerminalPrompt(
+            ref command,
+            new float2(outputLeft, outputBottom + (8f * scale)),
+            new float2(outputRight, outputBottom + (8f * scale) + rowHeight),
+            opening,
+            scale
+        );
+
+        // The closing edge, which is the only one the console has: a lit hairline over a hazard
+        // band, the same pair that closes every panel in this game.
+        var band = 8f * scale;
+        UiCanvas.Line(
+            new float2(minimum.X, maximum.Y - band),
+            new float2(maximum.X, maximum.Y - band),
+            UiPalette.Fade(UiPalette.Edge, 0.7f),
+            scale
+        );
+        UiCanvas.Rect(new float2(minimum.X, maximum.Y - band), maximum, UiPalette.Recess);
+        UiCanvas.HazardStripes(
+            new float2(minimum.X, maximum.Y - band),
+            maximum,
+            UiPalette.Fade(UiPalette.Accent, 0.38f),
+            18f * scale
+        );
+
+        ImGui.End();
+        return submitted;
+    }
+
+    /// <summary>Draws the console's scrollback, newest at the bottom.</summary>
+    private void DrawTerminalOutput(IReadOnlyList<string> output, float2 minimum, float2 maximum, float scale)
+    {
+        var inset = 12f * scale;
+        UiControls.BeginColumn(
+            "terminal-output",
+            minimum + new float2(inset, inset * 0.5f),
+            maximum - minimum - new float2(inset * 2f, inset)
+        );
+
+        UiFont.PushMonospace(ImGui.GetFontSize() * 0.95f);
+
+        foreach (var line in output)
+        {
+            // An echoed command wears the accent and everything the game answered with does not,
+            // which is what lets a long scrollback be read as a conversation rather than a wall.
+            var echoed = line.StartsWith('>');
+            ImGui.PushStyleColor(ImGuiCol.Text, echoed ? UiPalette.Accent : UiPalette.Text);
+            ImGui.TextWrapped(line);
+            ImGui.PopStyleColor();
+        }
+
+        UiFont.Pop();
+
+        // Pinned to the bottom while new lines are arriving, and left alone once the player has
+        // scrolled up to read something: a console that yanks itself back down mid-read is worse
+        // than one that never follows at all.
+        if (output.Count != _terminalLines)
+        {
+            ImGui.SetScrollHereY(1f);
+            _terminalLines = output.Count;
+        }
+
+        UiControls.EndColumn();
+    }
+
+    /// <summary>Draws the prompt line and reports whether a command was entered.</summary>
+    private static bool DrawTerminalPrompt(
+        ref string command,
+        float2 minimum,
+        float2 maximum,
+        bool opening,
+        float scale
+    )
+    {
+        var height = maximum.Y - minimum.Y;
+        var caretWidth = 26f * scale;
+
+        UiCanvas.Rect(minimum, maximum, UiPalette.Recess);
+        UiCanvas.Line(
+            new float2(minimum.X, minimum.Y + (0.5f * scale)),
+            new float2(maximum.X, minimum.Y + (0.5f * scale)),
+            UiPalette.Fade(UiPalette.Edge, 0.5f),
+            scale
+        );
+
+        var caretSize = ImGui.GetFontSize();
+        UiCanvas.Text(
+            new float2(minimum.X + (12f * scale), minimum.Y + ((height - caretSize) * 0.5f)),
+            UiPalette.Accent,
+            ">",
+            caretSize
+        );
+
+        ImGui.SetCursorScreenPos(new float2(minimum.X + caretWidth, minimum.Y + ((height - ImGui.GetFrameHeight()) * 0.5f)));
+        ImGui.SetNextItemWidth(maximum.X - minimum.X - caretWidth - (12f * scale));
+
+        // The field itself is invisible: the recess behind it is already the box, and a second
+        // box drawn inside the first is what every tool interface looks like.
+        ImGui.PushStyleColor(ImGuiCol.FrameBg, UiPalette.Fade(UiPalette.Recess, 0f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, UiPalette.Fade(UiPalette.Recess, 0f));
+        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, UiPalette.Fade(UiPalette.Recess, 0f));
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 0f);
+        UiFont.PushMonospace();
+
+        if (opening)
+            ImGui.SetKeyboardFocusHere();
+
+        Span<byte> commandBuffer = stackalloc byte[1024];
+        commandBuffer.Clear();
+        var encoded = Encoding.UTF8.GetBytes(command, commandBuffer);
+        commandBuffer[encoded] = 0;
+
+        var submitted = ImGui.InputText(
+            "##terminal-command"u8,
+            commandBuffer,
+            ImGuiInputTextFlags.EnterReturnsTrue
+        );
+
+        UiFont.Pop();
+        ImGui.PopStyleVar();
+        ImGui.PopStyleColor(3);
+
+        var length = commandBuffer.IndexOf((byte)0);
+        command = Encoding.UTF8.GetString(commandBuffer[..(length < 0 ? commandBuffer.Length : length)]);
+
+        return submitted;
+    }
+
+    private static void TextInput(ImString label, ref string value)
+    {
+        Span<byte> buffer = stackalloc byte[1024];
+        buffer.Clear();
+        var encoded = Encoding.UTF8.GetBytes(value, buffer);
+        buffer[encoded] = 0;
+        if (!ImGui.InputText(label, buffer))
+            return;
+
+        var length = buffer.IndexOf((byte)0);
+        value = Encoding.UTF8.GetString(buffer[..(length < 0 ? buffer.Length : length)]);
     }
 
     /// <summary>
@@ -1500,7 +2090,8 @@ public sealed class GameUi
         );
 
         DrawRail(left, headingBottom, rail, top + height - headingBottom, scale);
-        changed = DrawSection(ref settings, left + rail, headingBottom, width - rail, top + height - headingBottom, scale);
+        changed = DrawSection(ref settings, left + rail, headingBottom, width - rail, top + height - headingBottom,
+            scale);
 
         var footerTop = top + height - (58f * scale);
 
@@ -1544,6 +2135,8 @@ public sealed class GameUi
 
         FullScreen("notice"u8, takesInput: false);
 
+        var maxTextWidth = float.Max(80f * scale, viewport.Size.X - (64f * scale));
+        message = FitText(message, maxTextWidth, size);
         var textWidth = UiCanvas.Measure(message, size).X;
         var padding = new float2(18f * scale, 10f * scale);
         var middleX = viewport.Pos.X + (viewport.Size.X * 0.5f);
@@ -1726,7 +2319,7 @@ public sealed class GameUi
         UiControls.Note("F flies, space and ctrl go up and down while flying");
         UiControls.Note("Hold left click to break, right click to place");
         UiControls.Note("1 to 9, Q and E, or the mouse wheel pick what is in hand");
-        UiControls.Note("Escape opens this menu, F3 shows what the engine is doing");
+        UiControls.Note("Escape pauses, T opens the terminal, and F3 toggles the performance overlay");
 
         return changed;
     }
@@ -1740,7 +2333,8 @@ public sealed class GameUi
         var overlay = settings.ShowOverlay;
         var volume = settings.Volume;
 
-        if (_controls.Slider("Interface scale", ref uiScale, UiTheme.MinimumScale, UiTheme.MaximumScale, width, $"{uiScale:F2}×"))
+        if (_controls.Slider("Interface scale", ref uiScale, UiTheme.MinimumScale, UiTheme.MaximumScale, width,
+                $"{uiScale:F2}×"))
         {
             settings = settings with { UiScale = uiScale };
             changed = true;
@@ -1760,13 +2354,50 @@ public sealed class GameUi
             changed = true;
         }
 
-        UiControls.Note("F3 toggles it too");
+        UiControls.Note("F3 or View > Performance overlay toggles it");
 
         return changed;
     }
 
     private static string Minutes(float seconds) =>
         seconds <= 0f ? "held" : $"{seconds / 60f:F1} min";
+
+    private static bool SaveActionButton(string label, float left, float top, float width, float scale,
+        bool emphasis = false)
+    {
+        var height = UiControls.EntryHeight * scale;
+        ImGui.SetCursorScreenPos(new float2(left, top));
+        ImGui.InvisibleButton($"save-action:{label}", new float2(width, height));
+        var hovered = ImGui.IsItemHovered();
+        var pressed = ImGui.IsItemClicked();
+        var minimum = new float2(left, top);
+        var maximum = minimum + new float2(width, height);
+        var color = emphasis
+            ? hovered ? UiPalette.AccentHovered : UiPalette.Accent
+            : hovered
+                ? UiPalette.Hovered
+                : UiPalette.Control;
+        UiCanvas.Chamfer(minimum, maximum, color, UiControls.Cut * scale);
+        UiCanvas.Text(
+            minimum + new float2(12f * scale, (height - ImGui.GetFontSize()) * 0.5f),
+            emphasis ? UiPalette.Scrim : UiPalette.Text,
+            FitText(label, width - (24f * scale), ImGui.GetFontSize()),
+            ImGui.GetFontSize()
+        );
+        return pressed;
+    }
+
+    private static string FitText(string text, float width, float size)
+    {
+        if (UiCanvas.Measure(text, size).X <= width)
+            return text;
+
+        const string Ellipsis = "...";
+        var length = text.Length;
+        while (length > 0 && UiCanvas.Measure(text[..length] + Ellipsis, size).X > width)
+            length--;
+        return length == 0 ? Ellipsis : text[..length] + Ellipsis;
+    }
 }
 
 /// <summary>What a menu was asked to do.</summary>
@@ -1775,11 +2406,17 @@ public enum MenuChoice
     /// <summary>Nothing was clicked.</summary>
     None,
 
-    /// <summary>Start a fresh world from the seed the game was given.</summary>
-    NewWorld,
+    /// <summary>Open the world creation form.</summary>
+    CreateWorld,
+
+    /// <summary>Create the world currently described by the world creation form.</summary>
+    StartWorld,
 
     /// <summary>Load the world on disk.</summary>
     Continue,
+
+    /// <summary>Open the saved-world browser.</summary>
+    LoadSaves,
 
     /// <summary>Go back to the world.</summary>
     Resume,
@@ -1798,4 +2435,41 @@ public enum MenuChoice
 
     /// <summary>Close the game without saving.</summary>
     Quit,
+
+    /// <summary>Save the active world and return to the title screen.</summary>
+    MainMenu,
+
+    /// <summary>Open the in-game terminal.</summary>
+    Terminal,
+
+    /// <summary>Teleport to the surface above the origin.</summary>
+    TeleportToSpawn,
+
+    /// <summary>Restore the player's health.</summary>
+    RestoreHealth,
+
+    /// <summary>Turn flight on or off.</summary>
+    ToggleFlight,
+
+    /// <summary>Stop or resume the day clock.</summary>
+    ToggleTime,
+
+    /// <summary>Set the day clock to noon.</summary>
+    SetNoon,
 }
+
+internal enum SaveBrowserAction
+{
+    None,
+    Select,
+    Load,
+    Rename,
+    Delete,
+    Back,
+}
+
+internal readonly record struct SaveBrowserChoice(
+    SaveBrowserAction Action,
+    string? Path = null,
+    string? Name = null
+);

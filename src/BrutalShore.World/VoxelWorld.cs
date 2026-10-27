@@ -26,8 +26,8 @@ public sealed class VoxelWorld : IVoxelSource, IDisposable
     /// <summary>How many blocks tall the world is.</summary>
     public const int HeightBlocks = ChunksTall * Chunk.Size;
 
-    private readonly IChunkGenerator _generator;
-    private readonly ChunkStreamer? _streamer;
+    private IChunkGenerator _generator;
+    private ChunkStreamer? _streamer;
     private readonly Dictionary<int3, Chunk> _chunks = [];
     private readonly HashSet<int3> _dirty = [];
 
@@ -142,6 +142,26 @@ public sealed class VoxelWorld : IVoxelSource, IDisposable
         MarkDirtyWithNeighbours(chunkCoordinate);
         _dirty.Remove(chunkCoordinate);
         return true;
+    }
+
+    /// <summary>Replaces the generated world and forgets its resident chunks and edits.</summary>
+    /// <param name="generator">What produces chunks in the new world.</param>
+    /// <param name="streamer">Workers bound to <paramref name="generator"/>, or <see langword="null"/>.</param>
+    /// <remarks>
+    /// Replacing the generator without replacing its streamer would keep producing chunks from
+    /// the old world. The old workers are stopped before the new generator becomes visible.
+    /// </remarks>
+    public void Reset(IChunkGenerator generator, ChunkStreamer? streamer)
+    {
+        ArgumentNullException.ThrowIfNull(generator);
+        _streamer?.Dispose();
+        _streamer = streamer;
+        _generator = generator;
+        _chunks.Clear();
+        _dirty.Clear();
+        _leaving.Clear();
+        Edits.Clear();
+        Revision++;
     }
 
     /// <inheritdoc />

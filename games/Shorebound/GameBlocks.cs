@@ -12,24 +12,75 @@ namespace Shorebound;
 /// </remarks>
 public sealed class GameBlocks
 {
+    private readonly bool _useFaithfulTextures;
+
     /// <summary>Registers every type into a fresh registry.</summary>
-    public GameBlocks(BlockRegistry registry)
+    /// <param name="registry">The registry to populate.</param>
+    /// <param name="useFaithfulTextures">Whether mapped Faithful texture layers are available.</param>
+    public GameBlocks(BlockRegistry registry, bool useFaithfulTextures = false)
     {
+        _useFaithfulTextures = useFaithfulTextures;
         Registry = registry;
         Stone = registry.Register(
-            new BlockType { Name = "stone", Color = byte3.HexColor(0x7F7F84), Pattern = BlockPattern.Mottled, BreakSeconds = 1.5f }
+            new BlockType
+            {
+                Name = "stone",
+                Color = byte3.HexColor(0x7F7F84),
+                Pattern = BlockPattern.Mottled,
+                SideTextureLayer = Texture(FaithfulTextures.Stone),
+                TopTextureLayer = Texture(FaithfulTextures.Stone),
+                BottomTextureLayer = Texture(FaithfulTextures.Stone),
+                BreakSeconds = 1.5f,
+            }
         );
         Dirt = registry.Register(
-            new BlockType { Name = "dirt", Color = byte3.HexColor(0x6B4A2F), Pattern = BlockPattern.Crumbly, BreakSeconds = 0.5f }
+            new BlockType
+            {
+                Name = "dirt",
+                Color = byte3.HexColor(0x6B4A2F),
+                Pattern = BlockPattern.Crumbly,
+                SideTextureLayer = Texture(FaithfulTextures.Dirt),
+                TopTextureLayer = Texture(FaithfulTextures.Dirt),
+                BottomTextureLayer = Texture(FaithfulTextures.Dirt),
+                BreakSeconds = 0.5f,
+            }
         );
         Grass = registry.Register(
-            new BlockType { Name = "grass", Color = byte3.HexColor(0x5A8F3C), Pattern = BlockPattern.Bladed, BreakSeconds = 0.6f }
+            new BlockType
+            {
+                Name = "grass",
+                Color = byte3.HexColor(0x5A8F3C),
+                Pattern = BlockPattern.Bladed,
+                SideTextureLayer = Texture(FaithfulTextures.GrassSide),
+                TopTextureLayer = Texture(FaithfulTextures.GrassTop),
+                BottomTextureLayer = Texture(FaithfulTextures.Dirt),
+                TopTextureTint = byte3.HexColor(0x7FB238),
+                BreakSeconds = 0.6f,
+            }
         );
         Sand = registry.Register(
-            new BlockType { Name = "sand", Color = byte3.HexColor(0xD8CB94), Pattern = BlockPattern.Grainy, BreakSeconds = 0.4f }
+            new BlockType
+            {
+                Name = "sand",
+                Color = byte3.HexColor(0xD8CB94),
+                Pattern = BlockPattern.Grainy,
+                SideTextureLayer = Texture(FaithfulTextures.Sand),
+                TopTextureLayer = Texture(FaithfulTextures.Sand),
+                BottomTextureLayer = Texture(FaithfulTextures.Sand),
+                BreakSeconds = 0.4f,
+            }
         );
         Snow = registry.Register(
-            new BlockType { Name = "snow", Color = byte3.HexColor(0xEDF2F7), Pattern = BlockPattern.Glinting, BreakSeconds = 0.3f }
+            new BlockType
+            {
+                Name = "snow",
+                Color = byte3.HexColor(0xEDF2F7),
+                Pattern = BlockPattern.Glinting,
+                SideTextureLayer = Texture(FaithfulTextures.Snow),
+                TopTextureLayer = Texture(FaithfulTextures.Snow),
+                BottomTextureLayer = Texture(FaithfulTextures.Snow),
+                BreakSeconds = 0.3f,
+            }
         );
         Water = registry.Register(
             new BlockType
@@ -42,6 +93,9 @@ public sealed class GameBlocks
                 // legible from above.
                 Opacity = 170,
                 Pattern = BlockPattern.Rippled,
+                SideTextureLayer = Texture(FaithfulTextures.Water),
+                TopTextureLayer = Texture(FaithfulTextures.Water),
+                BottomTextureLayer = Texture(FaithfulTextures.Water),
                 Collides = false,
                 IsLiquid = true,
 
@@ -57,6 +111,9 @@ public sealed class GameBlocks
                 Name = "bedrock",
                 Color = byte3.HexColor(0x2B2B30),
                 Pattern = BlockPattern.Mottled,
+                SideTextureLayer = Texture(FaithfulTextures.Bedrock),
+                TopTextureLayer = Texture(FaithfulTextures.Bedrock),
+                BottomTextureLayer = Texture(FaithfulTextures.Bedrock),
 
                 // The floor of the world, and the one block that never comes up. Without it a
                 // player who digs long enough falls out of the bottom of everything.
@@ -64,10 +121,31 @@ public sealed class GameBlocks
             }
         );
         Log = registry.Register(
-            new BlockType { Name = "log", Color = byte3.HexColor(0x5A4228), Pattern = BlockPattern.Grained, BreakSeconds = 1.1f }
+            new BlockType
+            {
+                Name = "log",
+                Color = byte3.HexColor(0x5A4228),
+                Pattern = BlockPattern.Grained,
+                SideTextureLayer = Texture(FaithfulTextures.LogSide),
+                TopTextureLayer = Texture(FaithfulTextures.LogEnd),
+                BottomTextureLayer = Texture(FaithfulTextures.LogEnd),
+                BreakSeconds = 1.1f,
+            }
         );
         Leaves = registry.Register(
-            new BlockType { Name = "leaves", Color = byte3.HexColor(0x3E6B2A), Pattern = BlockPattern.Scattered, BreakSeconds = 0.2f }
+            new BlockType
+            {
+                Name = "leaves",
+                Color = byte3.HexColor(0x3E6B2A),
+                Pattern = BlockPattern.Scattered,
+                SideTextureLayer = Texture(FaithfulTextures.Leaves),
+                TopTextureLayer = Texture(FaithfulTextures.Leaves),
+                BottomTextureLayer = Texture(FaithfulTextures.Leaves),
+                SideTextureTint = byte3.HexColor(0x48B518),
+                TopTextureTint = byte3.HexColor(0x48B518),
+                BottomTextureTint = byte3.HexColor(0x48B518),
+                BreakSeconds = 0.2f,
+            }
         );
         Lantern = registry.Register(
             new BlockType
@@ -75,6 +153,9 @@ public sealed class GameBlocks
                 Name = "lantern",
                 Color = byte3.HexColor(0xFFE2A8),
                 Pattern = BlockPattern.Radiant,
+                SideTextureLayer = Texture(FaithfulTextures.Lantern),
+                TopTextureLayer = Texture(FaithfulTextures.Lantern),
+                BottomTextureLayer = Texture(FaithfulTextures.Lantern),
                 BreakSeconds = 0.4f,
 
                 // One below the brightest there is, so a lantern lights fourteen blocks around
@@ -88,16 +169,52 @@ public sealed class GameBlocks
         // Made things, not found ones: nothing in the world generates these, and the only way to
         // hold one is to make it. They are what the crafting grid is for.
         Planks = registry.Register(
-            new BlockType { Name = "planks", Color = byte3.HexColor(0xB08A52), Pattern = BlockPattern.Grained, BreakSeconds = 0.8f }
+            new BlockType
+            {
+                Name = "planks",
+                Color = byte3.HexColor(0xB08A52),
+                Pattern = BlockPattern.Grained,
+                SideTextureLayer = Texture(FaithfulTextures.Planks),
+                TopTextureLayer = Texture(FaithfulTextures.Planks),
+                BottomTextureLayer = Texture(FaithfulTextures.Planks),
+                BreakSeconds = 0.8f,
+            }
         );
         StoneBrick = registry.Register(
-            new BlockType { Name = "stone brick", Color = byte3.HexColor(0x8C8C92), Pattern = BlockPattern.Mottled, BreakSeconds = 1.6f }
+            new BlockType
+            {
+                Name = "stone brick",
+                Color = byte3.HexColor(0x8C8C92),
+                Pattern = BlockPattern.Mottled,
+                SideTextureLayer = Texture(FaithfulTextures.StoneBricks),
+                TopTextureLayer = Texture(FaithfulTextures.StoneBricks),
+                BottomTextureLayer = Texture(FaithfulTextures.StoneBricks),
+                BreakSeconds = 1.6f,
+            }
         );
         CopperIngot = registry.Register(
-            new BlockType { Name = "copper ingot", Color = byte3.HexColor(0xD9873F), Pattern = BlockPattern.Smooth, BreakSeconds = 1.2f }
+            new BlockType
+            {
+                Name = "copper ingot",
+                Color = byte3.HexColor(0xD9873F),
+                Pattern = BlockPattern.Smooth,
+                SideTextureLayer = Texture(FaithfulTextures.CopperBlock),
+                TopTextureLayer = Texture(FaithfulTextures.CopperBlock),
+                BottomTextureLayer = Texture(FaithfulTextures.CopperBlock),
+                BreakSeconds = 1.2f,
+            }
         );
         IronIngot = registry.Register(
-            new BlockType { Name = "iron ingot", Color = byte3.HexColor(0xBDB5AC), Pattern = BlockPattern.Smooth, BreakSeconds = 1.4f }
+            new BlockType
+            {
+                Name = "iron ingot",
+                Color = byte3.HexColor(0xBDB5AC),
+                Pattern = BlockPattern.Smooth,
+                SideTextureLayer = Texture(FaithfulTextures.IronBlock),
+                TopTextureLayer = Texture(FaithfulTextures.IronBlock),
+                BottomTextureLayer = Texture(FaithfulTextures.IronBlock),
+                BreakSeconds = 1.4f,
+            }
         );
         Glass = registry.Register(
             new BlockType
@@ -105,6 +222,9 @@ public sealed class GameBlocks
                 Name = "glass",
                 Color = byte3.HexColor(0xBFD8E4),
                 Pattern = BlockPattern.Smooth,
+                SideTextureLayer = Texture(FaithfulTextures.Glass),
+                TopTextureLayer = Texture(FaithfulTextures.Glass),
+                BottomTextureLayer = Texture(FaithfulTextures.Glass),
                 BreakSeconds = 0.5f,
 
                 // See-through but not water: it is in the way of a body and it lets nearly all
@@ -119,6 +239,9 @@ public sealed class GameBlocks
                 Name = "cable",
                 Color = byte3.HexColor(0x3E4044),
                 Pattern = BlockPattern.Smooth,
+                SideTextureLayer = Texture(FaithfulTextures.IronBlock),
+                TopTextureLayer = Texture(FaithfulTextures.IronBlock),
+                BottomTextureLayer = Texture(FaithfulTextures.IronBlock),
                 BreakSeconds = 0.3f,
 
                 // Run along a floor or up a wall and walked through, like a belt.
@@ -131,6 +254,9 @@ public sealed class GameBlocks
                 Name = "generator",
                 Color = byte3.HexColor(0x6B5A3E),
                 Pattern = BlockPattern.Mottled,
+                SideTextureLayer = Texture(FaithfulTextures.BlastFurnace),
+                TopTextureLayer = Texture(FaithfulTextures.BlastFurnace),
+                BottomTextureLayer = Texture(FaithfulTextures.BlastFurnace),
                 BreakSeconds = 2.6f,
                 Emission = 6,
             }
@@ -141,6 +267,9 @@ public sealed class GameBlocks
                 Name = "turret",
                 Color = byte3.HexColor(0x7C5248),
                 Pattern = BlockPattern.Smooth,
+                SideTextureLayer = Texture(FaithfulTextures.IronBlock),
+                TopTextureLayer = Texture(FaithfulTextures.DispenserFront),
+                BottomTextureLayer = Texture(FaithfulTextures.IronBlock),
                 BreakSeconds = 2.8f,
                 Emission = 3,
             }
@@ -151,6 +280,9 @@ public sealed class GameBlocks
                 Name = "lift",
                 Color = byte3.HexColor(0x8A7A58),
                 Pattern = BlockPattern.Grained,
+                SideTextureLayer = Texture(FaithfulTextures.Scaffolding),
+                TopTextureLayer = Texture(FaithfulTextures.IronBlock),
+                BottomTextureLayer = Texture(FaithfulTextures.IronBlock),
                 BreakSeconds = 0.8f,
                 Collides = false,
             }
@@ -161,6 +293,9 @@ public sealed class GameBlocks
                 Name = "miner",
                 Color = byte3.HexColor(0x5A5F66),
                 Pattern = BlockPattern.Smooth,
+                SideTextureLayer = Texture(FaithfulTextures.StonecutterSide),
+                TopTextureLayer = Texture(FaithfulTextures.StonecutterTop),
+                BottomTextureLayer = Texture(FaithfulTextures.IronBlock),
                 BreakSeconds = 2.4f,
                 Emission = 4,
             }
@@ -171,6 +306,9 @@ public sealed class GameBlocks
                 Name = "conveyor",
                 Color = byte3.HexColor(0x6E6A62),
                 Pattern = BlockPattern.Grained,
+                SideTextureLayer = Texture(FaithfulTextures.IronBlock),
+                TopTextureLayer = Texture(FaithfulTextures.Scaffolding),
+                BottomTextureLayer = Texture(FaithfulTextures.IronBlock),
                 BreakSeconds = 0.6f,
 
                 // Walked over rather than climbed. A belt that was a full block in the way would
@@ -184,6 +322,9 @@ public sealed class GameBlocks
                 Name = "smelter",
                 Color = byte3.HexColor(0x4A4036),
                 Pattern = BlockPattern.Mottled,
+                SideTextureLayer = Texture(FaithfulTextures.BlastFurnace),
+                TopTextureLayer = Texture(FaithfulTextures.BlastFurnace),
+                BottomTextureLayer = Texture(FaithfulTextures.BlastFurnace),
                 BreakSeconds = 2f,
 
                 // A little light, so a line of them along a wall is visible from down the tunnel.
@@ -193,10 +334,28 @@ public sealed class GameBlocks
             }
         );
         CopperBlock = registry.Register(
-            new BlockType { Name = "copper block", Color = byte3.HexColor(0xC87F42), Pattern = BlockPattern.Smooth, BreakSeconds = 2.4f }
+            new BlockType
+            {
+                Name = "copper block",
+                Color = byte3.HexColor(0xC87F42),
+                Pattern = BlockPattern.Smooth,
+                SideTextureLayer = Texture(FaithfulTextures.CopperBlock),
+                TopTextureLayer = Texture(FaithfulTextures.CopperBlock),
+                BottomTextureLayer = Texture(FaithfulTextures.CopperBlock),
+                BreakSeconds = 2.4f,
+            }
         );
         IronBlock = registry.Register(
-            new BlockType { Name = "iron block", Color = byte3.HexColor(0xA8A099), Pattern = BlockPattern.Smooth, BreakSeconds = 3f }
+            new BlockType
+            {
+                Name = "iron block",
+                Color = byte3.HexColor(0xA8A099),
+                Pattern = BlockPattern.Smooth,
+                SideTextureLayer = Texture(FaithfulTextures.IronBlock),
+                TopTextureLayer = Texture(FaithfulTextures.IronBlock),
+                BottomTextureLayer = Texture(FaithfulTextures.IronBlock),
+                BreakSeconds = 3f,
+            }
         );
 
         // The ores, appended last because registration order is id order and a saved world holds
@@ -207,6 +366,9 @@ public sealed class GameBlocks
                 Name = "coal ore",
                 Color = byte3.HexColor(0x3A3A40),
                 Pattern = BlockPattern.Scattered,
+                SideTextureLayer = Texture(FaithfulTextures.CoalOre),
+                TopTextureLayer = Texture(FaithfulTextures.CoalOre),
+                BottomTextureLayer = Texture(FaithfulTextures.CoalOre),
 
                 // Softer than the stone it sits in, so a seam gives way faster than the rock
                 // around it and following one reads as following something.
@@ -219,6 +381,9 @@ public sealed class GameBlocks
                 Name = "copper ore",
                 Color = byte3.HexColor(0xB4703C),
                 Pattern = BlockPattern.Mottled,
+                SideTextureLayer = Texture(FaithfulTextures.CopperOre),
+                TopTextureLayer = Texture(FaithfulTextures.CopperOre),
+                BottomTextureLayer = Texture(FaithfulTextures.CopperOre),
                 BreakSeconds = 1.8f,
             }
         );
@@ -228,6 +393,9 @@ public sealed class GameBlocks
                 Name = "iron ore",
                 Color = byte3.HexColor(0x9C8C7C),
                 Pattern = BlockPattern.Mottled,
+                SideTextureLayer = Texture(FaithfulTextures.IronOre),
+                TopTextureLayer = Texture(FaithfulTextures.IronOre),
+                BottomTextureLayer = Texture(FaithfulTextures.IronOre),
                 BreakSeconds = 2.2f,
             }
         );
@@ -237,6 +405,9 @@ public sealed class GameBlocks
                 Name = "ember ore",
                 Color = byte3.HexColor(0xE8873C),
                 Pattern = BlockPattern.Radiant,
+                SideTextureLayer = Texture(FaithfulTextures.Magma),
+                TopTextureLayer = Texture(FaithfulTextures.Magma),
+                BottomTextureLayer = Texture(FaithfulTextures.Magma),
                 BreakSeconds = 2.8f,
 
                 // It glows, which is the whole reason to go that deep for it: a seam of it is
@@ -303,6 +474,8 @@ public sealed class GameBlocks
 
     /// <summary>Ember ore, which glows, and is only down where the bedrock starts.</summary>
     public BlockId EmberOre { get; }
+
+    private byte Texture(byte layer) => _useFaithfulTextures ? layer : (byte)0;
 
     /// <summary>Stone, what the ground is made of below the surface.</summary>
     public BlockId Stone { get; }

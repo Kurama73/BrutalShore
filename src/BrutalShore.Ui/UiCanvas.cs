@@ -220,8 +220,21 @@ public static class UiCanvas
     /// <param name="color">What to draw it in.</param>
     /// <param name="text">What it says.</param>
     /// <param name="size">How tall the font is, in pixels.</param>
+    /// <remarks>
+    /// Snapped to whole pixels. Everything here is positioned by arithmetic on a panel's own
+    /// corner — half a height, a fraction of a width — so a label lands on a fractional pixel
+    /// far more often than not, and a glyph drawn across two pixel columns is a glyph with a
+    /// soft edge down one side. At a size of fourteen pixels that is the whole difference
+    /// between text that looks printed and text that looks smeared.
+    /// </remarks>
     public static void Text(float2 position, float4 color, string text, float size) =>
-        ImGui.GetWindowDrawList().AddText(ImGui.GetFont(), size, position, Packed(color), text);
+        ImGui.GetWindowDrawList().AddText(ImGui.GetFont(), size, Snap(position), Packed(color), text);
+
+    /// <summary>A point moved to the nearest whole pixel, which is where text belongs.</summary>
+    /// <param name="position">The point, in screen pixels.</param>
+    /// <returns>The same point with both coordinates rounded.</returns>
+    public static float2 Snap(float2 position) =>
+        new(float.Round(position.X), float.Round(position.Y));
 
     /// <summary>Text with space added between its letters.</summary>
     /// <param name="position">Where its top left corner goes, in screen pixels.</param>
@@ -240,16 +253,39 @@ public static class UiCanvas
         var drawList = ImGui.GetWindowDrawList();
         var font = ImGui.GetFont();
         var packed = Packed(color);
-        var x = position.X;
+        var snapped = Snap(position);
+        var x = snapped.X;
 
         foreach (var letter in text)
         {
             var glyph = letter.ToString();
-            drawList.AddText(font, size, new float2(x, position.Y), packed, glyph);
+            drawList.AddText(font, size, new float2(float.Round(x), snapped.Y), packed, glyph);
             x += Measure(glyph, size).X + tracking;
         }
 
-        return x - position.X - tracking;
+        return x - snapped.X - tracking;
+    }
+
+    /// <summary>How wide tracked text comes out, without drawing it.</summary>
+    /// <param name="text">What it says.</param>
+    /// <param name="size">How tall the font is, in pixels.</param>
+    /// <param name="tracking">How many extra pixels go between one letter and the next.</param>
+    /// <returns>Its width in pixels.</returns>
+    /// <remarks>
+    /// Measured the same way <see cref="TrackedText" /> lays it out — glyph by glyph — because
+    /// the width of a string measured whole is not the width of the same string with a gap added
+    /// after every letter, and a caller fitting text to a plate needs the number it will get.
+    /// </remarks>
+    public static float MeasureTracked(string text, float size, float tracking)
+    {
+        if (text.Length == 0)
+            return 0f;
+
+        var width = 0f;
+        foreach (var letter in text)
+            width += Measure(letter.ToString(), size).X + tracking;
+
+        return width - tracking;
     }
 
     /// <summary>How large a piece of text comes out at a size.</summary>
@@ -347,7 +383,7 @@ public static class UiCanvas
         HazardStripes(
             new float2(minimum.X, bandTop),
             new float2(maximum.X, bandTop + band),
-            UiPalette.Fade(UiPalette.Accent, 0.62f),
+            UiPalette.Fade(UiPalette.Accent, 0.38f),
             18f * scale
         );
 

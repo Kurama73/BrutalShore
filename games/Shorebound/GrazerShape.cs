@@ -1,3 +1,5 @@
+using BrutalShore.Render;
+
 namespace Shorebound;
 
 /// <summary>What an animal is made of: a body, a head and four legs, as boxes.</summary>
@@ -35,8 +37,16 @@ public static class GrazerShape
     /// <summary>Where one of an animal's boxes goes and what it looks like.</summary>
     /// <param name="MiddleMeters">The box's middle, in world metres.</param>
     /// <param name="SizeMeters">Its width, height and depth, in metres.</param>
-    /// <param name="Color">Its colour, in sRGB.</param>
-    public readonly record struct Part(double3 MiddleMeters, float3 SizeMeters, float3 Color);
+    /// <param name="Color">Its colour, in sRGB, for when there is no sheet to draw it from.</param>
+    /// <param name="TextureLayer">Which layer of the texture array its sheet is on, or zero for none.</param>
+    /// <param name="Skin">Which patch of that sheet each of its faces takes.</param>
+    public readonly record struct Part(
+        double3 MiddleMeters,
+        float3 SizeMeters,
+        float3 Color,
+        byte TextureLayer = 0,
+        CubeSkin? Skin = null
+    );
 
     /// <summary>Works out where every box of one animal goes.</summary>
     /// <param name="grazer">The animal.</param>
@@ -65,7 +75,7 @@ public static class GrazerShape
         into[3] = Leg(feet, forward, right, -0.28, -0.3, +swing);
 
         var bodyMiddle = feet + new double3(0.0, LegSize.Y + (BodySize.Y / 2.0), 0.0);
-        into[4] = new Part(bodyMiddle, BodySize, Wool);
+        into[4] = new Part(bodyMiddle, BodySize, Wool, MobSkins.Grazer.Layer, MobSkins.Grazer.Body);
 
         // The head rides a little higher than the body and bobs with the stride, which is most of
         // what makes a walk look like an effort rather than a slide.
@@ -75,7 +85,7 @@ public static class GrazerShape
             + (forward * ((BodySize.Z / 2.0) + (HeadSize.Z / 2.0) - 0.05))
             + new double3(0.0, (BodySize.Y / 2.0) + bob, 0.0);
 
-        into[5] = new Part(headMiddle, HeadSize, Hide);
+        into[5] = new Part(headMiddle, HeadSize, Hide, MobSkins.Grazer.Layer, MobSkins.Grazer.Head);
     }
 
     private static Part Leg(double3 feet, double3 forward, double3 right, double along, double across, double swing)
@@ -86,6 +96,6 @@ public static class GrazerShape
             + (right * across)
             + new double3(0.0, LegSize.Y / 2.0, 0.0);
 
-        return new Part(middle, LegSize, Hide);
+        return new Part(middle, LegSize, Hide, MobSkins.Grazer.Layer, MobSkins.Grazer.Leg);
     }
 }

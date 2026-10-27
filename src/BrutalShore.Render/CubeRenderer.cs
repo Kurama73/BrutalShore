@@ -184,6 +184,10 @@ public sealed unsafe class CubeRenderer : IDisposable
     /// <param name="color">Its colour, in sRGB.</param>
     /// <param name="turnRadians">How far it is turned about its own upright axis.</param>
     /// <param name="cameraMeters">Where the camera is; the render-space origin.</param>
+    /// <param name="textureLayer">Texture-array layer, or zero to use the supplied colour.</param>
+    /// <param name="textureTint">The sRGB colour multiplied into the sampled texture, if any.</param>
+    /// <param name="skin">Which part of the layer each face is cut from; the whole of it by default.</param>
+    /// <param name="tiltRadians">How far it is nosed up about its own crosswise axis.</param>
     /// <remarks>
     /// Three sizes rather than one, because the things made of these are not all cubes: an animal
     /// is a long body on four thin legs, and drawing it out of cubes alone would be drawing it out
@@ -194,7 +198,11 @@ public sealed unsafe class CubeRenderer : IDisposable
         float3 sizeMeters,
         float3 color,
         float turnRadians,
-        double3 cameraMeters
+        double3 cameraMeters,
+        byte textureLayer = 0,
+        float3? textureTint = null,
+        CubeSkin? skin = null,
+        float tiltRadians = 0f
     )
     {
         var middle = RenderSpace.ToRenderSpace(middleMeters, cameraMeters, 1.0);
@@ -203,7 +211,7 @@ public sealed unsafe class CubeRenderer : IDisposable
             _layout,
             VkShaderStageFlags.VertexBit | VkShaderStageFlags.FragmentBit,
             ByteSize.Zero,
-            new CubePushConstants(middle, sizeMeters, color, turnRadians)
+            new CubePushConstants(middle, sizeMeters, color, turnRadians, textureLayer, textureTint, skin, tiltRadians)
         );
         _renderer.Commands.Draw(_corners.Count, 1, 0, 0);
     }

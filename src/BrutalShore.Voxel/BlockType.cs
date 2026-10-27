@@ -58,6 +58,24 @@ public sealed record BlockType
     /// </remarks>
     public BlockPattern Pattern { get; init; } = BlockPattern.Smooth;
 
+    /// <summary>The texture layer used on vertical faces, or zero to use <see cref="Pattern" />.</summary>
+    public byte SideTextureLayer { get; init; }
+
+    /// <summary>The colour multiplied into the texture on vertical faces.</summary>
+    public byte3 SideTextureTint { get; init; } = byte3.HexColor(0xFFFFFF);
+
+    /// <summary>The texture layer used on upward faces, or zero to use <see cref="Pattern" />.</summary>
+    public byte TopTextureLayer { get; init; }
+
+    /// <summary>The colour multiplied into the texture on upward faces.</summary>
+    public byte3 TopTextureTint { get; init; } = byte3.HexColor(0xFFFFFF);
+
+    /// <summary>The texture layer used on downward faces, or zero to use <see cref="Pattern" />.</summary>
+    public byte BottomTextureLayer { get; init; }
+
+    /// <summary>The colour multiplied into the texture on downward faces.</summary>
+    public byte3 BottomTextureTint { get; init; } = byte3.HexColor(0xFFFFFF);
+
     /// <summary>How much light a block takes out of anything that passes through it, 0 to 15.</summary>
     /// <remarks>
     /// <para>
